@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="{{ active_theme.primary }}">
+  <meta name="description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
+  <meta name="robots" content="{{ 'noindex,nofollow' if request.path.startswith('/admin') else robots|default('index,follow') }}">
+  <title>{{ title|default(brand_name) }} · {{ brand_name }}</title>
+  <link rel="canonical" href="{{ request.base_url }}">
+  <link rel="manifest" href="{{ url_for('manifest') }}">
+  <link rel="icon" href="{{ url_for('static', filename='icons/favicon.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <style>
+    :root {
+      --bg: {{ active_theme.bg }}; --surface: {{ active_theme.surface }}; --ink: {{ active_theme.ink }};
+      --muted: {{ active_theme.muted }}; --primary: {{ active_theme.primary }}; --primary-ink: {{ active_theme.primary_ink }};
+      --accent: {{ active_theme.accent }}; --accent-ink: {{ active_theme.accent_ink }}; --line: {{ active_theme.line }};
+      --soft: {{ active_theme.soft }}; --hero: {{ active_theme.hero }}; --warm: {{ active_theme.warm }};
+    }
+  </style>
+</head>
+<body class="{{ 'admin-mode' if request.path.startswith('/admin') else 'public-mode' }}">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="app-layout">
+    {% block shell_sidebar %}
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <a class="brand-lockup" href="{{ url_for('home') }}" aria-label="{{ brand_name }} home">
+        <span class="brand-mark">{{ icon_svg('sparkles', 22) }}</span>
+        <span class="brand-words"><strong>{{ brand_name }}</strong><small>{{ site_settings.tagline }}</small></span>
+      </a>
+      <div class="sidebar-label">DISCOVER</div>
+      <a class="side-link {{ 'active' if request.endpoint == 'home' else '' }}" href="{{ url_for('home') }}"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>Overview</span></a>
+      {% for category in sidebar_categories|default([]) %}
+        <a class="side-link" href="{{ url_for('explore_category', category_slug=category.slug) }}"><span class="nav-icon">{{ icon_svg(category.icon, 19) }}</span><span>{{ category.name }}</span></a>
+      {% endfor %}
+      <div class="sidebar-rule"></div>
+      <div class="sidebar-label">QUICK PICKS</div>
+      <a class="side-link" href="{{ url_for('search') }}?q=Property"><span class="nav-icon">{{ icon_svg('home', 19) }}</span><span>Find a home</span></a>
+      <a class="side-link" href="{{ url_for('search') }}?q=Hotels"><span class="nav-icon">{{ icon_svg('bed', 19) }}</span><span>Plan a stay</span></a>
+      <a class="side-link" href="{{ url_for('search') }}?q=Furniture"><span class="nav-icon">{{ icon_svg('chair', 19) }}</span><span>Shop furniture</span></a>
+      <div class="sidebar-bottom">
+        <div class="sidebar-help-icon">{{ icon_svg('sparkles', 22) }}</div>
+        <strong>Something in mind?</strong>
+        <p>Search our network and find the right place to start.</p>
+        <a href="#global-search" class="sidebar-cta">Start exploring <span aria-hidden="true">↗</span></a>
+      </div>
+    </aside>
+    {% endblock %}
+
+    <div class="workarea">
+      {% block shell_header %}
+      <header class="topbar">
+        <div class="topbar-leading">
+          <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">{{ icon_svg('compass', 22) }}</button>
+          <span class="mobile-brand">{{ brand_name }}</span>
+          <span class="breadcrumb">Kenya <span aria-hidden="true">/</span> <strong>Discover</strong></span>
+        </div>
+        <div class="topbar-actions">
+          <a class="topbar-link" href="#network">Explore services</a>
+          <a class="topbar-action" href="#global-search">What do you need? <span aria-hidden="true">↗</span></a>
+        </div>
+      </header>
+      {% endblock %}
+
+      <main id="main-content" class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}<div class="flash-stack" role="status" aria-live="polite">
+            {% for category, message in messages %}<div class="flash flash-{{ category }}">{{ message }}</div>{% endfor %}
+          </div>{% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </main>
+      {% block page_footer %}
+      <footer class="site-footer">
+        <div><span class="footer-mark">{{ icon_svg('sparkles', 18) }}</span><strong>{{ brand_name }}</strong><span class="footer-dot">·</span>{{ site_settings.footer_note }}</div>
+        <div class="footer-links"><a href="{{ url_for('home') }}">Home</a><a href="{{ url_for('sitemap_xml') }}">Sitemap</a><a href="{{ url_for('admin_login') }}">Admin</a></div>
+      </footer>
+      {% endblock %}
+    </div>
+  </div>
+  <div class="sidebar-scrim" id="sidebar-scrim"></div>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

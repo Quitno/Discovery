@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% set title = brand_name + ' — ' + site_settings.tagline %}
+{% set robots = 'index,follow' %}
+{% block content %}
+<section class="hero-section">
+  <div class="hero-copy">
+    <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR EVERYDAY DISCOVERY GUIDE <span class="eyebrow-line"></span></div>
+    <h1>{{ site_settings.hero_title }} <span class="heading-highlight">Let's find it.</span></h1>
+    <p class="hero-description">{{ site_settings.hero_description }}</p>
+    <form action="{{ url_for('search') }}" method="get" id="global-search" class="search-box" role="search">
+      <span class="search-symbol">{{ icon_svg('compass', 23) }}</span>
+      <label class="visually-hidden" for="search-query">Search services, places or ideas</label>
+      <input id="search-query" name="q" type="search" placeholder="Try “apartments in Nairobi” or “furniture”…" maxlength="120" autocomplete="off">
+      <button class="search-submit" type="submit">Search <span aria-hidden="true">↗</span></button>
+    </form>
+    {% if site_settings.show_search_suggestions == '1' %}
+    <div class="suggestion-row" aria-label="Suggested searches">
+      <span>Try:</span>
+      <a href="{{ url_for('search') }}?q=Property">Homes to rent</a>
+      <a href="{{ url_for('search') }}?q=Hotels">Hotels & stays</a>
+      <a href="{{ url_for('search') }}?q=Furniture">Furniture</a>
+      <a href="{{ url_for('search') }}?q=Construction">Building supplies</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="hero-art" aria-label="Discover more possibilities">
+    <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div>
+    <div class="art-main-card">
+      <div class="art-card-top"><span class="art-label">YOUR NEXT FIND</span><span class="art-spark">✳</span></div>
+      <div class="art-illustration">
+        <div class="hill hill-back"></div><div class="hill hill-front"></div>
+        <div class="art-house"><div class="house-roof"></div><div class="house-body"><div class="house-window"></div><div class="house-door"></div></div></div>
+        <div class="art-sun"></div>
+      </div>
+      <div class="art-card-bottom"><div><strong>Good things are closer.</strong><small>One place to begin.</small></div><span class="round-arrow">↗</span></div>
+    </div>
+    <div class="floating-tag floating-tag-top"><span class="floating-icon">{{ icon_svg('home', 19) }}</span><span><strong>Find your place</strong><small>Homes & land</small></span></div>
+    <div class="floating-tag floating-tag-bottom"><span class="floating-icon orange-icon">{{ icon_svg('chair', 19) }}</span><span><strong>Make it yours</strong><small>Furniture & more</small></span></div>
+    <span class="hero-star star-a">✳</span><span class="hero-star star-b">✦</span>
+  </div>
+</section>
+
+<section class="trust-strip" aria-label="How the hub works">
+  <div class="trust-item"><span class="trust-icon">01</span><div><strong>One starting point</strong><small>Explore connected services</small></div></div>
+  <div class="trust-separator"></div>
+  <div class="trust-item"><span class="trust-icon">02</span><div><strong>Clear next steps</strong><small>Go straight to the right site</small></div></div>
+  <div class="trust-separator"></div>
+  <div class="trust-item"><span class="trust-icon">03</span><div><strong>Made for real life</strong><small>Homes, trips, shops & experiences</small></div></div>
+</section>
+
+<section class="section-block" id="network">
+  <div class="section-heading-row">
+    <div><div class="section-kicker">EXPLORE THE NETWORK</div><h2>What can we help you find?</h2><p class="section-intro">Choose a path. We'll take you to the specialist site built for it.</p></div>
+    <span class="section-count">{{ sites|length }} connected {{ 'destination' if sites|length == 1 else 'destinations' }}</span>
+  </div>
+  <div class="category-grid">
+    {% set category_colors = ['mint','peach','lavender','gold','sage','rose','stone'] %}
+    {% for category, items in group_map.items() %}
+      <a class="category-card {{ category_colors[loop.index0 % category_colors|length] }}" href="{{ url_for('explore_category', category_slug=category|slugify) }}">
+        <div class="category-card-top"><span class="category-icon">{{ icon_svg(items[0].icon, 26) }}</span><span class="card-arrow" aria-hidden="true">↗</span></div>
+        <h3>{{ category }}</h3>
+        <p>{{ items[0].description|truncate(92) }}</p>
+        <div class="category-card-foot"><span>{{ items|length }} {{ 'site' if items|length == 1 else 'sites' }}</span><strong>Explore <span aria-hidden="true">→</span></strong></div>
+      </a>
+    {% endfor %}
+    <a class="category-card add-more-card" href="{{ url_for('search') }}?q=services"><div class="category-card-top"><span class="category-icon">{{ icon_svg('sparkles', 26) }}</span><span class="card-arrow" aria-hidden="true">↗</span></div><h3>Something else?</h3><p>Search the network or browse all the connected destinations.</p><div class="category-card-foot"><span>Keep exploring</span><strong>Find more <span aria-hidden="true">→</span></strong></div></a>
+  </div>
+</section>
+
+{% if site_settings.show_featured_strip == '1' and featured %}
+<section class="section-block featured-section">
+  <div class="section-heading-row"><div><div class="section-kicker">A GOOD PLACE TO START</div><h2>Go straight to the good stuff.</h2><p class="section-intro">Our connected destinations, ready when you are.</p></div></div>
+  <div class="destination-grid">
+    {% for site in featured %}
+    <article class="destination-card">
+      <div class="destination-top"><span class="destination-icon">{{ icon_svg(site.icon, 25) }}</span><span class="destination-category">{{ site.category }}</span></div>
+      <h3>{{ site.name }}</h3><p>{{ site.description }}</p>
+      <div class="destination-bottom"><span class="destination-status"><i></i> Connected destination</span><a class="destination-button" href="{{ url_for('go_site', site_id=site.id) }}" rel="nofollow">{{ site.cta }} <span aria-hidden="true">↗</span></a></div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="bottom-cta">
+  <div class="bottom-cta-pattern"></div><div class="bottom-cta-content"><span class="bottom-cta-icon">{{ icon_svg('sparkles', 24) }}</span><div><span class="section-kicker">YOUR NEXT STEP STARTS HERE</span><h2>Have something specific in mind?</h2><p>Describe it in your own words. We'll help you find the most relevant destination in our network.</p></div><a class="button-light" href="#global-search">Start searching <span aria-hidden="true">↗</span></a></div>
+</section>
+
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": brand_name,
+  "url": request.url_root,
+  "description": site_settings.hero_description,
+  "potentialAction": {"@type": "SearchAction", "target": request.url_root.rstrip('/') + url_for('search') + "?q={search_term_string}", "query-input": "required name=search_term_string"}
+}|tojson }}</script>
+{% endblock %}
