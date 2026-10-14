@@ -68,4 +68,64 @@
       });
     });
   }
+
+
+  // Public gateway sharing controls. Kept in the local script so the site's CSP can remain strict.
+  const shareFeedback = document.getElementById('share-feedback');
+  const shareHubButton = document.getElementById('share-hub-button');
+  const copyHubButton = document.getElementById('copy-hub-button');
+  const copyHubUrl = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(window.location.href);
+        if (shareFeedback) shareFeedback.textContent = 'Website link copied.';
+      } else if (shareFeedback) shareFeedback.textContent = window.location.href;
+    } catch (_) {
+      if (shareFeedback) shareFeedback.textContent = window.location.href;
+    }
+  };
+  if (shareHubButton) {
+    shareHubButton.addEventListener('click', async () => {
+      const data = { title: document.title, text: 'Explore this gateway to connected websites and digital services.', url: window.location.href };
+      try {
+        if (navigator.share) await navigator.share(data);
+        else await copyHubUrl();
+      } catch (error) {
+        if (error && error.name !== 'AbortError' && shareFeedback) shareFeedback.textContent = 'Copy the website link to share this gateway.';
+      }
+    });
+  }
+  if (copyHubButton) copyHubButton.addEventListener('click', copyHubUrl);
+
+  // Transparent, indicative project estimate; the server recalculates the same range on submission.
+  const projectForm = document.getElementById('project-form');
+  const estimateAmount = document.getElementById('estimate-amount');
+  if (projectForm && estimateAmount) {
+    const base = {
+      'business-website': [10000, 20000], 'online-store': [25000, 60000], 'web-app': [50000, 120000],
+      'mobile-app': [60000, 150000], 'redesign': [8000, 22000], 'automation': [15000, 45000],
+      'seo': [5000, 20000], 'other': [12000, 45000]
+    };
+    const pages = { '1-5': [0, 0], '6-10': [5000, 9000], '11-20': [12000, 22000], '21+': [25000, 50000] };
+    const features = { simple: [0, 0], standard: [5000, 15000], advanced: [15000, 40000] };
+    const content = { ready: [0, 0], 'need-help': [3000, 10000], 'full-service': [6000, 18000] };
+    const timing = { flexible: [1, 1], month: [1, 1.08], 'two-weeks': [1.08, 1.15], 'one-week': [1.18, 1.30] };
+    const money = (n) => 'KSh ' + Math.round(n).toLocaleString('en-KE');
+    const updateEstimate = () => {
+      const data = new FormData(projectForm);
+      let lowHigh = base[data.get('project_type')] || base.other;
+      let add = pages[data.get('pages_count')] || pages['1-5']; lowHigh = [lowHigh[0] + add[0], lowHigh[1] + add[1]];
+      add = features[data.get('feature_level')] || features.standard; lowHigh = [lowHigh[0] + add[0], lowHigh[1] + add[1]];
+      add = content[data.get('content_status')] || content['need-help']; lowHigh = [lowHigh[0] + add[0], lowHigh[1] + add[1]];
+      const factors = timing[data.get('timeline')] || timing.flexible;
+      const round500 = (n) => Math.round(n / 500) * 500;
+      estimateAmount.textContent = money(round500(lowHigh[0] * factors[0])) + ' – ' + money(round500(lowHigh[1] * factors[1]));
+      const caption = document.getElementById('estimate-caption');
+      if (caption) caption.textContent = data.get('timeline') === 'one-week'
+        ? 'This range includes a planning allowance for the urgent timeline.'
+        : 'Indicative estimate updated from the selected project type, scale, features and content support.';
+    };
+    projectForm.addEventListener('change', updateEstimate);
+    updateEstimate();
+  }
 })();

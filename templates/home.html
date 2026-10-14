@@ -1,67 +1,66 @@
 {% extends 'base.html' %}
-{% set title = brand_name + ' — Buy, rent, book and shop' %}
 {% set robots = 'index,follow' %}
 {% block content %}
-<section class="launch-hero" aria-labelledby="launch-title">
-  <div class="launch-overline"><span></span> ONE PLACE. MANY POSSIBILITIES.</div>
-  <h1 id="launch-title">Buy. Rent. Book. <em>Find it.</em></h1>
-  <p class="launch-subtitle">Explore our connected websites and go straight to what you need.</p>
+<section class="gateway-intro" aria-labelledby="gateway-title">
+  <div class="gateway-eyebrow"><span class="gateway-eyebrow-dot"></span> ONE GATEWAY · A GROWING NETWORK</div>
+  <h1 id="gateway-title">A gateway to <span>more.</span></h1>
+  <p>Explore specialist websites for property, travel, interiors and more. Choose a destination and go straight to the service.</p>
+</section>
 
+<section class="network-section" id="network" aria-label="Connected destination websites">
   {% if sites %}
-  <nav class="launch-links" aria-label="Our websites">
+  <div class="network-grid">
     {% set button_colors = ['sun','tomato','pink','ink','blue','violet','teal','orange'] %}
     {% for site in sites %}
-      <a class="launch-link {{ button_colors[loop.index0 % button_colors|length] }}" href="{{ url_for('go_site', site_id=site.id) }}" aria-label="Open {{ site.name }} — {{ site.category }}">
-        <span class="launch-link-icon">{{ icon_svg(site.icon, 23) }}</span>
-        <span class="launch-link-copy"><strong>{{ site.name }}</strong><small>{{ site.category }}</small></span>
-        <span class="launch-link-arrow" aria-hidden="true">↗</span>
+      <a class="network-site" href="{{ url_for('go_site', site_id=site.id) }}" aria-label="Open {{ site.name }} — {{ site.category }}">
+        <span class="network-site-icon {{ button_colors[loop.index0 % button_colors|length] }}">{{ icon_svg(site.icon, 31) }}</span>
+        <strong>{{ site.name }}</strong>
+        <small>{{ site.category }}</small>
       </a>
     {% endfor %}
-  </nav>
+  </div>
   {% else %}
-  <div class="launch-empty">Our websites are being prepared. Please check back soon.</div>
+    <p class="network-empty">Our connected websites are being prepared. Please check back soon.</p>
   {% endif %}
+</section>
 
-  <form action="{{ url_for('search') }}" method="get" id="global-search" class="launch-search" role="search">
-    <label class="visually-hidden" for="search-query">Search websites and services</label>
-    <span class="launch-search-icon" aria-hidden="true">⌕</span>
-    <input id="search-query" name="q" type="search" placeholder="Search: homes, hotels, furniture, tickets…" maxlength="120" autocomplete="off">
-    <button type="submit">Search <span aria-hidden="true">↗</span></button>
+<section class="gateway-search-section" aria-label="Search the network">
+  <form action="{{ url_for('search') }}" method="get" id="global-search" class="gateway-search" role="search">
+    <span class="gateway-search-symbol">{{ icon_svg('compass', 23) }}</span>
+    <label class="visually-hidden" for="search-query">Search the connected websites</label>
+    <input id="search-query" name="q" type="search" placeholder="Search property, travel, furniture, web development…" maxlength="120" autocomplete="off">
+    <button type="submit">Search</button>
   </form>
-  <div class="launch-suggestions" aria-label="Popular searches">
-    <span>Popular:</span>
-    <a href="{{ url_for('search') }}?q=rent">Rent</a>
-    <a href="{{ url_for('search') }}?q=hotel">Hotels</a>
-    <a href="{{ url_for('search') }}?q=travel">Travel</a>
-    <a href="{{ url_for('search') }}?q=furniture">Furniture</a>
-    <a href="{{ url_for('search') }}?q=construction">Construction</a>
-    <a href="{{ url_for('search') }}?q=tickets">Tickets</a>
+  <p class="gateway-search-note">Search the connected websites and find help building a website or app of your own.</p>
+</section>
+
+<section class="build-promo" id="build-with-us" aria-labelledby="build-title">
+  <div class="build-promo-copy">
+    <div class="build-eyebrow">FOR FOUNDERS, BUSINESSES & NEW IDEAS</div>
+    <h2 id="build-title">Need a website or app of your own?</h2>
+    <p>Tell us what you want to build, the features you need and when you need it. Get an initial, pocket-conscious price range before discussing the final scope.</p>
+    <a class="build-promo-button" href="{{ url_for('project_request') }}">Plan your project</a>
+  </div>
+  <div class="build-promo-aside">
+    <span class="build-aside-label">A CLEAR STARTING POINT</span>
+    <strong>From KSh 10,000</strong>
+    <p>Indicative starting point for a simple business website. Final pricing depends on scope, features, content and timeline.</p>
+    <div class="build-service-tags"><span>Websites</span><span>Online stores</span><span>Web apps</span><span>Mobile apps</span></div>
   </div>
 </section>
 
-<section class="public-share" id="share-hub" aria-label="Share this website">
-  <div class="public-share-copy"><span class="share-label">SHARE THIS HUB</span><h2>One link opens the whole network.</h2><p>Scan the QR code to open this landing page on your phone.</p><div class="public-share-actions"><button type="button" id="share-hub-button">Share website ↗</button><button type="button" class="share-copy-button" id="copy-hub-button">Copy link</button></div><span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span></div>
-  <a class="public-qr" href="{{ url_for('public_hub_qr', download=1) }}" title="Download the QR code for this landing page"><img src="{{ url_for('public_hub_qr') }}" alt="QR code that opens this website's landing page"><span>Scan to open · Download QR</span></a>
+<section class="share-gateway" id="share-hub" aria-label="Share this gateway">
+  <div class="share-gateway-copy">
+    <div class="share-eyebrow">SHARE THE GATEWAY</div>
+    <h2>One address. Many destinations.</h2>
+    <p>Share this page with someone who could use the network. The QR opens this gateway, not just one of the websites.</p>
+    <div class="share-gateway-actions"><button type="button" id="share-hub-button">Share this website</button><button type="button" class="share-copy-button" id="copy-hub-button">Copy website link</button></div>
+    <span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span>
+  </div>
+  <a class="public-qr" href="{{ url_for('public_hub_qr', download=1) }}" title="Download the QR code for this gateway"><img src="{{ url_for('public_hub_qr') }}" alt="QR code that opens this website's main gateway"><span>Scan or save this QR</span></a>
 </section>
 
-<footer class="launch-footer"><span>© {{ current_year }} {{ brand_name }}</span><span>Kenya <i>·</i> One starting point</span><a href="{{ url_for('sitemap_xml') }}">Sitemap</a></footer>
-<script>
-(() => {
-  const feedback = document.getElementById('share-feedback');
-  const shareButton = document.getElementById('share-hub-button');
-  const copyButton = document.getElementById('copy-hub-button');
-  const shareData = { title: document.title, text: 'Explore our connected websites in one place.', url: window.location.href };
-  shareButton?.addEventListener('click', async () => {
-    try {
-      if (navigator.share) await navigator.share(shareData);
-      else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(shareData.url); feedback.textContent = 'Website link copied.'; }
-      else { feedback.textContent = shareData.url; }
-    } catch (e) { if (e.name !== 'AbortError') feedback.textContent = 'You can copy the website address from your browser.'; }
-  });
-  copyButton?.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(window.location.href); feedback.textContent = 'Website link copied.'; }
-    catch (_) { feedback.textContent = window.location.href; }
-  });
-})();
-</script>
+<footer class="gateway-footer"><span>© {{ current_year }} {{ brand_name }}</span><span>Kenya · One gateway to a growing network</span><a href="{{ url_for('sitemap_xml') }}">Sitemap</a></footer>
+<script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"WebSite","name":brand_name,"url":request.url_root,"description":"A connected gateway to specialist websites, digital services and website or app project requests."}|tojson }}</script>
 {% endblock %}
+{% block page_footer %}{% endblock %}

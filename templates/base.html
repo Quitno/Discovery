@@ -6,7 +6,7 @@
   <meta name="theme-color" content="{{ active_theme.primary }}">
   <meta name="description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
   <meta name="robots" content="{{ 'noindex,nofollow' if request.path.startswith('/admin') else robots|default('index,follow') }}">
-  <title>{{ title|default(brand_name) }} · {{ brand_name }}</title>
+  <title>{% if title is defined and title and title != brand_name %}{{ title }} · {{ brand_name }}{% else %}{{ brand_name }}{% endif %}</title>
   <link rel="canonical" href="{{ request.base_url }}">
   <link rel="manifest" href="{{ url_for('manifest') }}">
   <link rel="icon" href="{{ url_for('static', filename='icons/favicon.svg') }}" type="image/svg+xml">
@@ -28,23 +28,22 @@
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">
       <a class="brand-lockup" href="{{ url_for('home') }}" aria-label="{{ brand_name }} home">
         <span class="brand-mark">{{ icon_svg('sparkles', 22) }}</span>
-        <span class="brand-words"><strong>{{ brand_name }}</strong><small>{{ site_settings.tagline }}</small></span>
+        <span class="brand-words"><strong>{{ brand_name }}</strong><small>THE DISCOVERY GATEWAY</small></span>
       </a>
-      <div class="sidebar-label">DISCOVER</div>
-      <a class="side-link {{ 'active' if request.endpoint == 'home' else '' }}" href="{{ url_for('home') }}"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>Overview</span></a>
+      <div class="sidebar-label">THE NETWORK</div>
+      <a class="side-link {{ 'active' if request.endpoint == 'home' else '' }}" href="{{ url_for('home') }}#network"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>All destinations</span></a>
       {% for category in sidebar_categories|default([]) %}
         <a class="side-link" href="{{ url_for('explore_category', category_slug=category.slug) }}"><span class="nav-icon">{{ icon_svg(category.icon, 19) }}</span><span>{{ category.name }}</span></a>
       {% endfor %}
       <div class="sidebar-rule"></div>
-      <div class="sidebar-label">QUICK PICKS</div>
-      <a class="side-link" href="{{ url_for('search') }}?q=Property"><span class="nav-icon">{{ icon_svg('home', 19) }}</span><span>Find a home</span></a>
-      <a class="side-link" href="{{ url_for('search') }}?q=Hotels"><span class="nav-icon">{{ icon_svg('bed', 19) }}</span><span>Plan a stay</span></a>
-      <a class="side-link" href="{{ url_for('search') }}?q=Furniture"><span class="nav-icon">{{ icon_svg('chair', 19) }}</span><span>Shop furniture</span></a>
+      <div class="sidebar-label">BUILD WITH US</div>
+      <a class="side-link {{ 'active' if request.endpoint == 'project_request' else '' }}" href="{{ url_for('project_request') }}"><span class="nav-icon">{{ icon_svg('building', 19) }}</span><span>Build a website or app</span></a>
+      {% if whatsapp_url %}<a class="side-link" href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer"><span class="nav-icon">{{ icon_svg('message', 19) }}</span><span>Talk to us on WhatsApp</span></a>{% endif %}
       <div class="sidebar-bottom">
         <div class="sidebar-help-icon">{{ icon_svg('sparkles', 22) }}</div>
-        <strong>Something in mind?</strong>
-        <p>Search our network and find the right place to start.</p>
-        <a href="#global-search" class="sidebar-cta">Start exploring <span aria-hidden="true">↗</span></a>
+        <strong>A gateway to what’s next.</strong>
+        <p>One starting point for a growing network of specialist websites and digital services.</p>
+        <a href="{{ url_for('home') }}#share-hub" class="sidebar-cta">Share this gateway</a>
       </div>
     </aside>
     {% endblock %}
@@ -53,13 +52,9 @@
       {% block shell_header %}
       <header class="topbar">
         <div class="topbar-leading">
-          <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">{{ icon_svg('compass', 22) }}</button>
+          <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">{{ icon_svg('menu', 22) }}</button>
           <span class="mobile-brand">{{ brand_name }}</span>
-          <span class="breadcrumb">Kenya <span aria-hidden="true">/</span> <strong>Discover</strong></span>
-        </div>
-        <div class="topbar-actions">
-          <a class="topbar-link" href="#network">Explore services</a>
-          <a class="topbar-action" href="#global-search">What do you need? <span aria-hidden="true">↗</span></a>
+          <span class="breadcrumb">One gateway <span aria-hidden="true">·</span> <strong>Many destinations</strong></span>
         </div>
       </header>
       {% endblock %}

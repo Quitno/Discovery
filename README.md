@@ -8,6 +8,8 @@ A standalone, mobile-first discovery landing site for linking existing websites 
 - Seeded links for the four supplied Render applications. Edit every URL, name, category, description and keyword in admin.
 - Search across the **hub's destination directory metadata**. Optional per-site search URL templates can pass a visitor's query into a destination that genuinely supports that format.
 - Admin dashboard with tracked outbound destination clicks, hub searches, top destinations and popular search phrases.
+- Public website/app project brief with live, indicative KES estimate based on project type, size, features, content support and timing. Requests are saved to SQLite and can be reviewed, status-tracked and exported from admin.
+- Optional business WhatsApp contact configured in Appearance; no contact number is invented or hard-coded.
 - Add/edit/hide/feature/reorder/remove destinations without deleting their actual websites; assign a destination to multiple relevant categories.
 - Brand name and homepage copy settings; manual themes plus automatic date-based Christmas, Valentine's, Easter, Black Friday and New Year styling.
 - QR codes for the main hub and each destination; destination QR codes pass through the hub's click tracker.
@@ -82,7 +84,7 @@ The included search/category pages are server-rendered and crawlable. Do not add
 - Hub searches are counted at `/search`.
 - The dashboard does not count page views or activity inside the independent destination applications. That requires analytics integration in those apps.
 - The hub does not store visitor IP addresses or user-agent strings in its analytics table. Email-like and phone-number-like query text is redacted before search statistics are written. Search phrases are still stored in reduced form to build the “popular searches” summary; add a privacy notice appropriate to your actual business and jurisdiction.
-- QR downloads and admin routes are protected by the same admin login. Keep `USER_PASSWORD` private and strong.
+- The public gateway QR at `/share-qr.png` is intentionally visitor-facing and points to the hub home page, so it can be placed on posters and shared without an admin login. Destination QR administration and database backups remain inside admin. Project requests include contact details and requirements, saved to SQLite for admin review; configure persistent storage and keep backups current. The public WhatsApp link appears only after you set a contact number in Appearance. Keep `USER_PASSWORD` private and strong.
 
 ## PWA and offline behaviour
 
@@ -93,7 +95,8 @@ The service worker caches the public homepage and the local interface shell so t
 - `/admin/login` — sign in
 - `/admin` — analytics overview
 - `/admin/sites` — destinations and visibility
-- `/admin/appearance` — name, text and themes
+- `/admin/appearance` — name, text, themes and optional WhatsApp contact number
+- `/admin/requests` — read, track and export website/app project submissions
 - `/admin/qr` — printable/shareable QR codes
 - `/admin/backup` — create and download database backups
 

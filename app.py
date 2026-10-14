@@ -3,6 +3,8 @@ from __future__ import annotations
 import hmac
 import hashlib
 import os
+import csv
+import io
 import re
 import secrets
 import shutil
@@ -102,13 +104,14 @@ ICONS = ["home", "bed", "plane", "ticket", "chair", "bricks", "compass", "shoppi
 DEFAULT_SETTINGS = {
     "brand_name": "The Discovery Hub",
     "tagline": "Good things are closer than you think.",
-    "hero_title": "What are you looking for today?",
-    "hero_description": "Find trusted places to stay, homes to live in, things to buy and experiences to enjoy—all from one starting point.",
+    "hero_title": "A gateway to more.",
+    "hero_description": "Discover connected websites for property, travel, furniture, business services and website or app projects.",
     "theme_mode": "auto",
     "selected_theme": "evergreen",
     "show_search_suggestions": "1",
     "show_featured_strip": "1",
-    "footer_note": "A better way to discover local services and businesses.",
+    "footer_note": "A connected gateway to specialist websites and digital services.",
+    "whatsapp_number": "",
 }
 
 
@@ -146,6 +149,16 @@ def slugify(value: str) -> str:
 
 
 app.jinja_env.filters["slugify"] = slugify
+
+
+@app.template_filter("wa_digits")
+def wa_digits(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    if digits.startswith("00"):
+        digits = digits[2:]
+    elif len(digits) == 10 and digits.startswith(("07", "01")):
+        digits = "254" + digits[1:]
+    return digits if len(digits) >= 10 else ""
 
 
 def site_categories(site):
@@ -200,6 +213,37 @@ def initialise_database():
             CREATE INDEX IF NOT EXISTS idx_events_type_date ON events(event_type, created_at);
             CREATE INDEX IF NOT EXISTS idx_events_site_date ON events(site_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_sites_visible_order ON sites(visible, sort_order);
+            CREATE TABLE IF NOT EXISTS project_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                email TEXT NOT NULL DEFAULT '',
+                business_name TEXT NOT NULL DEFAULT '',
+                location TEXT NOT NULL DEFAULT '',
+                project_type TEXT NOT NULL,
+                project_name TEXT NOT NULL DEFAULT '',
+                project_summary TEXT NOT NULL,
+                target_audience TEXT NOT NULL DEFAULT '',
+                pages_count TEXT NOT NULL DEFAULT '1-5',
+                feature_level TEXT NOT NULL DEFAULT 'standard',
+                key_features TEXT NOT NULL DEFAULT '',
+                brand_assets TEXT NOT NULL DEFAULT '',
+                content_status TEXT NOT NULL DEFAULT 'need-help',
+                domain_hosting TEXT NOT NULL DEFAULT 'not-sure',
+                integrations TEXT NOT NULL DEFAULT '',
+                target_launch TEXT NOT NULL DEFAULT '',
+                timeline TEXT NOT NULL DEFAULT 'flexible',
+                budget TEXT NOT NULL DEFAULT 'not-sure',
+                maintenance TEXT NOT NULL DEFAULT 'not-sure',
+                additional_notes TEXT NOT NULL DEFAULT '',
+                estimate_min INTEGER NOT NULL DEFAULT 0,
+                estimate_max INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'New',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_requests_created ON project_requests(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_project_requests_status ON project_requests(status, created_at DESC);
         """)
         site_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sites)").fetchall()}
         if "extra_categories" not in site_columns:
@@ -311,15 +355,27 @@ def inject_globals():
             if key not in seen_categories:
                 seen_categories.add(key)
                 sidebar_categories.append({"name": category, "slug": slugify(category), "icon": site.get("icon", "compass")})
+    settings = settings_dict()
+    whatsapp_digits = re.sub(r"\D", "", settings.get("whatsapp_number", ""))
+    if whatsapp_digits.startswith("00"):
+        whatsapp_digits = whatsapp_digits[2:]
+    elif len(whatsapp_digits) == 10 and whatsapp_digits.startswith(("07", "01")):
+        whatsapp_digits = "254" + whatsapp_digits[1:]
+    whatsapp_url = ("https://wa.me/" + whatsapp_digits + "?text=" + quote_plus(
+        f"Hello, I found {brand} and would like to discuss a website or app project."
+    )) if len(whatsapp_digits) >= 10 else ""
     return {
         "brand_name": brand,
-        "site_settings": settings_dict(),
+        "site_settings": settings,
         "active_theme": theme,
         "active_theme_key": get_theme()[0],
         "csrf_field": csrf_field,
         "icon_svg": icon_svg,
         "categories": [item["name"] for item in sidebar_categories],
         "sidebar_categories": sidebar_categories,
+        "whatsapp_url": whatsapp_url,
+        "whatsapp_digits": whatsapp_digits,
+        "current_year": datetime.utcnow().year,
     }
 
 
@@ -456,6 +512,8 @@ def icon_svg(key, size=28):
         "chair": '<path d="M6 11V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6M5 11h14v4H5zM7 15v6m10-6v6"/>',
         "bricks": '<path d="M3 4h8v5H3zM13 4h8v5h-8zM7 10h10v5H7zM3 16h8v4H3zM13 16h8v4h-8z"/>',
         "compass": '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8z"/>',
+        "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
+        "message": '<path d="M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.3-4.2A8.5 8.5 0 1 1 21 11.5z"/>',
         "shopping": '<path d="M4 8h16l-1.5 12h-13zM8 8a4 4 0 0 1 8 0"/>',
         "building": '<path d="M4 21V4h11v17M15 9h5v12M7 7h2m-2 4h2m-2 4h2m4-8h1m-1 4h1m-1 4h1m5-3h1m-1 4h1M2 21h20"/>',
         "map": '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15m6-12v15"/>',
@@ -468,29 +526,191 @@ def icon_svg(key, size=28):
 @app.route("/")
 def home():
     sites = get_sites(visible_only=True)
-    featured = [s for s in sites if s["featured"]][:4]
     group_map = {}
     for site in sites:
         for category in site_categories(site):
             group_map.setdefault(category, []).append(site)
-    return render_template("home.html", sites=sites, featured=featured, group_map=group_map,
-                           category_names=list(group_map.keys()), title=get_setting("brand_name"),
-                           meta_description=get_setting("hero_description"), robots="index,follow",
+    brand = get_setting("brand_name", DEFAULT_SETTINGS["brand_name"])
+    description = "Discover connected websites for property, travel, furniture and more. Start here to find specialist services, or request a website or app for your own business."
+    return render_template("home.html", sites=sites, group_map=group_map,
+                           category_names=list(group_map.keys()), title="Explore websites, services and digital projects",
+                           meta_description=description, robots="index,follow",
                            current_year=datetime.utcnow().year)
+
+
+PROJECT_TYPES = {
+    "business-website": "Business website",
+    "online-store": "E-commerce / online store",
+    "web-app": "Web application or portal",
+    "mobile-app": "Mobile app",
+    "redesign": "Website or app redesign",
+    "automation": "Integration or business automation",
+    "seo": "Search visibility / SEO",
+    "other": "Other digital project",
+}
+
+# Planning ranges in KES are deliberately indicative and are recalculated on the server.
+PROJECT_BASE_RANGES = {
+    "business-website": (10000, 20000),
+    "online-store": (25000, 60000),
+    "web-app": (50000, 120000),
+    "mobile-app": (60000, 150000),
+    "redesign": (8000, 22000),
+    "automation": (15000, 45000),
+    "seo": (5000, 20000),
+    "other": (12000, 45000),
+}
+PAGE_RANGES = {"1-5": (0, 0), "6-10": (5000, 9000), "11-20": (12000, 22000), "21+": (25000, 50000)}
+FEATURE_RANGES = {"simple": (0, 0), "standard": (5000, 15000), "advanced": (15000, 40000)}
+CONTENT_RANGES = {"ready": (0, 0), "need-help": (3000, 10000), "full-service": (6000, 18000)}
+TIMELINE_MULTIPLIERS = {"flexible": (1.0, 1.0), "month": (1.0, 1.08), "two-weeks": (1.08, 1.15), "one-week": (1.18, 1.30)}
+
+
+def estimate_project(form):
+    project_type = form.get("project_type", "business-website")
+    if project_type not in PROJECT_BASE_RANGES:
+        project_type = "other"
+    low, high = PROJECT_BASE_RANGES[project_type]
+    pages = form.get("pages_count", "1-5")
+    if pages not in PAGE_RANGES:
+        pages = "1-5"
+    add_low, add_high = PAGE_RANGES[pages]
+    low += add_low
+    high += add_high
+    features = form.get("feature_level", "standard")
+    if features not in FEATURE_RANGES:
+        features = "standard"
+    add_low, add_high = FEATURE_RANGES[features]
+    low += add_low
+    high += add_high
+    content = form.get("content_status", "need-help")
+    if content not in CONTENT_RANGES:
+        content = "need-help"
+    add_low, add_high = CONTENT_RANGES[content]
+    low += add_low
+    high += add_high
+    timeline = form.get("timeline", "flexible")
+    if timeline not in TIMELINE_MULTIPLIERS:
+        timeline = "flexible"
+    min_factor, max_factor = TIMELINE_MULTIPLIERS[timeline]
+    return int(round(low * min_factor / 500) * 500), int(round(high * max_factor / 500) * 500)
+
+
+@app.route("/build-a-website-or-app", methods=["GET", "POST"])
+def project_request():
+    default_estimate = estimate_project({"project_type": "business-website", "pages_count": "1-5", "feature_level": "simple", "content_status": "ready", "timeline": "flexible"})
+    if request.method == "POST":
+        # Hidden honeypot catches basic form bots without disrupting real visitors.
+        if request.form.get("company_website", "").strip():
+            return redirect(url_for("project_request", submitted="1"))
+        name = request.form.get("name", "").strip()[:100]
+        phone = request.form.get("phone", "").strip()[:50]
+        email = request.form.get("email", "").strip()[:120]
+        project_type = request.form.get("project_type", "other").strip()
+        summary = request.form.get("project_summary", "").strip()[:5000]
+        if not name or not phone or not summary or project_type not in PROJECT_TYPES:
+            flash("Please complete your name, phone number, project type and project brief.", "error")
+            return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
+                                   estimate_min=default_estimate[0], estimate_max=default_estimate[1]), 400
+        if email and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+            flash("Please enter a valid email address, or leave that field blank.", "error")
+            return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
+                                   estimate_min=default_estimate[0], estimate_max=default_estimate[1]), 400
+        estimate_min, estimate_max = estimate_project(request.form)
+        allowed = {
+            "name": name, "phone": phone, "email": email,
+            "business_name": request.form.get("business_name", "").strip()[:150],
+            "location": request.form.get("location", "").strip()[:120],
+            "project_type": project_type,
+            "project_name": request.form.get("project_name", "").strip()[:150],
+            "project_summary": summary,
+            "target_audience": request.form.get("target_audience", "").strip()[:1000],
+            "pages_count": request.form.get("pages_count", "1-5") if request.form.get("pages_count") in PAGE_RANGES else "1-5",
+            "feature_level": request.form.get("feature_level", "standard") if request.form.get("feature_level") in FEATURE_RANGES else "standard",
+            "key_features": request.form.get("key_features", "").strip()[:3000],
+            "brand_assets": request.form.get("brand_assets", "").strip()[:1000],
+            "content_status": request.form.get("content_status", "need-help") if request.form.get("content_status") in CONTENT_RANGES else "need-help",
+            "domain_hosting": request.form.get("domain_hosting", "not-sure") if request.form.get("domain_hosting") in ("have-both", "domain-only", "hosting-only", "need-both", "not-sure") else "not-sure",
+            "integrations": request.form.get("integrations", "").strip()[:1500],
+            "target_launch": request.form.get("target_launch", "").strip()[:40],
+            "timeline": request.form.get("timeline", "flexible") if request.form.get("timeline") in TIMELINE_MULTIPLIERS else "flexible",
+            "budget": request.form.get("budget", "not-sure") if request.form.get("budget") in ("under-10000", "10000-25000", "25000-50000", "50000-100000", "100000-plus", "not-sure") else "not-sure",
+            "maintenance": request.form.get("maintenance", "not-sure") if request.form.get("maintenance") in ("yes", "no", "not-sure") else "not-sure",
+            "additional_notes": request.form.get("additional_notes", "").strip()[:2500],
+            "estimate_min": estimate_min, "estimate_max": estimate_max,
+            "created_at": utc_now(), "updated_at": utc_now(),
+        }
+        with db_session() as conn:
+            conn.execute("""INSERT INTO project_requests
+                (name,phone,email,business_name,location,project_type,project_name,project_summary,target_audience,
+                 pages_count,feature_level,key_features,brand_assets,content_status,domain_hosting,integrations,
+                 target_launch,timeline,budget,maintenance,additional_notes,estimate_min,estimate_max,status,created_at,updated_at)
+                VALUES(:name,:phone,:email,:business_name,:location,:project_type,:project_name,:project_summary,:target_audience,
+                 :pages_count,:feature_level,:key_features,:brand_assets,:content_status,:domain_hosting,:integrations,
+                 :target_launch,:timeline,:budget,:maintenance,:additional_notes,:estimate_min,:estimate_max,'New',:created_at,:updated_at)""", allowed)
+        flash("Your project brief has been received. The estimate is a planning guide; the final price and delivery plan will be confirmed after scope review.", "success")
+        return redirect(url_for("project_request", submitted="1"))
+    return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
+                           submitted=request.args.get("submitted") == "1", estimate_min=default_estimate[0], estimate_max=default_estimate[1],
+                           meta_description="Request affordable website, e-commerce, web app or mobile app development in Kenya. Share your project brief and get an initial price range based on scope, features and timing.", robots="index,follow")
+
+
+@app.route("/admin/requests")
+@admin_required
+def admin_project_requests():
+    with db_session() as conn:
+        rows = conn.execute("SELECT * FROM project_requests ORDER BY created_at DESC LIMIT 500").fetchall()
+    return render_template("admin_requests.html", title="Project requests", section="requests", requests=[dict(r) for r in rows], project_types=PROJECT_TYPES)
+
+
+@app.route("/admin/requests/<int:request_id>/status", methods=["POST"])
+@admin_required
+def admin_project_request_status(request_id):
+    status = request.form.get("status", "New")
+    if status not in ("New", "Reviewing", "Contacted", "Quoted", "Won", "Closed"):
+        status = "New"
+    with db_session() as conn:
+        changed = conn.execute("UPDATE project_requests SET status=?,updated_at=? WHERE id=?", (status, utc_now(), request_id)).rowcount
+    if not changed:
+        abort(404)
+    flash("Project request status updated.", "success")
+    return redirect(url_for("admin_project_requests") + f"#request-{request_id}")
+
+
+@app.route("/admin/requests/export.csv")
+@admin_required
+def admin_project_requests_export():
+    with db_session() as conn:
+        rows = conn.execute("SELECT * FROM project_requests ORDER BY created_at DESC").fetchall()
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(rows[0].keys() if rows else ["id", "name", "phone", "email", "project_type", "project_summary", "status", "created_at"])
+    for row in rows:
+        writer.writerow([row[k] for k in row.keys()])
+    response = make_response(output.getvalue())
+    response.headers["Content-Type"] = "text/csv; charset=utf-8"
+    response.headers["Content-Disposition"] = 'attachment; filename="project-requests.csv"'
+    return response
 
 
 @app.route("/search")
 def search():
     query = request.args.get("q", "").strip()[:120]
     results = []
+    service_listing = False
     if query:
         log_event("search", query=query)
         sites = get_sites(visible_only=True)
         scored = [(site_matches(site, query), site) for site in sites]
         results = [site for score, site in sorted(scored, key=lambda x: (x[0], x[1]["featured"], -x[1]["sort_order"]), reverse=True) if score > 0]
-    return render_template("search.html", query=query, results=results,
+        query_normalised = re.sub(r"[^a-z0-9]+", " ", query.casefold()).strip()
+        development_terms = ("web developer", "web development", "website", "websites", "build a site", "build website",
+                             "make a website", "app developer", "app development", "mobile app", "web app", "software",
+                             "ecommerce", "e commerce", "online store", "website design", "app design", "developer", "coding")
+        service_listing = any(term in query_normalised for term in development_terms)
+    return render_template("search.html", query=query, results=results, service_listing=service_listing,
                            title=(f"Search: {query}" if query else "Search our network"),
-                           meta_description="Search the websites and services connected to our discovery network.", robots="noindex,follow")
+                           meta_description="Search connected websites and find website or app development support for your business.", robots="noindex,follow")
 
 
 @app.route("/explore/<path:category_slug>")
@@ -534,7 +754,7 @@ def robots_txt():
 @app.route("/sitemap.xml")
 def sitemap_xml():
     host = request.url_root.rstrip("/")
-    urls = [host + "/"]
+    urls = [host + "/", host + url_for("project_request")]
     for category in get_categories():
         urls.append(host + url_for("explore_category", category_slug=slugify(category)))
     lastmod = datetime.utcnow().date().isoformat()
@@ -777,13 +997,10 @@ def admin_appearance():
             values = {
                 "brand_name": brand,
                 "tagline": request.form.get("tagline", "").strip()[:120],
-                "hero_title": request.form.get("hero_title", "").strip()[:120],
-                "hero_description": request.form.get("hero_description", "").strip()[:400],
                 "theme_mode": mode,
                 "selected_theme": selected,
-                "show_search_suggestions": "1" if request.form.get("show_search_suggestions") == "1" else "0",
-                "show_featured_strip": "1" if request.form.get("show_featured_strip") == "1" else "0",
                 "footer_note": request.form.get("footer_note", "").strip()[:160],
+                "whatsapp_number": request.form.get("whatsapp_number", "").strip()[:40],
             }
             for key, val in values.items():
                 set_setting(key, val)
