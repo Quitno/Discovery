@@ -103,3 +103,10 @@ The service worker caches the public homepage and the local interface shell so t
 ## Local test
 
 Install dependencies and run `python app.py`. The local development server disables the Secure-cookie flag for local HTTP only. For production, use the `Procfile` under HTTPS. Do not publish your real administrator environment variables.
+
+## Mobile and project-account additions
+
+- The public phone layout uses the device's light/dark preference and a colourful, touch-friendly two-column destination directory.
+- Curated destinations include House Hunter, OTravel, TRT, Oedge, Denmart and Prime School Portal; the admin can still manage visibility and destination details.
+- Visitors can create an account at `/account/register`, sign in at `/account/login`, and track project requests at `/my-projects`. Only requests submitted while signed in are linked to that account.
+- Admin can set request status and write applicant-facing feedback from **Admin → Project requests**. Account pages are excluded from indexing and service-worker caching.

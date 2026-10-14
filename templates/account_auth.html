@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="account-auth-page">
+  <div class="account-auth-intro"><div class="gateway-eyebrow">PROJECT ACCOUNT</div><h1>{% if mode == 'register' %}Keep your project in view.{% else %}Welcome back.{% endif %}</h1><p>{% if mode == 'register' %}Create a small account to track your project requests, see their status and read updates from our team.{% else %}Sign in to see project requests linked to your account and any feedback from our team.{% endif %}</p></div>
+  <form class="account-auth-form" method="post">{{ csrf_field() }}
+    {% if mode == 'register' %}<div class="field-group"><label for="full_name">Your name</label><input id="full_name" name="full_name" required maxlength="100" autocomplete="name" placeholder="Full name"></div>{% endif %}
+    <div class="field-group"><label for="email">Email address</label><input id="email" name="email" type="email" required maxlength="160" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="field-group"><label for="password">Password</label><input id="password" name="password" type="password" required minlength="8" autocomplete="{% if mode == 'register' %}new-password{% else %}current-password{% endif %}" placeholder="At least 8 characters">{% if mode == 'register' %}<small>Use a password you do not use on another site.</small>{% endif %}</div>
+    <button class="account-submit-button" type="submit">{% if mode == 'register' %}Create my account{% else %}Sign in{% endif %}</button>
+    <p class="account-switch">{% if mode == 'register' %}Already have an account? <a href="{{ url_for('customer_login') }}">Sign in</a>.{% else %}New here? <a href="{{ url_for('customer_register') }}">Create an account</a>.{% endif %}</p>
+    <p class="account-privacy-note">Your account is for project tracking on this gateway. Keep your login details private.</p>
+  </form>
+</section>
+{% endblock %}

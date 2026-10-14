@@ -24,6 +24,7 @@ from flask import (
 )
 from markupsafe import Markup
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -213,8 +214,17 @@ def initialise_database():
             CREATE INDEX IF NOT EXISTS idx_events_type_date ON events(event_type, created_at);
             CREATE INDEX IF NOT EXISTS idx_events_site_date ON events(site_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_sites_visible_order ON sites(visible, sort_order);
+            CREATE TABLE IF NOT EXISTS customer_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                full_name TEXT NOT NULL,
+                email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS project_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NULL,
+                admin_feedback TEXT NOT NULL DEFAULT '', 
                 name TEXT NOT NULL,
                 phone TEXT NOT NULL,
                 email TEXT NOT NULL DEFAULT '',
@@ -245,6 +255,12 @@ def initialise_database():
             CREATE INDEX IF NOT EXISTS idx_project_requests_created ON project_requests(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_project_requests_status ON project_requests(status, created_at DESC);
         """)
+        request_columns = {row["name"] for row in conn.execute("PRAGMA table_info(project_requests)").fetchall()}
+        if "user_id" not in request_columns:
+            conn.execute("ALTER TABLE project_requests ADD COLUMN user_id INTEGER NULL")
+        if "admin_feedback" not in request_columns:
+            conn.execute("ALTER TABLE project_requests ADD COLUMN admin_feedback TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_project_requests_user ON project_requests(user_id, created_at DESC)")
         site_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sites)").fetchall()}
         if "extra_categories" not in site_columns:
             conn.execute("ALTER TABLE sites ADD COLUMN extra_categories TEXT NOT NULL DEFAULT ''")
@@ -267,6 +283,30 @@ def initialise_database():
                     (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
             # OTravel legitimately covers both stays and travel; it is shown in both departments.
             conn.execute("UPDATE sites SET extra_categories='Travel' WHERE name='OTravel'")
+
+        # Curated destinations the owner has previously identified as live. Add them
+        # to existing installations too, but never overwrite or unhide admin-edited rows.
+        # This intentionally only adds missing entries; all current site settings remain intact.
+        now = utc_now()
+        supplemental_sites = [
+            ("Denmart", "denmart", "https://denmart.co.ke",
+             "Online shopping and services from Denmart.", "Shopping & Services", "shopping",
+             "denmart, shopping, supermarket, groceries, products, online shopping, online ordering, Kenya",
+             "", "Shop online", 1, 0, 50),
+            ("Prime School Portal", "prime-school-portal", "https://prime-1-rd0g.onrender.com",
+             "School portal and school administration services.", "School Management", "building",
+             "school, school portal, students, parents, fees, school management, Kenya",
+             "", "Open school portal", 1, 0, 60),
+        ]
+        for name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order in supplemental_sites:
+            exists = conn.execute(
+                "SELECT 1 FROM sites WHERE lower(url)=lower(?) OR lower(name)=lower(?) LIMIT 1",
+                (url, name),
+            ).fetchone()
+            if not exists:
+                conn.execute("""INSERT INTO sites(name,slug,url,description,category,icon,keywords,search_url_template,cta,visible,featured,sort_order,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
         conn.commit()
 
 
@@ -376,6 +416,8 @@ def inject_globals():
         "whatsapp_url": whatsapp_url,
         "whatsapp_digits": whatsapp_digits,
         "current_year": datetime.utcnow().year,
+        "customer_logged_in": bool(session.get("customer_id")),
+        "customer_name": session.get("customer_name", ""),
     }
 
 
@@ -515,6 +557,7 @@ def icon_svg(key, size=28):
         "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
         "message": '<path d="M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.3-4.2A8.5 8.5 0 1 1 21 11.5z"/>',
         "shopping": '<path d="M4 8h16l-1.5 12h-13zM8 8a4 4 0 0 1 8 0"/>',
+        "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
         "building": '<path d="M4 21V4h11v17M15 9h5v12M7 7h2m-2 4h2m-2 4h2m4-8h1m-1 4h1m-1 4h1m5-3h1m-1 4h1M2 21h20"/>',
         "map": '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15m6-12v15"/>',
         "sparkles": '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 14l1 2.5 2.5 1-2.5 1L19 21l-1-2.5-2.5-1 2.5-1z"/>',
@@ -536,6 +579,73 @@ def home():
                            category_names=list(group_map.keys()), title="Explore websites, services and digital projects",
                            meta_description=description, robots="index,follow",
                            current_year=datetime.utcnow().year)
+
+
+@app.route("/account/register", methods=["GET", "POST"])
+def customer_register():
+    if session.get("customer_id"):
+        return redirect(url_for("customer_projects"))
+    if request.method == "POST":
+        name = request.form.get("full_name", "").strip()[:100]
+        email = request.form.get("email", "").strip().lower()[:160]
+        password = request.form.get("password", "")
+        if not name or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email) or len(password) < 8:
+            flash("Enter your name, a valid email and a password of at least 8 characters.", "error")
+            return render_template("account_auth.html", title="Create project account", mode="register", robots="noindex,nofollow"), 400
+        try:
+            with db_session() as conn:
+                cur = conn.execute("INSERT INTO customer_accounts(full_name,email,password_hash,created_at) VALUES(?,?,?,?)",
+                                   (name, email, generate_password_hash(password), utc_now()))
+                account_id = cur.lastrowid
+        except sqlite3.IntegrityError:
+            flash("An account already uses that email. Please sign in instead.", "error")
+            return render_template("account_auth.html", title="Create project account", mode="register", robots="noindex,nofollow"), 409
+        session.clear()
+        session["customer_id"] = account_id
+        session["customer_name"] = name
+        session["csrf_token"] = secrets.token_urlsafe(32)
+        session.permanent = True
+        flash("Your project account is ready. You can now track requests and read updates here.", "success")
+        return redirect(url_for("customer_projects"))
+    return render_template("account_auth.html", title="Create project account", mode="register", robots="noindex,nofollow")
+
+
+@app.route("/account/login", methods=["GET", "POST"])
+def customer_login():
+    if session.get("customer_id"):
+        return redirect(url_for("customer_projects"))
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()[:160]
+        password = request.form.get("password", "")
+        with db_session() as conn:
+            account = conn.execute("SELECT * FROM customer_accounts WHERE email=?", (email,)).fetchone()
+        if not account or not check_password_hash(account["password_hash"], password):
+            flash("Email or password was not recognised.", "error")
+            return render_template("account_auth.html", title="Sign in to your project account", mode="login", robots="noindex,nofollow"), 401
+        session.clear()
+        session["customer_id"] = account["id"]
+        session["customer_name"] = account["full_name"]
+        session["csrf_token"] = secrets.token_urlsafe(32)
+        session.permanent = True
+        return redirect(url_for("customer_projects"))
+    return render_template("account_auth.html", title="Sign in to your project account", mode="login", robots="noindex,nofollow")
+
+
+@app.route("/account/logout", methods=["POST"])
+def customer_logout():
+    session.clear()
+    return redirect(url_for("home"))
+
+
+@app.route("/my-projects")
+def customer_projects():
+    customer_id = session.get("customer_id")
+    if not customer_id:
+        flash("Sign in to a project account to track submitted requests and read updates.", "info")
+        return redirect(url_for("customer_login", next="/my-projects"))
+    with db_session() as conn:
+        rows = conn.execute("SELECT * FROM project_requests WHERE user_id=? ORDER BY created_at DESC", (customer_id,)).fetchall()
+    return render_template("customer_projects.html", title="My project requests", requests=[dict(row) for row in rows], project_types=PROJECT_TYPES, robots="noindex,nofollow")
 
 
 PROJECT_TYPES = {
@@ -638,16 +748,17 @@ def project_request():
             "maintenance": request.form.get("maintenance", "not-sure") if request.form.get("maintenance") in ("yes", "no", "not-sure") else "not-sure",
             "additional_notes": request.form.get("additional_notes", "").strip()[:2500],
             "estimate_min": estimate_min, "estimate_max": estimate_max,
+            "user_id": session.get("customer_id"),
             "created_at": utc_now(), "updated_at": utc_now(),
         }
         with db_session() as conn:
             conn.execute("""INSERT INTO project_requests
-                (name,phone,email,business_name,location,project_type,project_name,project_summary,target_audience,
+                (user_id,name,phone,email,business_name,location,project_type,project_name,project_summary,target_audience,
                  pages_count,feature_level,key_features,brand_assets,content_status,domain_hosting,integrations,
-                 target_launch,timeline,budget,maintenance,additional_notes,estimate_min,estimate_max,status,created_at,updated_at)
-                VALUES(:name,:phone,:email,:business_name,:location,:project_type,:project_name,:project_summary,:target_audience,
+                 target_launch,timeline,budget,maintenance,additional_notes,estimate_min,estimate_max,status,admin_feedback,created_at,updated_at)
+                VALUES(:user_id,:name,:phone,:email,:business_name,:location,:project_type,:project_name,:project_summary,:target_audience,
                  :pages_count,:feature_level,:key_features,:brand_assets,:content_status,:domain_hosting,:integrations,
-                 :target_launch,:timeline,:budget,:maintenance,:additional_notes,:estimate_min,:estimate_max,'New',:created_at,:updated_at)""", allowed)
+                 :target_launch,:timeline,:budget,:maintenance,:additional_notes,:estimate_min,:estimate_max,'New','',:created_at,:updated_at)""", allowed)
         flash("Your project brief has been received. The estimate is a planning guide; the final price and delivery plan will be confirmed after scope review.", "success")
         return redirect(url_for("project_request", submitted="1"))
     return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
@@ -669,8 +780,9 @@ def admin_project_request_status(request_id):
     status = request.form.get("status", "New")
     if status not in ("New", "Reviewing", "Contacted", "Quoted", "Won", "Closed"):
         status = "New"
+    feedback = request.form.get("admin_feedback", "").strip()[:4000]
     with db_session() as conn:
-        changed = conn.execute("UPDATE project_requests SET status=?,updated_at=? WHERE id=?", (status, utc_now(), request_id)).rowcount
+        changed = conn.execute("UPDATE project_requests SET status=?,admin_feedback=?,updated_at=? WHERE id=?", (status, feedback, utc_now(), request_id)).rowcount
     if not changed:
         abort(404)
     flash("Project request status updated.", "success")
@@ -747,7 +859,7 @@ def go_site(site_id):
 
 @app.route("/robots.txt")
 def robots_txt():
-    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /go/", f"Sitemap: {url_for('sitemap_xml', _external=True)}"]
+    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /go/", "Disallow: /account/", "Disallow: /my-projects", f"Sitemap: {url_for('sitemap_xml', _external=True)}"]
     return app.response_class("\n".join(lines) + "\n", mimetype="text/plain")
 
 
