@@ -1,6 +1,6 @@
 # Discovery Hub — Render-ready source
 
-A standalone, mobile-first discovery landing site for linking existing websites such as House Hunter, OTravel, TRT and Oedge. It is a directory and discovery layer; the existing destination applications keep their own databases, features and customer workflows.
+A standalone, mobile-first discovery landing site for linking existing websites such as House Hunter, OTravel, TRT and Oedge, with Denmart and Luxhari added as curated destinations. It is a directory and discovery layer; the existing destination applications keep their own databases, features and customer workflows.
 
 ## What's included
 
@@ -107,6 +107,6 @@ Install dependencies and run `python app.py`. The local development server disab
 ## Mobile and project-account additions
 
 - The public phone layout uses the device's light/dark preference and a colourful, touch-friendly two-column destination directory.
-- Curated destinations include House Hunter, OTravel, TRT, Oedge, Denmart and Prime School Portal; the admin can still manage visibility and destination details.
+- Curated destinations include House Hunter, OTravel, TRT, Oedge, Denmart and Luxhari. The retired Prime School Portal is removed during startup migration; the admin can still manage visibility and destination details.
 - Visitors can create an account at `/account/register`, sign in at `/account/login`, and track project requests at `/my-projects`. Only requests submitted while signed in are linked to that account.
 - Admin can set request status and write applicant-facing feedback from **Admin → Project requests**. Account pages are excluded from indexing and service-worker caching.

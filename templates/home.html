@@ -4,11 +4,19 @@
 <section class="gateway-intro" aria-labelledby="gateway-title">
   <div class="gateway-eyebrow"><span class="gateway-eyebrow-dot"></span> ONE GATEWAY · A GROWING NETWORK</div>
   <h1 id="gateway-title">A gateway to <span>more.</span></h1>
-  <p class="gateway-intro-desktop">Explore specialist websites for property, travel, interiors and more. Choose a destination and go straight to the service.</p>
-  <p class="gateway-intro-mobile">Property. Travel. Furniture. Shopping. School tools. More is coming.</p>
+  <p class="gateway-intro-desktop">Explore our connected websites for property, travel, shopping, furniture, fashion and digital services. Choose a destination and go straight to it.</p>
+  <p class="gateway-intro-mobile">Property. Travel. Shopping. Style. Digital services. One gateway.</p>
 </section>
 
 <section class="network-section" id="network" aria-label="Connected destination websites">
+  <div class="network-section-heading">
+    <div class="network-section-heading-copy">
+      <div class="network-heading-kicker"><span aria-hidden="true"></span> DISCOVER THE NETWORK</div>
+      <h2>Quick links to our valuable sites</h2>
+      <p>Choose a destination and continue directly to its service.</p>
+    </div>
+    <div class="network-heading-count"><strong>{{ sites|length }}</strong><span>connected sites</span></div>
+  </div>
   {% if sites %}
   <div class="network-grid">
     {% set button_colors = ['sun','tomato','pink','ink','blue','violet','teal','orange'] %}

@@ -53,10 +53,10 @@ app.config.update(
 
 THEMES = {
     "evergreen": {
-        "label": "Evergreen Signature", "bg": "#f7f7f2", "surface": "#ffffff",
-        "ink": "#172e2c", "muted": "#687976", "primary": "#14594f",
-        "primary_ink": "#ffffff", "accent": "#d8fa8c", "accent_ink": "#20352b",
-        "line": "#e4e9e2", "soft": "#edf4e9", "hero": "#e7f0e5", "warm": "#ff815f"
+        "label": "Luxe Editorial Signature", "bg": "#f8f4f0", "surface": "#fffdf9",
+        "ink": "#261f23", "muted": "#776b70", "primary": "#2b2228",
+        "primary_ink": "#ffffff", "accent": "#e8c9ad", "accent_ink": "#2b2228",
+        "line": "#e8deda", "soft": "#f5e9e8", "hero": "#f1e5df", "warm": "#c95f69"
     },
     "christmas": {
         "label": "Christmas", "bg": "#f8f7f1", "surface": "#ffffff",
@@ -264,6 +264,33 @@ def initialise_database():
         site_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sites)").fetchall()}
         if "extra_categories" not in site_columns:
             conn.execute("ALTER TABLE sites ADD COLUMN extra_categories TEXT NOT NULL DEFAULT ''")
+        # Remove the retired school portal from existing persistent databases as well as fresh installs.
+        # Its analytics events are retained with site_id set to NULL by the foreign-key rule.
+        conn.execute("""DELETE FROM sites
+            WHERE lower(trim(name)) LIKE '%school portal%'
+               OR lower(trim(slug)) = 'prime-school-portal'
+               OR lower(url) LIKE '%prime-1-rd0g.onrender.com%'""")
+
+        # Standardise any previous Luxari/Luxhari entry to the live Luxhari destination,
+        # without allowing duplicate entries to accumulate on repeated deploys.
+        now = utc_now()
+        lux_rows = conn.execute("""SELECT id FROM sites
+            WHERE lower(trim(name)) IN ('luxhari','luxari')
+               OR lower(url) LIKE '%luxhari.onrender.com%'
+            ORDER BY id ASC""").fetchall()
+        if lux_rows:
+            keep_id = lux_rows[0]["id"]
+            conn.execute("""UPDATE sites SET name=?, slug=?, url=?, description=?, category=?, extra_categories=?,
+                icon=?, keywords=?, search_url_template='', cta=?, visible=1, featured=1, sort_order=60, updated_at=?
+                WHERE id=?""",
+                ("Luxhari", "luxhari", "https://luxhari.onrender.com",
+                 "Discover fashion, accessories, materials, styling inspiration and Home & Living.",
+                 "Fashion & Living", "", "sparkles",
+                 "luxhari, fashion, clothes, clothing, dresses, accessories, jewellery, jewelry, style, materials, fabrics, home living, interior, inspiration, Kenya",
+                 "Explore styles", now, keep_id))
+            for duplicate in lux_rows[1:]:
+                conn.execute("DELETE FROM sites WHERE id=?", (duplicate["id"],))
+
         # Seed defaults without overwriting settings an administrator has already changed.
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key, value))
@@ -293,10 +320,10 @@ def initialise_database():
              "Online shopping and services from Denmart.", "Shopping & Services", "shopping",
              "denmart, shopping, supermarket, groceries, products, online shopping, online ordering, Kenya",
              "", "Shop online", 1, 0, 50),
-            ("Prime School Portal", "prime-school-portal", "https://prime-1-rd0g.onrender.com",
-             "School portal and school administration services.", "School Management", "building",
-             "school, school portal, students, parents, fees, school management, Kenya",
-             "", "Open school portal", 1, 0, 60),
+            ("Luxhari", "luxhari", "https://luxhari.onrender.com",
+             "Discover fashion, accessories, materials, styling inspiration and Home & Living.", "Fashion & Living", "sparkles",
+             "luxhari, fashion, clothes, clothing, dresses, accessories, jewellery, jewelry, style, materials, fabrics, home living, interior, inspiration, Kenya",
+             "", "Explore styles", 1, 1, 60),
         ]
         for name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order in supplemental_sites:
             exists = conn.execute(
@@ -574,7 +601,7 @@ def home():
         for category in site_categories(site):
             group_map.setdefault(category, []).append(site)
     brand = get_setting("brand_name", DEFAULT_SETTINGS["brand_name"])
-    description = "Discover connected websites for property, travel, furniture and more. Start here to find specialist services, or request a website or app for your own business."
+    description = "Explore our connected websites for property, travel, shopping, furniture, fashion and digital services. Start here to find specialist services, or request a website or app for your own business."
     return render_template("home.html", sites=sites, group_map=group_map,
                            category_names=list(group_map.keys()), title="Explore websites, services and digital projects",
                            meta_description=description, robots="index,follow",
