@@ -475,7 +475,8 @@ def home():
             group_map.setdefault(category, []).append(site)
     return render_template("home.html", sites=sites, featured=featured, group_map=group_map,
                            category_names=list(group_map.keys()), title=get_setting("brand_name"),
-                           meta_description=get_setting("hero_description"), robots="index,follow")
+                           meta_description=get_setting("hero_description"), robots="index,follow",
+                           current_year=datetime.utcnow().year)
 
 
 @app.route("/search")
@@ -807,6 +808,13 @@ def make_qr_bytes(data):
     image.save(output, format="PNG")
     output.seek(0)
     return output
+
+
+@app.route("/share-qr.png")
+def public_hub_qr():
+    """Public QR code for visitors to share or scan the main landing page."""
+    output = make_qr_bytes(url_for("home", _external=True))
+    return send_file(output, mimetype="image/png", as_attachment=request.args.get("download") == "1", download_name="website-landing-page-qr.png", max_age=300)
 
 
 @app.route("/admin/qr/hub.png")
