@@ -124,6 +124,13 @@ DEFAULT_SETTINGS = {
 
 
 
+def slugify(value: str) -> str:
+    """Create a stable, URL-safe slug; defined before the startup catalog is built."""
+    value = (value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    return value.strip("-") or "category"
+
+
 SERVICE_SEEDS = []
 def _service_seed(name, slug, group_name, description, keywords, icon="compass", parent="", target="", featured=0, order=100):
     SERVICE_SEEDS.append({"name": name, "slug": slug, "group_name": group_name, "description": description,
@@ -271,12 +278,6 @@ def db_session():
 
 def utc_now():
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def slugify(value: str) -> str:
-    value = (value or "").strip().lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    return value.strip("-") or "category"
 
 
 app.jinja_env.filters["slugify"] = slugify
