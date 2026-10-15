@@ -5,6 +5,9 @@
   <div class="sidebar-label">WORKSPACE</div>
   <a class="side-link {{ 'active' if section == 'dashboard' else '' }}" href="{{ url_for('admin_dashboard') }}"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>Overview</span></a>
   <a class="side-link {{ 'active' if section == 'sites' else '' }}" href="{{ url_for('admin_sites') }}"><span class="nav-icon">{{ icon_svg('building', 19) }}</span><span>Destinations</span></a>
+  <a class="side-link {{ 'active' if section == 'services' else '' }}" href="{{ url_for('admin_services') }}"><span class="nav-icon">{{ icon_svg('grid-2x2', 19) }}</span><span>Service directory</span></a>
+  <a class="side-link {{ 'active' if section == 'ads' else '' }}" href="{{ url_for('admin_ads') }}"><span class="nav-icon">{{ icon_svg('sparkles', 19) }}</span><span>Motion ad studio</span></a>
+  <a class="side-link {{ 'active' if section == 'downloads' else '' }}" href="{{ url_for('admin_downloads') }}"><span class="nav-icon">{{ icon_svg('download', 19) }}</span><span>Apps & downloads</span></a>
   <a class="side-link {{ 'active' if section == 'appearance' else '' }}" href="{{ url_for('admin_appearance') }}"><span class="nav-icon">{{ icon_svg('sparkles', 19) }}</span><span>Appearance</span></a>
   <a class="side-link {{ 'active' if section == 'requests' else '' }}" href="{{ url_for('admin_project_requests') }}"><span class="nav-icon">{{ icon_svg('message', 19) }}</span><span>Project requests</span></a>
   <a class="side-link {{ 'active' if section == 'qr' else '' }}" href="{{ url_for('admin_qr') }}"><span class="nav-icon">{{ icon_svg('map', 19) }}</span><span>QR codes</span></a>

@@ -32,10 +32,10 @@
         <span class="brand-mark">{{ icon_svg('sparkles', 22) }}</span>
         <span class="brand-words"><strong>{{ brand_name }}</strong><small>THE DISCOVERY GATEWAY</small></span>
       </a>
-      <div class="sidebar-label">THE NETWORK</div>
-      <a class="side-link {{ 'active' if request.endpoint == 'home' else '' }}" href="{{ url_for('home') }}#network"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>All destinations</span></a>
+      <div class="sidebar-label">SERVICE SECTIONS</div>
+      <a class="side-link {{ 'active' if request.endpoint == 'home' else '' }}" href="{{ url_for('home') }}#service-directory"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>All destinations</span></a>
       {% for category in sidebar_categories|default([]) %}
-        <a class="side-link" href="{{ url_for('explore_category', category_slug=category.slug) }}"><span class="nav-icon">{{ icon_svg(category.icon, 19) }}</span><span>{{ category.name }}</span></a>
+        <a class="side-link" href="{{ url_for('service_group', group_slug=category.slug) }}"><span class="nav-icon">{{ icon_svg(category.icon, 19) }}</span><span>{{ category.name }}</span></a>
       {% endfor %}
       <div class="sidebar-rule"></div>
       <div class="sidebar-label">BUILD WITH US</div>

@@ -1,0 +1,21 @@
+{% extends 'admin_base.html' %}
+{% block content %}
+<div class="admin-page-heading"><div><div class="section-kicker">SERVICE CATALOGUE</div><h1>{{ 'Edit service' if service else 'Add a service' }}</h1><p>Create a standalone search landing page for one feature, destination, city or task.</p></div><a class="button-secondary" href="{{ url_for('admin_services') }}">← Back to directory</a></div>
+<form method="post" class="admin-form-layout">{{ csrf_field() }}
+<section class="admin-panel form-panel"><div class="form-section-heading"><span class="form-section-number">01</span><div><h2>Public service page</h2><p>Use a clear, specific title and natural search terms. Avoid one page trying to represent unrelated services.</p></div></div><div class="form-grid">
+<div class="field-group"><label for="name">Service name *</label><input id="name" name="name" required maxlength="120" value="{{ service.name if service else '' }}" placeholder="e.g. Airbnb stays in Nairobi"></div>
+<div class="field-group"><label for="slug">URL slug</label><input id="slug" name="slug" value="{{ service.slug if service else '' }}" placeholder="airbnb-stays-nairobi"><small>Leave blank to create it from the name.</small></div>
+<div class="field-group"><label for="group_name">Directory group *</label><input id="group_name" name="group_name" list="known-groups" required maxlength="100" value="{{ service.group_name if service else '' }}" placeholder="Property & places"><datalist id="known-groups">{% for group in groups %}<option value="{{ group }}">{% endfor %}</datalist></div>
+<div class="field-group"><label for="icon">Icon</label><select id="icon" name="icon">{% for icon in icons %}<option value="{{ icon }}" {{ 'selected' if service and service.icon == icon else '' }}>{{ icon }}</option>{% endfor %}</select></div>
+<div class="field-group field-full"><label for="description">Description *</label><textarea id="description" name="description" rows="3" maxlength="1200" required>{{ service.description if service else '' }}</textarea></div>
+<div class="field-group field-full"><label for="keywords">Search phrases and keywords</label><textarea id="keywords" name="keywords" rows="3" maxlength="2000" placeholder="Kenya, service, related phrases">{{ service.keywords if service else '' }}</textarea><small>Use relevant product names, common spellings, service names and place names.</small></div>
+</div></section>
+<section class="admin-panel form-panel"><div class="form-section-heading"><span class="form-section-number">02</span><div><h2>Connect to a platform</h2><p>A service can link to its exact live page or fall back to its parent website.</p></div></div><div class="form-grid">
+<div class="field-group"><label for="parent_site_id">Parent platform</label><select id="parent_site_id" name="parent_site_id"><option value="">No parent platform</option>{% for site in sites %}<option value="{{ site.id }}" {{ 'selected' if service and service.parent_site_id == site.id else '' }}>{{ site.name }} — {{ site.url }}</option>{% endfor %}</select></div>
+<div class="field-group"><label for="target_url">Exact direct URL or internal hub path</label><input id="target_url" name="target_url" value="{{ service.target_url if service else '' }}" placeholder="https://site.example/service or /downloads"><small>Use a live URL you have tested. Leave blank to use the selected parent platform.</small></div>
+<div class="field-group"><label for="sort_order">Position order</label><input id="sort_order" type="number" name="sort_order" value="{{ service.sort_order if service else 100 }}"></div>
+<div class="field-group"><label>Publication</label><div class="form-check-pair"><label><input type="checkbox" name="visible" value="1" {{ 'checked' if not service or service.visible else '' }}> Visible on public hub</label><label><input type="checkbox" name="featured" value="1" {{ 'checked' if service and service.featured else '' }}> Highlight as featured</label></div></div>
+</div></section>
+<div class="form-actions"><a class="button-secondary" href="{{ url_for('admin_services') }}">Cancel</a><button type="submit" class="button-primary">Save service</button></div>
+</form>
+{% endblock %}

@@ -128,4 +128,40 @@
     projectForm.addEventListener('change', updateEstimate);
     updateEstimate();
   }
+  // Optional, visitor-initiated ambient sound for the motion advert. Audio never autoplays.
+  document.querySelectorAll('[data-ambient-toggle]').forEach((button) => {
+    let audioContext = null;
+    let master = null;
+    let oscillators = [];
+    let running = false;
+    const start = () => {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return false;
+      audioContext = audioContext || new Ctx();
+      if (audioContext.state === 'suspended') audioContext.resume();
+      master = audioContext.createGain();
+      master.gain.value = 0.018;
+      master.connect(audioContext.destination);
+      [130.81, 164.81, 196.00].forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        gain.gain.value = index === 0 ? 0.50 : 0.24;
+        oscillator.connect(gain); gain.connect(master); oscillator.start(); oscillators.push(oscillator);
+      });
+      running = true; button.setAttribute('aria-pressed', 'true'); button.innerHTML = '<span aria-hidden="true">♫</span> Soft sound on';
+      return true;
+    };
+    const stop = () => {
+      if (master && audioContext) { try { master.gain.setTargetAtTime(0, audioContext.currentTime, 0.15); } catch (_) {} }
+      oscillators.forEach((oscillator) => { try { oscillator.stop(audioContext.currentTime + 0.4); } catch (_) {} });
+      oscillators = []; master = null; running = false; button.setAttribute('aria-pressed', 'false'); button.innerHTML = '<span aria-hidden="true">♫</span> Soft sound off';
+    };
+    button.addEventListener('click', () => {
+      if (running) stop(); else if (!start()) { button.textContent = 'Sound unavailable'; }
+    });
+    window.addEventListener('pagehide', () => { if (audioContext) audioContext.close().catch(() => {}); });
+  });
+
 })();

@@ -1,11 +1,11 @@
 # Discovery Hub — Render-ready source
 
-A standalone, mobile-first discovery landing site for linking existing websites such as House Hunter, OTravel, TRT and Oedge, with Denmart and Luxhari added as curated destinations. It is a directory and discovery layer; the existing destination applications keep their own databases, features and customer workflows.
+A standalone, mobile-first discovery gateway for a growing network of independent websites, products and individual services. The network currently seeds 63 separate service doorways across travel, fashion, furniture, property, mobility, shopping, software and website/app development, alongside the connected platforms House Hunter, OTravel, TRT, Oedge, Denmart and Luxhari. The hub is a discovery layer: each destination application keeps its own database, booking/payment features and customer workflows.
 
 ## What's included
 
-- Premium responsive public homepage with visible destination buttons, category pages, search suggestions, mobile sidebar and readable typography.
-- Seeded links for the four supplied Render applications. Edit every URL, name, category, description and keyword in admin.
+- Premium responsive public homepage with individually searchable service doors, service-family pages, mobile navigation, quick-search phrases and direct links to the connected platforms.
+- Service entries are independently crawlable, with a unique page, descriptive text, relevant keyword metadata and a separately configurable destination URL. A service may use its parent platform as a temporary fallback where that relationship is accurate. Pata Mahali and O Ride have hub-level landing pages that open their complete service group until the eventual dedicated applications are connected.
 - Search across the **hub's destination directory metadata**. Optional per-site search URL templates can pass a visitor's query into a destination that genuinely supports that format.
 - Admin dashboard with tracked outbound destination clicks, hub searches, top destinations and popular search phrases.
 - Public website/app project brief with live, indicative KES estimate based on project type, size, features, content support and timing. Requests are saved to SQLite and can be reviewed, status-tracked and exported from admin.
@@ -13,8 +13,10 @@ A standalone, mobile-first discovery landing site for linking existing websites 
 - Add/edit/hide/feature/reorder/remove destinations without deleting their actual websites; assign a destination to multiple relevant categories.
 - Brand name and homepage copy settings; manual themes plus automatic date-based Christmas, Valentine's, Easter, Black Friday and New Year styling.
 - QR codes for the main hub and each destination; destination QR codes pass through the hub's click tracker.
-- SQLite backup creation and secure database downloads from the admin area.
-- PWA manifest, app icons, install prompt support, service-worker shell caching and a friendly offline page.
+- Motion Ad Studio: multiple campaign records, six visual styles, optional image overlays, scheduled start/end times, rotating admin-authored headlines, publish/hide/delete controls and an optional visitor-initiated soft sound. This generates animated web advert compositions; it does not export MP4 video files or call an external AI generation service.
+- Toror Apps & Downloads library for admin-uploaded APK/AAB/ZIP/PDF/image assets or direct download URLs, each with its own public detail page and download counter.
+- Consistent SQLite snapshots (daily and after successful changing form submissions), downloadable full ZIP backups containing the database and managed advert/download assets, pre-restore snapshots, archive validation and a rollback attempt if restore fails.
+- PWA manifest, app icons, install prompt support, service-worker shell caching for the gateway and visited service/category pages, and a friendly offline page. Offline cache is not a replacement for persistent server storage.
 - Dynamic robots.txt, sitemap.xml, canonical tags, descriptive category pages, accessibility touches, security headers and health check.
 - Render `requirements.txt`, `Procfile`, `runtime.txt` and `.gitignore`.
 
@@ -42,7 +44,7 @@ A standalone, mobile-first discovery landing site for linking existing websites 
    Do not put credentials in source code or in the SQLite database. The Flask session signing secret is generated once and saved in the database at first boot; it is not a third environment variable. Keep database storage persistent so the secret and admin configuration survive deployments.
 
 6. Deploy and open `/admin/login`. Sign in using the values configured in `USER_NAME` and `USER_PASSWORD`.
-7. In **Destinations**, verify each seeded URL, add any other existing website, enter accurate descriptions and relevant keywords, choose additional relevant categories when needed, and choose which destinations appear on the public homepage.
+7. In **Destinations**, verify every platform URL. In **Service directory**, connect the exact URL for each service that should open a page deeper inside a platform. The O Ride links need their actual live URLs before those services can send users to a ride/mover ordering flow; set these in Admin rather than leaving the pages as placeholders. If Pata Mahali or another brand gets its own hosted app, enter its live URL for the parent service and change child service destinations to the correct feature routes.
 8. In **Appearance**, change “The Discovery Hub” to your final brand and set the headline, description and theme.
 9. Open **Backups & data**, download an initial SQLite copy, then configure persistent storage as described below.
 
@@ -57,6 +59,17 @@ SQLite is appropriate for this small, low-write discovery directory, but its dat
 The application automatically uses `/var/data/discovery_hub.sqlite3` when that writable mount is present. Without the mount, it falls back to `instance/discovery_hub.sqlite3`, which is suitable for local testing but may not survive replacement of a hosted instance. Keep regular copies downloaded outside the hosting account. Test restoring a backup before trusting it. The app's server-side backup directory also uses the persistent mount when available.
 
 For a much larger, concurrent, multi-instance deployment, migrate this directory database to a managed database before scaling horizontally; SQLite on one attached disk is not designed for many web instances writing concurrently.
+
+
+## Individually discoverable services and Toror releases
+
+The public directory seeds separate OTravel, Luxhari, TRT, Pata Mahali/property, O Ride, Toror downloads and development entries. It also has Airbnb-style short-stay doorways for Nairobi, Mombasa, Kisumu, Eldoret, Nakuru, Naivasha, Kitale, Bungoma, Thika, Nyeri, Embu, Machakos, Kitengela, Mlolongo, Syokimau, Taita Taveta, Lamu and Turkana. These pages are starting directories, not a claim that every independent app route has already been implemented in its parent website. On **Admin → Service directory**, set a direct URL for each feature when the real page is available; use visible wording and correct destination URLs before advertising a service.
+
+The named Tomorrow Music, Tomorrow Messages and AdShield doorways filter the public downloads library. A release only appears after it is published in **Admin → Apps & downloads**; the directory does not fabricate APKs or certify uploaded binaries.
+
+## Advert studio boundaries
+
+Ads can be published/unpublished, scheduled, styled with motion gradients and artwork, and rotated through different saved headlines so the same campaign does not immediately repeat for the same visitor. Audio is offered only behind an explicit visitor click because browsers generally block unrequested autoplay sound. There is no connected external AI model or MP4-rendering engine in this version; headline variants are supplied in the admin editor rather than generated by a remote AI service.
 
 ## Connect one purchased domain to multiple Render apps
 
@@ -76,7 +89,7 @@ Do this after the hub is deployed and tested on its `onrender.com` address. The 
 
 The hub search matches the names, categories, descriptions and keywords saved for each connected destination. It does **not** search the internal inventory of every separate app automatically. If a destination has a public search URL such as `https://example.com/search?q=...`, put that full pattern in **Internal search URL template**, using `{query}` where the phrase belongs. The hostname must match the destination's main URL, and the target application must actually support that pattern. If you leave the template blank, the hub opens the destination homepage.
 
-The included search/category pages are server-rendered and crawlable. Do not add unrelated keywords or create misleading location pages. The hub does not automatically create claims such as “near Two Rivers” from a keyword alone; those claims belong on useful, accurate property and business listings. Search Console can be configured after adding the main custom domain.
+The included service and service-family pages are server-rendered and included in the sitemap. Ad hoc search-result pages are marked noindex so the stable, relevant service pages remain the main search-engine landing pages. This makes the network easier for search engines to understand but does not guarantee a top Google ranking; domain history, useful content, genuine direct links, page speed, and external reputation still matter. Do not add unrelated keywords or create misleading location claims. Search Console can be configured after adding the main custom domain.
 
 ## Analytics and privacy
 
@@ -94,11 +107,14 @@ The service worker caches the public homepage and the local interface shell so t
 
 - `/admin/login` — sign in
 - `/admin` — analytics overview
-- `/admin/sites` — destinations and visibility
+- `/admin/sites` — destination platforms and visibility
+- `/admin/services` — individual service pages and direct destination routes
+- `/admin/ads` — motion advertising studio and campaign scheduling
+- `/admin/downloads` — APKs, apps and digital downloads
 - `/admin/appearance` — name, text, themes and optional WhatsApp contact number
 - `/admin/requests` — read, track and export website/app project submissions
 - `/admin/qr` — printable/shareable QR codes
-- `/admin/backup` — create and download database backups
+- `/admin/backup` — create database snapshots, download full ZIP backups and restore a known backup
 
 ## Local test
 

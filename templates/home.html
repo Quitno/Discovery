@@ -1,76 +1,62 @@
 {% extends 'base.html' %}
 {% set robots = 'index,follow' %}
 {% block content %}
-<section class="gateway-intro" aria-labelledby="gateway-title">
-  <div class="gateway-eyebrow"><span class="gateway-eyebrow-dot"></span> ONE GATEWAY · A GROWING NETWORK</div>
-  <h1 id="gateway-title">A gateway to <span>more.</span></h1>
-  <p class="gateway-intro-desktop">Explore our connected websites for property, travel, shopping, furniture, fashion and digital services. Choose a destination and go straight to it.</p>
-  <p class="gateway-intro-mobile">Property. Travel. Shopping. Style. Digital services. One gateway.</p>
-</section>
-
-<section class="network-section" id="network" aria-label="Connected destination websites">
-  <div class="network-section-heading">
-    <div class="network-section-heading-copy">
-      <div class="network-heading-kicker"><span aria-hidden="true"></span> DISCOVER THE NETWORK</div>
-      <h2>Quick links to our valuable sites</h2>
-      <p>Choose a destination and continue directly to its service.</p>
-    </div>
-    <div class="network-heading-count"><strong>{{ sites|length }}</strong><span>connected sites</span></div>
+<section class="hub-hero" aria-labelledby="hub-title">
+  <div class="hub-hero-copy">
+    <div class="hub-eyebrow"><span class="hub-eyebrow-line"></span> KENYA'S CONNECTED SERVICE NETWORK</div>
+    <h1 id="hub-title">Many services.<br><em>One place to start.</em></h1>
+    <p>Search by what you need—not only by a website name. Find homes, short stays, rides, travel, fashion, furniture, tickets, downloads and digital services across Kenya.</p>
   </div>
-  {% if sites %}
-  <div class="network-grid">
-    {% set button_colors = ['sun','tomato','pink','ink','blue','violet','teal','orange'] %}
-    {% for site in sites %}
-      <a class="network-site" href="{{ url_for('go_site', site_id=site.id) }}" aria-label="Open {{ site.name }} — {{ site.category }}">
-        <span class="network-site-icon {{ button_colors[loop.index0 % button_colors|length] }}">{{ icon_svg(site.icon, 31) }}</span>
-        <strong>{{ site.name }}</strong>
-        <small>{{ site.category }}</small>
-      </a>
-    {% endfor %}
-  </div>
-  {% else %}
-    <p class="network-empty">Our connected websites are being prepared. Please check back soon.</p>
-  {% endif %}
-</section>
-
-<section class="gateway-search-section" aria-label="Search the network">
-  <form action="{{ url_for('search') }}" method="get" id="global-search" class="gateway-search" role="search">
-    <span class="gateway-search-symbol">{{ icon_svg('compass', 23) }}</span>
-    <label class="visually-hidden" for="search-query">Search the connected websites</label>
-    <input id="search-query" name="q" type="search" placeholder="Search property, travel, furniture, web development…" maxlength="120" autocomplete="off">
-    <button type="submit">Search</button>
+  <form action="{{ url_for('search') }}" method="get" id="global-search" class="hub-search" role="search">
+    <span class="hub-search-icon">{{ icon_svg('compass', 24) }}</span>
+    <label class="visually-hidden" for="search-query">What are you looking for?</label>
+    <input id="search-query" name="q" type="search" placeholder="Try property in Nairobi, coffee tables, tickets, APK…" maxlength="120" autocomplete="off">
+    <button type="submit">Search the network</button>
   </form>
-  <p class="gateway-search-note">Search the connected websites and find help building a website or app of your own.</p>
+  <div class="hub-popular-searches"><strong>Popular searches</strong><a href="{{ url_for('search', q='Airbnb in Nairobi') }}">🇰🇪 Airbnb in Nairobi</a><a href="{{ url_for('search', q='houses for rent') }}">Houses for rent</a><a href="{{ url_for('search', q='coffee tables') }}">Coffee tables</a><a href="{{ url_for('search', q='group retreats') }}">Group retreats</a><a href="{{ url_for('search', q='ticketing') }}">Ticketing</a><a href="{{ url_for('search', q='movers and relocation') }}">Movers</a><a href="{{ url_for('search', q='APK downloads') }}">APK downloads</a></div>
+  <div class="hub-group-shortcuts" aria-label="Browse service sections">{% for group, items in service_groups.items() %}<a href="{{ url_for('service_group', group_slug=group|slugify) }}">{{ group }}</a>{% endfor %}</div>
+  <div class="hub-builder-shortcut"><span>Have a business idea or need an app?</span><a href="{{ url_for('project_request') }}">Make me a website or app <span aria-hidden="true">↗</span></a></div>
+</section>
+
+{% if ad %}
+<section class="motion-ad motion-ad--{{ ad.style|default('cinematic') }}" aria-label="Featured promotion">
+  {% if ad.image_filename %}<div class="motion-ad-photo" style="background-image:linear-gradient(90deg,rgba(24,18,27,.94),rgba(24,18,27,.46)),url('{{ url_for('hub_media', filename=ad.image_filename) }}')"></div>{% endif %}
+  <div class="motion-ad-orb motion-ad-orb-one"></div><div class="motion-ad-orb motion-ad-orb-two"></div>
+  <div class="motion-ad-copy"><span class="motion-ad-kicker">{{ ad.subheadline or 'FEATURED ACROSS THE NETWORK' }}</span><h2>{{ ad.headline }}</h2><p>{{ ad.body }}</p><div class="motion-ad-controls"><a class="motion-ad-cta" href="{{ ad.target_url if ad.target_url.startswith('/') else ad.target_url }}">{{ ad.cta_label }}</a>{% if ad.music_enabled %}<button type="button" class="motion-ad-sound" data-ambient-toggle aria-pressed="false"><span aria-hidden="true">♫</span> Soft sound off</button>{% endif %}</div></div>
+  <div class="motion-ad-label">A NETWORK IN MOTION <span>✦</span></div>
+</section>
+{% endif %}
+
+<section class="service-directory" id="service-directory" aria-labelledby="service-directory-title">
+  <div class="service-directory-heading"><div><div class="hub-section-eyebrow">FIND YOUR NEXT STEP</div><h2 id="service-directory-title">Explore services, one by one.</h2><p>Each button has its own searchable page. Pick a service or search any city, product or task.</p></div><div class="service-total"><strong>{{ services|length }}</strong><span>service doors</span></div></div>
+  {% for group, items in service_groups.items() %}
+  <section class="service-group" aria-label="{{ group }}">
+    <div class="service-group-heading"><h3>{{ group }}</h3><span>{{ items|length }} services</span></div>
+    <div class="service-button-grid">
+      {% for service in items %}<a href="{{ url_for('open_service', slug=service.slug) }}" class="service-button-item" aria-label="Explore {{ service.name }}">
+        <span class="service-button-icon service-colour-{{ (loop.index0 + loop.index) % 10 }}">{{ icon_svg(service.icon, 25) }}</span>
+        <span class="service-button-copy"><strong>{{ service.name }}</strong><small>{{ service.description|truncate(86, True, '…') }}</small></span>
+        <span class="service-button-action" aria-hidden="true">Open</span>
+      </a>{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</section>
+
+<section class="valuable-sites" aria-labelledby="valuable-sites-title">
+  <div class="valuable-sites-heading"><div><div class="hub-section-eyebrow">THE CONNECTED PLATFORMS</div><h2 id="valuable-sites-title">Quick links to our valuable sites.</h2><p>Go directly to a platform when you already know where you want to be.</p></div><span class="platform-count">{{ sites|length }} platforms</span></div>
+  <div class="platform-link-grid">{% for site in sites %}<a class="platform-link" href="{{ url_for('go_site', site_id=site.id) }}"><span class="platform-link-icon platform-colour-{{ loop.index0 % 8 }}">{{ icon_svg(site.icon, 23) }}</span><span><strong>{{ site.name }}</strong><small>{{ site.category }}</small></span><span class="platform-open" aria-hidden="true">↗</span></a>{% endfor %}</div>
 </section>
 
 <section class="build-promo" id="build-with-us" aria-labelledby="build-title">
-  <div class="build-promo-copy">
-    <div class="build-eyebrow">FOR FOUNDERS, BUSINESSES & NEW IDEAS</div>
-    <h2 id="build-title">Need a website or app of your own?</h2>
-    <p class="build-promo-desktop-copy">Tell us what you want to build, the features you need and when you need it. Get an initial, pocket-conscious price range before discussing the final scope.</p>
-    <p class="build-promo-mobile-copy">Websites, online shops, portals and apps. Tell us what you need and see a practical starting estimate.</p>
-    <div class="build-promo-actions"><a class="build-promo-button" href="{{ url_for('project_request') }}">Plan your project</a><a class="build-account-link" href="{{ url_for('customer_register') }}">Create an account to track updates</a></div>
-  </div>
-  <div class="build-promo-aside">
-    <span class="build-aside-label">A CLEAR STARTING POINT</span>
-    <strong>From KSh 10,000</strong>
-    <p>Indicative starting point for a simple business website. Final pricing depends on scope, features, content and timeline.</p>
-    <div class="build-service-tags"><span>Websites</span><span>Online stores</span><span>Web apps</span><span>Mobile apps</span></div>
-  </div>
+  <div class="build-promo-copy"><div class="build-eyebrow">FOR BUSINESSES, FOUNDERS & NEW IDEAS</div><h2 id="build-title">Your idea deserves a proper home online.</h2><p class="build-promo-desktop-copy">Tell us what you want to build, what features matter and when you need it. Get an initial, pocket-conscious estimate based on the real scope—not a random one-price promise.</p><p class="build-promo-mobile-copy">Websites, online shops, portals and apps. Share the idea and get a practical starting estimate.</p><div class="build-promo-actions"><a class="build-promo-button" href="{{ url_for('project_request') }}">Plan a website or app</a><a class="build-account-link" href="{{ url_for('customer_register') }}">Create an account to track feedback</a></div></div>
+  <div class="build-promo-aside"><span class="build-aside-label">POCKET-CONSCIOUS STARTING POINT</span><strong>From KSh 10,000</strong><p>Indicative starting point for a simple business website. Features, scope, content and timing affect the final quote.</p><div class="build-service-tags"><span>Websites</span><span>Online shops</span><span>Web apps</span><span>Mobile apps</span></div></div>
 </section>
 
-<section class="share-gateway" id="share-hub" aria-label="Share this gateway">
-  <div class="share-gateway-copy">
-    <div class="share-eyebrow">SHARE THE GATEWAY</div>
-    <h2>One address. Many destinations.</h2>
-    <p>Share this page with someone who could use the network. The QR opens this gateway, not just one of the websites.</p>
-    <div class="share-gateway-actions"><button type="button" id="share-hub-button">Share this website</button><button type="button" class="share-copy-button" id="copy-hub-button">Copy website link</button></div>
-    <span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span>
-  </div>
-  <a class="public-qr" href="{{ url_for('public_hub_qr', download=1) }}" title="Download the QR code for this gateway"><img src="{{ url_for('public_hub_qr') }}" alt="QR code that opens this website's main gateway"><span>Scan or save this QR</span></a>
-</section>
+<section class="downloads-promo"><div class="downloads-promo-mark">{{ icon_svg('download', 27) }}</div><div><span class="hub-section-eyebrow">TOROR DIGITAL</span><h2>Apps, APKs & downloads.</h2><p>Browse files and tools published to the network.</p></div><a href="{{ url_for('downloads_page') }}" class="downloads-promo-button">Open downloads library</a></section>
 
-<footer class="gateway-footer"><span>© {{ current_year }} {{ brand_name }}</span><span>Kenya · One gateway to a growing network</span><a href="{{ url_for('sitemap_xml') }}">Sitemap</a></footer>
-<script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"WebSite","name":brand_name,"url":request.url_root,"description":"A connected gateway to specialist websites, digital services and website or app project requests."}|tojson }}</script>
+<section class="share-gateway" id="share-hub" aria-label="Share this gateway"><div class="share-gateway-copy"><div class="share-eyebrow">PASS THE GATEWAY ON</div><h2>One address. Many possibilities.</h2><p>Share the hub with someone who needs a service, a website or a new digital idea. This QR code opens the gateway itself.</p><div class="share-gateway-actions"><button type="button" id="share-hub-button">Share this website</button><button type="button" class="share-copy-button" id="copy-hub-button">Copy website link</button></div><span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span></div><a class="public-qr" href="{{ url_for('public_hub_qr', download=1) }}" title="Download the QR code for this gateway"><img src="{{ url_for('public_hub_qr') }}" alt="QR code that opens this website's main gateway"><span>Scan or save this QR</span></a></section>
+<footer class="gateway-footer"><span>© {{ current_year }} {{ brand_name }}</span><span>🇰🇪 Kenya · A gateway to independent specialist services</span><a href="{{ url_for('sitemap_xml') }}">Sitemap</a></footer>
+<script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"WebSite","name":brand_name,"url":request.url_root,"description":"A searchable gateway to individually listed service destinations, connected websites and digital products across Kenya."}|tojson }}</script>
 {% endblock %}
 {% block page_footer %}{% endblock %}
