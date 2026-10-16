@@ -1,6 +1,6 @@
 # Discovery Hub — complete destination and SEO audit
 
-This manifest documents the first-click destination for every one of the 63 seeded service doors. Homepage service buttons, search results, category service cards and related-service cards use `resolved_target` so a visitor proceeds to the real provider in one click. Section links are kept inside the Hub only for browsing the directory; website/app requests and the Hub’s own download library are first-party workflows.
+This manifest documents the first-click destination for every one of the 63 seeded service doors. Homepage service buttons, search results, category service cards and related-service cards use `resolved_target` so a visitor proceeds to the real provider in one click. Section links are kept inside the Hub only for browsing the directory. The website/app project request is a first-party workflow; Android app links open the separate Toror APK site.
 
 ## Service destination matrix
 
@@ -59,11 +59,11 @@ This manifest documents the first-click destination for every one of the 63 seed
 | Build a website or app | `hub-build-website-app` | `/build-a-website-or-app` | First-party workflow |
 | Denmart online shopping | `denmart-online-shopping` | `https://denmart.co.ke/` | External direct route |
 | Oedge digital services | `oedge-digital-services` | `https://oedge.onrender.com/services` | External direct route |
-| Toror APK & Android downloads | `toror-apk-android-downloads` | `/downloads` | First-party workflow |
+| Toror APK & Android downloads | `toror-apk-android-downloads` | `https://toror-technology.onrender.com/` | External APK portal |
 | Toror websites & digital products | `toror-websites-digital-products` | `/build-a-website-or-app` | First-party workflow |
-| AdShield for Android | `toror-adshield-apk` | `/downloads?q=AdShield` | Published installer if available; filtered library otherwise |
-| Tomorrow Messages for Android | `toror-tomorrow-messages-apk` | `/downloads?q=Tomorrow%20Messages` | Published installer if available; filtered library otherwise |
-| Tomorrow Music for Android | `toror-tomorrow-music-apk` | `/downloads?q=Tomorrow%20Music` | Published installer if available; filtered library otherwise |
+| AdShield for Android | `toror-adshield-apk` | `https://toror-technology.onrender.com/` | External APK portal |
+| Tomorrow Messages for Android | `toror-tomorrow-messages-apk` | `https://toror-technology.onrender.com/` | External APK portal |
+| Tomorrow Music for Android | `toror-tomorrow-music-apk` | `https://toror-technology.onrender.com/` | External APK portal |
 | Group retreats & fun travel | `otravel-group-retreats` | `https://otravel-bleg.onrender.com/group-retreats` | External direct route |
 | Invoices & receipts | `otravel-invoices-receipts` | `https://otravel-bleg.onrender.com/login?next=/invoices-receipts` | External direct route |
 | Private events | `otravel-private-events` | `https://otravel-bleg.onrender.com/services#events` | External direct route |
@@ -82,17 +82,17 @@ This manifest documents the first-click destination for every one of the 63 seed
 
 ## APK / file behaviour
 
-A published `.apk`/`.aab` or a verified external installer URL takes a single click to the actual download. Otherwise, app-specific links open the filtered first-party release library because no matching public Android installers are currently published there. Project-source ZIPs are not advertised as installable APKs; private payment-telemetry APKs are not added to the public catalogue automatically.
+The Toror APK & Android downloads doorway, Tomorrow Music, Tomorrow Messages and AdShield all open `https://toror-technology.onrender.com/` in one click. The independent APK website owns its catalogue, current app releases and versions; this Hub does not hard-code individual app-download files. Existing internal file-library routes remain for compatibility but are not the public destination for these app doors.
 
 ## Search engine configuration
 
 - Stable service detail pages have unique titles and descriptions, canonical URLs, Open Graph / Twitter metadata and Schema.org `Service` / `BreadcrumbList` structured data.
 - The homepage includes `WebSite` / `SearchAction`, `Organization` and `ItemList` structured data.
-- `/sitemap.xml` lists the homepage, categories, service groups, all service-detail URLs and public release detail pages. `/robots.txt` references the sitemap and excludes admin, account, redirect and file-serving URLs from crawled discovery.
+- `/sitemap.xml` lists the homepage, the platform availability centre, categories, service groups, all service-detail URLs and public release detail pages. `/robots.txt` references the sitemap and excludes admin, account, redirect and file-serving URLs from crawled discovery.
 - User-facing search results are `noindex,follow`; an empty release library is noindex until actual downloads are published. Useful service/category landing pages remain indexable.
 - The public sitemap link is intentionally not shown to visitors.
 - After redeployment, submit `https://trorinovationstech.co.ke/sitemap.xml` in Google Search Console and Bing Webmaster Tools. Indexing and rankings are not instant or guaranteed by metadata alone.
 
 ## Deployment note
 
-The `direct_destinations_v4_done` startup migration sets the destination map and platform URLs for databases from older versions. The `direct_destinations_v5_done` migration upgrades the two verified OTravel routes if they still contain the old default links. It does not overwrite custom Admin values outside those known old routes.
+The `direct_destinations_v4_done` startup migration sets the destination map and platform URLs for databases from older versions. The `direct_destinations_v5_done` migration upgrades the two verified OTravel routes if they still contain the old default links. The `direct_destinations_v6_done` migration updates all four APK doorways to the independent Toror APK site. It does not overwrite custom Admin values outside those known old routes.

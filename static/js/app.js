@@ -128,6 +128,120 @@
     projectForm.addEventListener('change', updateEstimate);
     updateEstimate();
   }
+  // Practical accessibility controls. Preferences stay on the visitor's own device only.
+  const accessibilityToggle = document.getElementById('accessibility-toggle');
+  const accessibilityPanel = document.getElementById('accessibility-panel');
+  const accessibilityClose = document.getElementById('accessibility-close');
+  const a11yKeys = ['contrast', 'underline', 'motion', 'textSize'];
+  const a11yDefaults = { contrast: false, underline: false, motion: false, textSize: 0 };
+  let a11y = { ...a11yDefaults };
+  try {
+    const saved = JSON.parse(window.localStorage.getItem('toror-display-preferences') || '{}');
+    a11y = { ...a11y, ...saved };
+  } catch (_) { /* Storage may be unavailable in private browsing. */ }
+  a11y.textSize = Math.max(0, Math.min(2, Number(a11y.textSize) || 0));
+  const applyA11y = () => {
+    document.documentElement.classList.toggle('a11y-text-large', a11y.textSize === 1);
+    document.documentElement.classList.toggle('a11y-text-xlarge', a11y.textSize >= 2);
+    body.classList.toggle('a11y-high-contrast', Boolean(a11y.contrast));
+    body.classList.toggle('a11y-underline-links', Boolean(a11y.underline));
+    body.classList.toggle('a11y-reduce-motion', Boolean(a11y.motion));
+    document.querySelectorAll('[data-a11y-action="contrast"]').forEach((button) => button.setAttribute('aria-pressed', String(Boolean(a11y.contrast))));
+    document.querySelectorAll('[data-a11y-action="underline"]').forEach((button) => button.setAttribute('aria-pressed', String(Boolean(a11y.underline))));
+    document.querySelectorAll('[data-a11y-action="motion"]').forEach((button) => button.setAttribute('aria-pressed', String(Boolean(a11y.motion))));
+    const smallerTextButton = document.querySelector('[data-a11y-action="text-down"]');
+    const largerTextButton = document.querySelector('[data-a11y-action="text-up"]');
+    if (smallerTextButton) smallerTextButton.disabled = a11y.textSize <= 0;
+    if (largerTextButton) largerTextButton.disabled = a11y.textSize >= 2;
+    try { window.localStorage.setItem('toror-display-preferences', JSON.stringify(a11y)); } catch (_) {}
+  };
+  applyA11y();
+  const closeAccessibility = () => {
+    if (accessibilityPanel) accessibilityPanel.hidden = true;
+    if (accessibilityToggle) accessibilityToggle.setAttribute('aria-expanded', 'false');
+  };
+  if (accessibilityToggle && accessibilityPanel) {
+    accessibilityToggle.addEventListener('click', () => {
+      const open = accessibilityPanel.hidden;
+      accessibilityPanel.hidden = !open;
+      accessibilityToggle.setAttribute('aria-expanded', String(open));
+      if (open) {
+        const firstControl = accessibilityPanel.querySelector('button');
+        if (firstControl) firstControl.focus();
+      }
+    });
+    if (accessibilityClose) accessibilityClose.addEventListener('click', () => { closeAccessibility(); accessibilityToggle.focus(); });
+    accessibilityPanel.querySelectorAll('[data-a11y-action]').forEach((button) => button.addEventListener('click', () => {
+      switch (button.dataset.a11yAction) {
+        case 'text-up': a11y.textSize = Math.min(2, a11y.textSize + 1); break;
+        case 'text-down': a11y.textSize = Math.max(-1, a11y.textSize - 1); break;
+        case 'contrast': a11y.contrast = !a11y.contrast; break;
+        case 'underline': a11y.underline = !a11y.underline; break;
+        case 'motion': a11y.motion = !a11y.motion; break;
+        case 'reset': a11y = { ...a11yDefaults }; break;
+        default: return;
+      }
+      applyA11y();
+    }));
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !accessibilityPanel.hidden) { closeAccessibility(); accessibilityToggle.focus(); } });
+  }
+
+  // Live platform checker: statuses come from a fixed allowlist on the Flask server.
+  // A timeout is described as "Could not verify", never falsely reported as offline.
+  const availabilityGrid = document.getElementById('availability-grid');
+  const availabilityRefresh = document.getElementById('availability-refresh');
+  const availabilitySummary = document.getElementById('availability-summary');
+  const availabilityLastChecked = document.getElementById('availability-last-checked');
+  const renderAvailability = (data) => {
+    if (!availabilityGrid) return;
+    availabilityGrid.replaceChildren();
+    const results = Array.isArray(data.results) ? data.results : [];
+    const onlineCount = results.filter((item) => item.status === 'online').length;
+    const issueCount = results.filter((item) => item.status === 'issue').length;
+    const unknownCount = results.length - onlineCount - issueCount;
+    if (availabilitySummary) availabilitySummary.textContent = `${onlineCount} responding · ${issueCount} server issues · ${unknownCount} not verified`;
+    const checkedTime = data.checked_at ? new Date(data.checked_at) : new Date();
+    if (availabilityLastChecked) availabilityLastChecked.textContent = `Checked ${checkedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    if (!results.length) {
+      const empty = document.createElement('p'); empty.className = 'availability-loading';
+      empty.textContent = 'No results arrived. Try checking again.'; availabilityGrid.appendChild(empty); return;
+    }
+    results.forEach((item) => {
+      const card = document.createElement('article'); card.className = 'availability-card'; card.dataset.status = item.status || 'unknown';
+      const top = document.createElement('div'); top.className = 'availability-card-top';
+      const heading = document.createElement('h3'); heading.textContent = item.name || 'Connected platform'; top.appendChild(heading);
+      const state = document.createElement('span'); state.className = 'availability-state';
+      const dot = document.createElement('span'); dot.className = 'status-dot ' + (item.status === 'online' ? 'status-dot-online' : item.status === 'issue' ? 'status-dot-issue' : 'status-dot-unknown');
+      dot.setAttribute('aria-hidden', 'true'); state.append(dot, document.createTextNode(item.label || 'Could not verify')); top.appendChild(state);
+      const purpose = document.createElement('p'); purpose.textContent = item.purpose || '';
+      const detail = document.createElement('p'); detail.className = 'availability-card-detail'; const latency = Number.isFinite(item.duration_ms) ? ` · ${item.duration_ms} ms` : '';
+      detail.textContent = (item.detail || '') + latency;
+      const link = document.createElement('a'); link.className = 'availability-card-link'; link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.append(document.createTextNode('Open platform'), document.createTextNode(' ↗'));
+      card.append(top, purpose, detail, link); availabilityGrid.appendChild(card);
+    });
+  };
+  const checkAvailability = async (force = false) => {
+    if (!availabilityGrid) return;
+    if (availabilityRefresh) { availabilityRefresh.disabled = true; availabilityRefresh.textContent = 'Checking…'; }
+    if (availabilitySummary) availabilitySummary.textContent = 'Checking connected platforms…';
+    try {
+      const response = await fetch('/api/availability' + (force ? '?refresh=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (!response.ok) throw new Error('Availability endpoint returned ' + response.status);
+      renderAvailability(await response.json());
+    } catch (_) {
+      if (availabilitySummary) availabilitySummary.textContent = 'The checker could not be reached. The platforms may still be available.';
+      availabilityGrid.replaceChildren();
+      const msg = document.createElement('p'); msg.className = 'availability-loading'; msg.textContent = 'Unable to load checks just now. Please try again.'; availabilityGrid.appendChild(msg);
+    } finally {
+      if (availabilityRefresh) { availabilityRefresh.disabled = false; availabilityRefresh.textContent = 'Check again'; }
+    }
+  };
+  if (availabilityGrid) {
+    checkAvailability(false);
+    if (availabilityRefresh) availabilityRefresh.addEventListener('click', () => checkAvailability(true));
+  }
+
   // Optional, visitor-initiated ambient sound for the motion advert. Audio never autoplays.
   document.querySelectorAll('[data-ambient-toggle]').forEach((button) => {
     let audioContext = null;

@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_VERSION = 'discovery-hub-shell-v7';
+const CACHE_VERSION = 'discovery-hub-shell-v8';
 const APP_SHELL = [
   '/',
   '/offline',
@@ -26,7 +26,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/admin') || url.pathname === '/qaz' || url.pathname.startsWith('/account/') || url.pathname === '/my-projects' || url.pathname.startsWith('/go/') || url.pathname === '/search' || url.pathname === '/health' || url.pathname === '/service-worker.js' || url.pathname === '/build-a-website-or-app' || url.pathname.startsWith('/download-file/')) return;
+  if (url.pathname.startsWith('/admin') || url.pathname === '/qaz' || url.pathname.startsWith('/account/') || url.pathname === '/my-projects' || url.pathname.startsWith('/go/') || url.pathname === '/search' || url.pathname === '/health' || url.pathname === '/service-worker.js' || url.pathname === '/build-a-website-or-app' || url.pathname.startsWith('/download-file/') || url.pathname.startsWith('/api/')) return;
 
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then(async (response) => {

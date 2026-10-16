@@ -18,6 +18,12 @@
   <div class="hub-builder-shortcut"><span>Have a business idea or need an app?</span><a href="{{ url_for('project_request') }}">Make me a website or app <span aria-hidden="true">↗</span></a></div>
 </section>
 
+<section class="quick-tools-strip" aria-label="Useful discovery tools">
+  <a class="quick-tool-card" href="{{ url_for('availability_centre') }}"><span class="quick-tool-icon">{{ icon_svg('activity', 23) }}</span><span><strong>Platform availability</strong><small>Check which connected websites are responding.</small></span><span aria-hidden="true">↗</span></a>
+  <a class="quick-tool-card" href="https://toror-technology.onrender.com/"><span class="quick-tool-icon">{{ icon_svg('download', 23) }}</span><span><strong>Toror APK website</strong><small>Open the separate catalogue for Music, Shield, Messages and other releases.</small></span><span aria-hidden="true">↗</span></a>
+  <a class="quick-tool-card" href="{{ url_for('project_request') }}"><span class="quick-tool-icon">{{ icon_svg('calculator', 23) }}</span><span><strong>Project estimator</strong><small>Plan a website, shop, portal or app with a scope-based estimate.</small></span><span aria-hidden="true">↗</span></a>
+</section>
+
 {% if ad %}
 <section class="motion-ad motion-ad--{{ ad.style|default('cinematic') }}" aria-label="Featured promotion">
   {% if ad.image_filename %}<div class="motion-ad-photo" style="background-image:linear-gradient(90deg,rgba(24,18,27,.94),rgba(24,18,27,.46)),url('{{ url_for('hub_media', filename=ad.image_filename) }}')"></div>{% endif %}
@@ -33,10 +39,10 @@
   <section class="service-group" aria-label="{{ group }}">
     <div class="service-group-heading"><h3>{{ group }}</h3><span>{{ items|length }} services</span></div>
     <div class="service-button-grid">
-      {% for service in items %}{% set destination = service.resolved_target or url_for('project_request') %}<a href="{{ destination }}" class="service-button-item" aria-label="Open {{ service.name }}">
+      {% for service in items %}{% set destination = url_for('service_detail', slug=service.slug) %}<a href="{{ destination }}" class="service-button-item" aria-label="View details for {{ service.name }}">
         <span class="service-button-icon service-colour-{{ (loop.index0 + loop.index) % 10 }}">{{ icon_svg(service.icon, 25) }}</span>
         <span class="service-button-copy"><strong>{{ service.name }}</strong><small>{{ service.description|truncate(86, True, '…') }}</small></span>
-        <span class="service-button-action" aria-hidden="true">{{ 'Open ↗' if destination.startswith('http') else 'Open' }}</span>
+        <span class="service-button-action" aria-hidden="true">View details</span>
       </a>{% endfor %}
     </div>
   </section>
@@ -53,12 +59,12 @@
   <div class="build-promo-aside"><span class="build-aside-label">POCKET-CONSCIOUS STARTING POINT</span><strong>From KSh 10,000</strong><p>Indicative starting point for a simple business website. Features, scope, content and timing affect the final quote.</p><div class="build-service-tags"><span>Websites</span><span>Online shops</span><span>Web apps</span><span>Mobile apps</span></div></div>
 </section>
 
-<section class="downloads-promo"><div class="downloads-promo-mark">{{ icon_svg('download', 27) }}</div><div><span class="hub-section-eyebrow">TOROR DIGITAL</span><h2>Apps, APKs & downloads.</h2><p>Browse files and tools published to the network.</p></div><a href="{{ url_for('downloads_page') }}" class="downloads-promo-button">Open downloads library</a></section>
+<section class="downloads-promo"><div class="downloads-promo-mark">{{ icon_svg('download', 27) }}</div><div><span class="hub-section-eyebrow">TOROR DIGITAL</span><h2>Apps, APKs & downloads.</h2><p>Open the dedicated Toror APK website for current app releases and updates.</p></div><a href="https://toror-technology.onrender.com/" class="downloads-promo-button">Open APK website ↗</a></section>
 
 <section class="share-gateway" id="share-hub" aria-label="Share this gateway"><div class="share-gateway-copy"><div class="share-eyebrow">PASS THE GATEWAY ON</div><h2>One address. Many possibilities.</h2><p>Share the hub with someone who needs a service, a website or a new digital idea. This QR code opens the gateway itself.</p><div class="share-gateway-actions"><button type="button" id="share-hub-button">Share this website</button><button type="button" class="share-copy-button" id="copy-hub-button">Copy website link</button></div><span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span></div><a class="public-qr" href="{{ url_for('public_hub_qr', download=1) }}" title="Download the QR code for this gateway"><img src="{{ url_for('public_hub_qr') }}" alt="QR code that opens this website's main gateway"><span>Scan or save this QR</span></a></section>
 <footer class="gateway-footer"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</span><span>🇰🇪 Kenya · A gateway to independent specialist services</span><a href="{{ url_for('project_request') }}">Build with us</a></footer>
-<script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"WebSite","name":brand_name,"url":request.url_root,"description":"A searchable gateway to individually listed service destinations, connected websites and digital products across Kenya.","publisher":{"@type":"Organization","name":"Toror Technology & Innovations Ltd."},"potentialAction":{"@type":"SearchAction","target":request.url_root.rstrip('/') + url_for('search') + '?q={search_term_string}',"query-input":"required name=search_term_string"}}|tojson }}</script>
-{% set ns = namespace(items=[]) %}{% for listed_service in services %}{% set ns.items = ns.items + [{"@type":"ListItem","position":loop.index,"name":listed_service.name,"url":url_for('service_detail',slug=listed_service.slug,_external=True)}] %}{% endfor %}
+<script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"WebSite","name":brand_name,"url":canonical_url('/'),"description":"A searchable gateway to individually listed service destinations, connected websites and digital products across Kenya.","publisher":{"@type":"Organization","name":"Toror Technology & Innovations Ltd."},"potentialAction":{"@type":"SearchAction","target":canonical_url(url_for('search')) + '?q={search_term_string}',"query-input":"required name=search_term_string"}}|tojson }}</script>
+{% set ns = namespace(items=[]) %}{% for listed_service in services %}{% set ns.items = ns.items + [{"@type":"ListItem","position":loop.index,"name":listed_service.name,"url":canonical_url(url_for('service_detail',slug=listed_service.slug))}] %}{% endfor %}
 <script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"ItemList","name":"Discover services and websites in Kenya","itemListOrder":"https://schema.org/ItemListOrderAscending","numberOfItems":services|length,"itemListElement":ns.items}|tojson }}</script>
 {% endblock %}
 {% block page_footer %}{% endblock %}

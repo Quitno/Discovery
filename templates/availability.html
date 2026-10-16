@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<nav class="service-breadcrumb" aria-label="Breadcrumb"><a href="{{ url_for('home') }}">Home</a><span>/</span><span>Platform availability</span></nav>
+<section class="availability-hero">
+  <span class="hub-section-eyebrow">TOROR NETWORK TOOLS</span>
+  <h1>Platform availability</h1>
+  <p>Check whether connected platforms are responding before you continue. This is a quick server-response check, not a guarantee that every page, booking or transaction is working.</p>
+  <div class="availability-actions"><button type="button" class="availability-refresh" id="availability-refresh">Check again</button><span id="availability-summary" role="status" aria-live="polite">Preparing platform checks…</span></div>
+</section>
+<section class="availability-panel" aria-labelledby="availability-panel-title">
+  <div class="availability-panel-heading"><div><span class="hub-section-eyebrow">LIVE CHECKS</span><h2 id="availability-panel-title">Connected platforms</h2></div><small id="availability-last-checked">Not checked yet</small></div>
+  <div class="availability-grid" id="availability-grid" aria-live="polite"><div class="availability-loading"><span class="loading-pulse" aria-hidden="true"></span> Checking connected platforms…</div></div>
+</section>
+<section class="availability-note"><strong>How to read this page</strong><p><span class="status-dot status-dot-online"></span> <b>Responding</b> means the server returned an HTTP response. <span class="status-dot status-dot-issue"></span> <b>Server issue</b> means it returned a 5xx error. <span class="status-dot status-dot-unknown"></span> <b>Could not verify</b> usually means a timeout or network restriction; it does not prove the website is offline.</p><p>Availability can change by the minute. For accurate bookings, prices, stock or payment confirmation, use the platform itself.</p></section>
+{% endblock %}
+{% block page_footer %}<footer class="gateway-footer legal-page-footer"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</span><span>Kenya · The Discovery Hub</span><a href="{{ url_for('home') }}">Back to gateway</a></footer>{% endblock %}

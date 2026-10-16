@@ -14,13 +14,13 @@
   <meta property="og:site_name" content="{{ brand_name|e }}">
   <meta property="og:title" content="{% if title is defined and title and title != brand_name %}{{ title|e }} · {{ brand_name|e }}{% else %}{{ brand_name|e }}{% endif %}">
   <meta property="og:description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
-  <meta property="og:url" content="{{ request.base_url }}">
-  <meta property="og:image" content="{{ url_for('static', filename='icons/icon-512.png', _external=True) }}">
+  <meta property="og:url" content="{{ canonical_url(request.path) }}">
+  <meta property="og:image" content="{{ canonical_url(url_for('static', filename='icons/icon-512.png')) }}">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="{% if title is defined and title and title != brand_name %}{{ title|e }} · {{ brand_name|e }}{% else %}{{ brand_name|e }}{% endif %}">
   <meta name="twitter:description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
   <title>{% if title is defined and title and title != brand_name %}{{ title }} · {{ brand_name }}{% else %}{{ brand_name }}{% endif %}</title>
-  <link rel="canonical" href="{{ request.base_url }}">
+  <link rel="canonical" href="{{ canonical_url(request.path) }}">
   <link rel="manifest" href="{{ url_for('manifest') }}">
   <link rel="icon" href="{{ url_for('static', filename='icons/favicon.svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
@@ -45,6 +45,7 @@
       </a>
       <div class="sidebar-label">SERVICE SECTIONS</div>
       <a class="side-link {{ 'active' if request.endpoint == 'home' else '' }}" href="{{ url_for('home') }}#service-directory"><span class="nav-icon">{{ icon_svg('compass', 19) }}</span><span>All destinations</span></a>
+      <a class="side-link {{ 'active' if request.endpoint == 'availability_centre' else '' }}" href="{{ url_for('availability_centre') }}"><span class="nav-icon">{{ icon_svg('activity', 19) }}</span><span>Platform availability</span></a>
       {% for category in sidebar_categories|default([]) %}
         <a class="side-link" href="{{ url_for('service_group', group_slug=category.slug) }}"><span class="nav-icon">{{ icon_svg(category.icon, 19) }}</span><span>{{ category.name }}</span></a>
       {% endfor %}
@@ -92,7 +93,20 @@
     </div>
   </div>
   <div class="sidebar-scrim" id="sidebar-scrim"></div>
-  <script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"Organization","name":"Toror Technology & Innovations Ltd.","legalName":"Toror Technology & Innovations Ltd.","url":request.url_root,"logo":url_for('static', filename='icons/icon-512.png', _external=True),"areaServed":{"@type":"Country","name":"Kenya"},"brand":{"@type":"Brand","name":brand_name},"description":"A Kenyan technology company connecting visitors with specialist digital services, websites, applications and project development."}|tojson }}</script>
+  {% if not request.path.startswith('/admin') and request.path != '/qaz' %}
+  <div class="accessibility-tools" id="accessibility-tools">
+    <button class="accessibility-toggle" id="accessibility-toggle" type="button" aria-expanded="false" aria-controls="accessibility-panel" aria-label="Open accessibility and display tools"><span aria-hidden="true">◉</span><span>Display tools</span></button>
+    <section class="accessibility-panel" id="accessibility-panel" aria-label="Accessibility and display settings" hidden>
+      <div class="accessibility-panel-heading"><div><strong>Make this easier to read</strong><small>Saved on this device</small></div><button class="accessibility-close" id="accessibility-close" type="button" aria-label="Close display tools">×</button></div>
+      <div class="accessibility-control-row"><span>Text size</span><div><button type="button" data-a11y-action="text-down" aria-label="Decrease text size">A−</button><button type="button" data-a11y-action="text-up" aria-label="Increase text size">A+</button></div></div>
+      <button class="accessibility-option" type="button" data-a11y-action="contrast" aria-pressed="false">High contrast</button>
+      <button class="accessibility-option" type="button" data-a11y-action="underline" aria-pressed="false">Underline links</button>
+      <button class="accessibility-option" type="button" data-a11y-action="motion" aria-pressed="false">Reduce motion</button>
+      <button class="accessibility-reset" type="button" data-a11y-action="reset">Reset display settings</button>
+    </section>
+  </div>
+  {% endif %}
+  <script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"Organization","name":"Toror Technology & Innovations Ltd.","legalName":"Toror Technology & Innovations Ltd.","url":canonical_url('/'),"logo":canonical_url(url_for('static', filename='icons/icon-512.png')),"areaServed":{"@type":"Country","name":"Kenya"},"brand":{"@type":"Brand","name":brand_name},"description":"A Kenyan technology company connecting visitors with specialist digital services, websites, applications and project development."}|tojson }}</script>
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
   {% block extra_scripts %}{% endblock %}
 </body>

@@ -365,10 +365,11 @@
       "name": "Toror APK & Android downloads",
       "slug": "toror-apk-android-downloads",
       "group": "Shopping & digital tools",
-      "description": "Find Android APKs and other downloadable digital tools published through the hub.",
+      "description": "Browse Android APK releases and digital downloads published through Toror Technology & Innovations Ltd. Check app details, compatibility, permissions and release notes before installing.",
       "parent": "",
-      "destination": "/downloads",
-      "kind": "First-party workflow"
+      "destination": "/service/toror-apk-android-downloads",
+      "kind": "SEO landing page → independent APK portal",
+      "release_portal": "https://toror-technology.onrender.com/"
     },
     {
       "name": "Toror websites & digital products",
@@ -383,28 +384,31 @@
       "name": "Tomorrow Music for Android",
       "slug": "toror-tomorrow-music-apk",
       "group": "Toror apps & downloads",
-      "description": "Find Android releases and update files for Tomorrow Music when they are published.",
+      "description": "Find the Tomorrow Music Android release, version information and installation guidance through the Toror APK portal. Review the current release notes and compatibility details before installing.",
       "parent": "",
-      "destination": "/downloads?q=Tomorrow%20Music",
-      "kind": "Published installer if available; filtered library otherwise"
+      "destination": "/service/toror-tomorrow-music-apk",
+      "kind": "SEO landing page → independent APK portal",
+      "release_portal": "https://toror-technology.onrender.com/"
     },
     {
       "name": "Tomorrow Messages for Android",
       "slug": "toror-tomorrow-messages-apk",
       "group": "Toror apps & downloads",
-      "description": "Find Android releases and update files for Tomorrow Messages when they are published.",
+      "description": "Find the Tomorrow Messages Android release, installation guidance and supported-device details through the Toror APK portal. Review permissions and release notes before using an SMS application.",
       "parent": "",
-      "destination": "/downloads?q=Tomorrow%20Messages",
-      "kind": "Published installer if available; filtered library otherwise"
+      "destination": "/service/toror-tomorrow-messages-apk",
+      "kind": "SEO landing page → independent APK portal",
+      "release_portal": "https://toror-technology.onrender.com/"
     },
     {
       "name": "AdShield for Android",
       "slug": "toror-adshield-apk",
       "group": "Toror apps & downloads",
-      "description": "Find published AdShield Android releases and version notes when available.",
+      "description": "Find the published AdShield Android release and review its version information, permissions and documented protection features before installing.",
       "parent": "",
-      "destination": "/downloads?q=AdShield",
-      "kind": "Published installer if available; filtered library otherwise"
+      "destination": "/service/toror-adshield-apk",
+      "kind": "SEO landing page → independent APK portal",
+      "release_portal": "https://toror-technology.onrender.com/"
     },
     {
       "name": "Airbnb stays in Nairobi",

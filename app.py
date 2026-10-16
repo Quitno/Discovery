@@ -14,9 +14,14 @@ import zipfile
 import mimetypes
 import subprocess
 import math
+import time
+import concurrent.futures
+import threading
+import urllib.error
+import urllib.request
 import xml.sax.saxutils as xml_escape
 from contextlib import contextmanager
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from functools import wraps
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
@@ -54,6 +59,31 @@ DOWNLOAD_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = Flask(__name__, instance_path=str(INSTANCE_DIR))
 # Respect Render's forwarded HTTPS/host headers for absolute URLs, QR codes, and sitemap.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+def normalise_public_site_url(value):
+    """Return an origin-only public URL for canonical tags and crawler feeds."""
+    fallback = "https://trorinovationstech.co.ke"
+    parsed = urlparse(str(value or "").strip())
+    if parsed.scheme not in ("https", "http") or not parsed.netloc or parsed.username or parsed.password:
+        return fallback
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+PUBLIC_SITE_URL = normalise_public_site_url(os.environ.get("PUBLIC_SITE_URL", "https://trorinovationstech.co.ke"))
+
+
+def canonical_url(path="/"):
+    """Build a canonical URL on the configured public origin; query strings are excluded."""
+    raw = str(path or "/")
+    parsed = urlparse(raw)
+    local_path = parsed.path or "/"
+    if not local_path.startswith("/") or local_path.startswith("//"):
+        local_path = "/"
+    return PUBLIC_SITE_URL + local_path
+
+
+app.jinja_env.globals["canonical_url"] = canonical_url
+
+
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -135,6 +165,8 @@ def slugify(value: str) -> str:
     return value.strip("-") or "category"
 
 
+TOROR_APK_SITE_URL = "https://toror-technology.onrender.com/"
+
 SERVICE_SEEDS = []
 def _service_seed(name, slug, group_name, description, keywords, icon="compass", parent="", target="", featured=0, order=100):
     SERVICE_SEEDS.append({"name": name, "slug": slug, "group_name": group_name, "description": description,
@@ -184,7 +216,7 @@ for _i, _row in enumerate([
     ("Denmart online shopping", "denmart-online-shopping", "Shopping & digital tools", "Shop online and explore available products and ordering at Denmart.", "Denmart, supermarket, shopping, online order, groceries, Kenya", "shopping", "Denmart", "", 1),
     ("Oedge digital services", "oedge-digital-services", "Shopping & digital tools", "Explore Oedge's digital services and connected online tools.", "Oedge, online services, digital services, tools, Kenya", "compass", "Oedge", "", 0),
     ("Build a website or app", "hub-build-website-app", "Shopping & digital tools", "Brief your website, online store, web app or mobile app and get a scope-based estimate.", "web developer, web development, website, websites, mobile app, app developer, Kenya", "code-2", "", "/build-a-website-or-app", 1),
-    ("Toror APK & Android downloads", "toror-apk-android-downloads", "Shopping & digital tools", "Find Android APKs and other downloadable digital tools published through the hub.", "Toror, APK download, Android apps, app download, software downloads", "download", "", "/downloads", 1),
+    ("Toror APK & Android downloads", "toror-apk-android-downloads", "Shopping & digital tools", "Browse Android APK releases and digital downloads published through Toror Technology & Innovations Ltd. Check app details, compatibility, permissions and release notes before installing.", "Toror APK downloads, Android APK, Android apps, APK download Kenya, Android app downloads, install APK on Android, app version, software downloads", "download", "", TOROR_APK_SITE_URL, 1),
     ("Toror websites & digital products", "toror-websites-digital-products", "Shopping & digital tools", "Discover websites, tools and software products from the Toror network.", "Toror, websites, digital products, apps, web applications", "app-window", "", "/downloads", 0),
 ]):
     _service_seed(_row[0], _row[1], _row[2], _row[3], _row[4], _row[5], _row[6], _row[7], _row[8], 10 + _i * 10)
@@ -199,14 +231,14 @@ for _j, _city in enumerate(_AIRBNB_LOCATIONS):
 # Dedicated searchable doors for Toror-made Android apps. These route into the
 # filtered public downloads library; a release appears when Admin publishes it.
 _service_seed("Tomorrow Music for Android", "toror-tomorrow-music-apk", "Toror apps & downloads",
-              "Find Android releases and update files for Tomorrow Music when they are published.",
-              "Toror, Tomorrow Music, music player APK, Android app, music app download", "app-window", "", "/downloads?q=Tomorrow%20Music", 1, 610)
+              "Find the Tomorrow Music Android release, version information and installation guidance through the Toror APK portal. Review the current release notes and compatibility details before installing.",
+              "Toror, Tomorrow Music APK, Tomorrow Music for Android, Android music player, music player APK, local music player, audio player for Android, playlists, music app download", "app-window", "", TOROR_APK_SITE_URL, 1, 610)
 _service_seed("Tomorrow Messages for Android", "toror-tomorrow-messages-apk", "Toror apps & downloads",
-              "Find Android releases and update files for Tomorrow Messages when they are published.",
-              "Toror, Tomorrow Messages, SMS app, messages, Android APK, texting app", "message", "", "/downloads?q=Tomorrow%20Messages", 0, 620)
+              "Find the Tomorrow Messages Android release, installation guidance and supported-device details through the Toror APK portal. Review permissions and release notes before using an SMS application.",
+              "Toror, Tomorrow Messages APK, Tomorrow Messages for Android, Android SMS app, texting app APK, messaging app Android, SMS application, text messages", "message", "", TOROR_APK_SITE_URL, 0, 620)
 _service_seed("AdShield for Android", "toror-adshield-apk", "Toror apps & downloads",
-              "Find published AdShield Android releases and version notes when available.",
-              "Toror, AdShield, ad blocker, privacy, Android APK, network tool", "shield-check", "", "/downloads?q=AdShield", 0, 630)
+              "Find the published AdShield Android release and review its version information, permissions and documented protection features before installing.",
+              "Toror, AdShield APK, AdShield for Android, Android privacy utility, ad protection app, Android utility APK, app permissions", "shield-check", "", TOROR_APK_SITE_URL, 0, 630)
 
 # Verified external destinations for services advertised by the Discovery Hub.
 # Deep links are only used when they are present in the connected platform's source
@@ -258,16 +290,80 @@ SERVICE_DIRECT_DESTINATIONS = {
     "denmart-online-shopping": "https://denmart.co.ke/",
 }
 
-# These are genuine workflows provided by the Hub itself and therefore remain internal.
-FIRST_PARTY_SERVICE_DESTINATIONS = {
+# Special service destinations include internal workflows and independent owned portals.
+SPECIAL_SERVICE_DESTINATIONS = {
     "hub-build-website-app": "/build-a-website-or-app",
-    "toror-apk-android-downloads": "/downloads",
+    # APK releases are managed on their independent site, not duplicated in this hub.
+    "toror-apk-android-downloads": TOROR_APK_SITE_URL,
     "toror-websites-digital-products": "/build-a-website-or-app",
 }
-APP_DOWNLOAD_TERMS = {
-    "toror-tomorrow-music-apk": ("tomorrow music", "tomorrowmusic"),
-    "toror-tomorrow-messages-apk": ("tomorrow messages", "tomorrowmessages"),
-    "toror-adshield-apk": ("adshield", "ad shield"),
+APP_DOWNLOAD_SLUGS = {
+    "toror-tomorrow-music-apk",
+    "toror-tomorrow-messages-apk",
+    "toror-adshield-apk",
+}
+APP_DISCOVERY_SLUGS = APP_DOWNLOAD_SLUGS | {"toror-apk-android-downloads"}
+
+# Purpose-built, original content for the APK discovery pages. The Toror APK portal remains
+# the source of current files and versions; these landing pages must not imply that a file is
+# available when the portal has not published it.
+APP_DISCOVERY_CONTENT = {
+    "toror-apk-android-downloads": {
+        "page_title": "Android APK Downloads in Kenya",
+        "meta_description": "Browse Android APK releases and digital downloads published by Toror Technology & Innovations Ltd. Review versions, compatibility, permissions and installation notes before installing.",
+        "eyebrow": "TOROR ANDROID APP DIRECTORY",
+        "heading": "Find Android apps and APK releases",
+        "intro": "This page is the Discovery Hub entry point for Android applications published through the Toror APK portal. Open the portal for the current catalogue and the release details actually available.",
+        "checks": ["Confirm the publisher and application name.", "Review the version, Android compatibility and requested permissions.", "Use the release page's installation instructions and support information."],
+        "faq": [
+            ("Where are the APK files hosted?", "The linked Toror APK portal is the release destination. Availability and version details are controlled there."),
+            ("Are all APK files independently security-audited?", "No. This Hub does not claim to independently audit an uploaded file. Check publisher details and scan files using trusted security tools."),
+        ],
+        "link_label": "Browse current APK releases",
+        "application_category": "",
+    },
+    "toror-tomorrow-music-apk": {
+        "page_title": "Tomorrow Music APK for Android",
+        "meta_description": "Find the Tomorrow Music Android app release from Toror Technology & Innovations Ltd. Check the current version, compatibility, permissions and installation guidance on the Toror APK portal.",
+        "eyebrow": "TOMORROW MUSIC · ANDROID",
+        "heading": "Tomorrow Music for Android",
+        "intro": "Use the official Toror APK portal link below to check whether a Tomorrow Music release is currently published and to review its version notes before installing. Feature availability can vary by release and Android version.",
+        "checks": ["Confirm the app title and publisher before installing.", "Check Android version requirements and the current release notes.", "Review requested permissions and use authorized sources for any music or media downloads."],
+        "faq": [
+            ("Where can I find the current Tomorrow Music APK?", "Open the Toror APK portal and check its current release listing. This Discovery Hub page does not host a separate copy of the installer."),
+            ("What should I check before installing a music player?", "Check compatibility, permissions, publisher identity and release notes. Use media sources and download methods you are authorized to use."),
+        ],
+        "link_label": "Check Tomorrow Music release",
+        "application_category": "MultimediaApplication",
+    },
+    "toror-tomorrow-messages-apk": {
+        "page_title": "Tomorrow Messages APK for Android",
+        "meta_description": "Find the Tomorrow Messages Android app release from Toror Technology & Innovations Ltd. Check its current version, compatibility, permissions and installation guidance.",
+        "eyebrow": "TOMORROW MESSAGES · ANDROID",
+        "heading": "Tomorrow Messages for Android",
+        "intro": "Use the Toror APK portal to check for a published Tomorrow Messages release and review its version notes. SMS functionality, permissions and default-message-app support depend on the installed version and Android system requirements.",
+        "checks": ["Confirm the publisher and release version.", "Review SMS, contacts and notification permissions carefully.", "Check Android compatibility and carrier-related limitations before switching your default messaging app."],
+        "faq": [
+            ("Where is the current Tomorrow Messages APK?", "The Toror APK portal is the destination for published release files and version notes."),
+            ("Will it work on every Android phone?", "Compatibility depends on the release, Android version, manufacturer restrictions and any required SMS permissions. Review the published requirements."),
+        ],
+        "link_label": "Check Tomorrow Messages release",
+        "application_category": "CommunicationApplication",
+    },
+    "toror-adshield-apk": {
+        "page_title": "AdShield APK for Android",
+        "meta_description": "Find the published AdShield Android utility release from Toror Technology & Innovations Ltd. Review its documented features, version, permissions and compatibility before installing.",
+        "eyebrow": "ADSHIELD · ANDROID UTILITY",
+        "heading": "AdShield for Android",
+        "intro": "Visit the Toror APK portal to check whether an AdShield release is published and read its current description. Use only the capabilities documented for that release; this page does not independently validate app behavior.",
+        "checks": ["Review the current version and release notes.", "Check requested permissions and how the app handles network or device data.", "Do not assume every advertised protection feature is available without confirming the published details."],
+        "faq": [
+            ("Where can I check the AdShield APK?", "Open the Toror APK portal for current release availability and version details."),
+            ("Does this page guarantee every protection feature?", "No. Confirm the release description, permissions and actual behavior rather than relying on the product name alone."),
+        ],
+        "link_label": "Check AdShield release",
+        "application_category": "SecurityApplication",
+    },
 }
 SERVICE_GROUP_DESTINATIONS = {
     "Travel & experiences": "https://otravel-bleg.onrender.com/",
@@ -571,6 +667,35 @@ def initialise_database():
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
         seed_service_catalog(conn, now)
+        apk_copy_migration = conn.execute("SELECT value FROM settings WHERE key='apk_discovery_copy_v2_done'").fetchone()
+        if not apk_copy_migration:
+            apk_copy_updates = {
+                "toror-apk-android-downloads": (
+                    ["Find Android APKs and other downloadable digital tools published through the hub.",
+                     "Browse Android APK releases and digital downloads published through Toror Technology & Innovations Ltd. Check app details, compatibility, permissions and release notes before installing."],
+                    "Browse Android APK releases and digital tools through the Toror APK catalogue. Review each app's published version, compatibility and installation details before installing.",
+                    "Toror APK downloads, Android APK, Android apps, APK download Kenya, Android app downloads, install APK on Android, app version, software downloads"),
+                "toror-tomorrow-music-apk": (
+                    ["Find Android releases and update files for Tomorrow Music when they are published.",
+                     APP_DISCOVERY_CONTENT["toror-tomorrow-music-apk"]["intro"]],
+                    "Find the current Tomorrow Music Android release and installation guidance through Toror's app catalogue. Check release notes and compatibility before installing.",
+                    "Toror, Tomorrow Music APK, Tomorrow Music for Android, Android music player, music player APK, local music player, audio player for Android, playlists, music app download"),
+                "toror-tomorrow-messages-apk": (
+                    ["Find Android releases and update files for Tomorrow Messages when they are published.",
+                     APP_DISCOVERY_CONTENT["toror-tomorrow-messages-apk"]["intro"]],
+                    "Find the current Tomorrow Messages Android release and setup guidance through Toror's app catalogue. Check Android compatibility and permission requirements before installing.",
+                    "Toror, Tomorrow Messages APK, Tomorrow Messages for Android, Android SMS app, texting app APK, messaging app Android, SMS application, text messages"),
+                "toror-adshield-apk": (
+                    ["Find published AdShield Android releases and version notes when available.",
+                     APP_DISCOVERY_CONTENT["toror-adshield-apk"]["intro"]],
+                    "Find published AdShield Android releases through Toror's app catalogue. Review documented features, permissions and version notes before installing.",
+                    "Toror, AdShield APK, AdShield for Android, Android privacy utility, ad protection app, Android utility APK, app permissions"),
+            }
+            for service_slug, (old_descriptions, new_description, new_keywords) in apk_copy_updates.items():
+                placeholders = ",".join("?" for _ in old_descriptions)
+                conn.execute(f"UPDATE hub_services SET description=?, keywords=?, updated_at=? WHERE slug=? AND description IN ({placeholders})",
+                             (new_description, new_keywords, now, service_slug, *old_descriptions))
+            conn.execute("INSERT INTO settings(key,value) VALUES('apk_discovery_copy_v2_done','1')")
         # Comprehensive one-time repair: every visitor-facing service card must resolve
         # to its connected platform or to a real first-party workflow. This upgrades
         # persistent databases as well as fresh installations, without changing links again
@@ -588,17 +713,13 @@ def initialise_database():
                          ("https://trt-isfa.onrender.com/", now))
             conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'luxhari-%'",
                          ("https://luxhari.onrender.com/", now))
-            # First-party tools and download filters are the only intended service-card URLs
-            # that remain on the Hub itself.
-            for service_slug, destination in FIRST_PARTY_SERVICE_DESTINATIONS.items():
+            # These special service doors may use a Toror workflow or a dedicated portal.
+            for service_slug, destination in SPECIAL_SERVICE_DESTINATIONS.items():
                 conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
                              (destination, now, service_slug))
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='toror-tomorrow-music-apk'",
-                         ("/downloads?q=Tomorrow%20Music", now))
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='toror-tomorrow-messages-apk'",
-                         ("/downloads?q=Tomorrow%20Messages", now))
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='toror-adshield-apk'",
-                         ("/downloads?q=AdShield", now))
+            for service_slug in ("toror-tomorrow-music-apk", "toror-tomorrow-messages-apk", "toror-adshield-apk", "toror-apk-android-downloads"):
+                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                             (TOROR_APK_SITE_URL, now, service_slug))
             # Use the connected transport service screen for the quick Oedge platform link too.
             conn.execute("UPDATE sites SET url=?, updated_at=? WHERE lower(name)='oedge' AND lower(url)='https://oedge.onrender.com'",
                          ("https://oedge.onrender.com/services", now))
@@ -665,6 +786,15 @@ def initialise_database():
                     conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
                                  (destination, now, service_slug))
             conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v5_done','1')")
+        # APK portal migration: make the administrator-visible database target match the
+        # single independent APK site. This intentionally replaces old internal /downloads
+        # filters for these four known app-door slugs; the routing code also enforces it.
+        direct_destinations_v6 = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v6_done'").fetchone()
+        if not direct_destinations_v6:
+            for service_slug in ("toror-apk-android-downloads", "toror-tomorrow-music-apk", "toror-tomorrow-messages-apk", "toror-adshield-apk"):
+                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                             (TOROR_APK_SITE_URL, now, service_slug))
+            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v6_done','1')")
         seed_default_ad(conn, now)
         conn.commit()
 
@@ -779,6 +909,7 @@ def inject_globals():
         "customer_logged_in": bool(session.get("customer_id")),
         "customer_name": session.get("customer_name", ""),
         "ad_styles": AD_STYLE_OPTIONS,
+        "app_download_slugs": APP_DISCOVERY_SLUGS,
     }
 
 
@@ -842,8 +973,8 @@ def get_services(visible_only=False):
     query += " ORDER BY s.group_name COLLATE NOCASE, s.featured DESC, s.sort_order ASC, s.name COLLATE NOCASE"
     with db_session() as conn:
         items = [dict(row) for row in conn.execute(query).fetchall()]
-    # Resolve destinations once so cards can link straight to the external app or
-    # to a real first-party workflow, instead of sending visitors to empty detail pages.
+    # Resolve final destinations for each crawlable service detail page. Directory cards
+    # link to the Hub's own searchable detail page; its primary CTA opens this destination.
     for item in items:
         item["resolved_target"] = service_target(item)
     return items
@@ -861,67 +992,25 @@ def get_service_by_slug(slug, visible_only=True):
     return item
 
 
-# Destination routing. External URLs are returned as the final anchor href, not as an
-# intermediate Hub detail page. The only intentional internal destinations are real Hub
-# workflows (project requests and its own published-download library).
-def _published_app_download_target(service_slug):
-    terms = APP_DOWNLOAD_TERMS.get(service_slug)
-    if not terms:
-        return ""
-    try:
-        downloads = get_public_downloads()
-    except Exception:
-        return ""
-    normalise = lambda value: re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
-    # Prefer exact title matches. Only an Android installer or an explicit external download
-    # URL is eligible; source ZIPs are deliberately not represented as installable APKs.
-    ranked = []
-    for item in downloads:
-        title = normalise(item.get("title"))
-        keywords = normalise(item.get("keywords"))
-        platform = normalise(item.get("platform"))
-        filename = str(item.get("original_filename") or item.get("stored_filename") or "")
-        external = str(item.get("external_url") or "").strip()
-        extension = Path(urlparse(external).path if external else filename).suffix.casefold()
-        title_match = any(term in title for term in terms)
-        keyword_match = any(term in keywords for term in terms)
-        installable = extension in {".apk", ".aab"}
-        explicit_external = bool(external and (installable or ("android" in platform and title_match)))
-        if (title_match or keyword_match) and (installable or explicit_external):
-            score = (100 if title_match else 0) + (25 if installable else 0) + (10 if "android" in platform else 0)
-            ranked.append((score, str(item.get("slug") or "")))
-    if ranked:
-        ranked.sort(reverse=True)
-        return "/download-file/" + quote(ranked[0][1], safe="")
-    return ""
-
-
+# Destination routing. External URLs are returned as the destination CTA on a crawlable
+# Hub detail page. Directory cards link to the first-party detail page so search engines
+# and visitors can discover individual services through descriptive internal links.
 def service_target(service):
     slug = str(service.get("slug") or "").strip().lower()
     target = str(service.get("target_url") or "").strip()
 
-    # For Toror app listings, jump straight to the published installable release when one
-    # exists. If no APK/AAB is published yet, show the matching first-party download catalogue.
-    if slug in APP_DOWNLOAD_TERMS:
-        download_target = _published_app_download_target(slug)
-        if download_target:
-            return download_target
-        if target.startswith("https://") or target.startswith("http://"):
-            return target
-        term = {
-            "toror-tomorrow-music-apk": "Tomorrow%20Music",
-            "toror-tomorrow-messages-apk": "Tomorrow%20Messages",
-            "toror-adshield-apk": "AdShield",
-        }[slug]
-        return "/downloads?q=" + term
+    # These app doorways always open the independent Toror APK site. The APK site owns
+    # its release listings and versions; do not bypass it with a stale file or local copy.
+    if slug in APP_DOWNLOAD_SLUGS or slug == "toror-apk-android-downloads":
+        return TOROR_APK_SITE_URL
 
-    # A valid administrator-provided external URL is authoritative after deployment.
+    # A valid administrator-provided external URL is authoritative for other services.
     if target.lower().startswith(("https://", "http://")):
         return target
 
-    # First-party requests and the general download catalogue are real Hub features.
-    if slug in FIRST_PARTY_SERVICE_DESTINATIONS:
-        return target if target.startswith("/") and not target.startswith("//") else FIRST_PARTY_SERVICE_DESTINATIONS[slug]
+    # First-party requests and other genuine Hub workflows stay on this app.
+    if slug in SPECIAL_SERVICE_DESTINATIONS:
+        return target if target.startswith("/") and not target.startswith("//") else SPECIAL_SERVICE_DESTINATIONS[slug]
 
     # Known external service doors take precedence over stale legacy internal targets such
     # as /service-group/... that previously caused visitors to loop around the Hub.
@@ -1184,6 +1273,8 @@ def icon_svg(key, size=28):
         "chair": '<path d="M6 11V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6M5 11h14v4H5zM7 15v6m10-6v6"/>',
         "bricks": '<path d="M3 4h8v5H3zM13 4h8v5h-8zM7 10h10v5H7zM3 16h8v4H3zM13 16h8v4h-8z"/>',
         "compass": '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8z"/>',
+        "activity": '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+        "calculator": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2m4 0h2M8 16h2m4 0h2"/>',
         "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
         "message": '<path d="M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.3-4.2A8.5 8.5 0 1 1 21 11.5z"/>',
         "shopping": '<path d="M4 8h16l-1.5 12h-13zM8 8a4 4 0 0 1 8 0"/>',
@@ -1233,8 +1324,9 @@ def home():
     ad = get_active_ad()
     description = "Search Kenya's growing network of individually listed services for travel, property, furniture, fashion, mobility, shopping, APK downloads and website or app development."
     return render_template("home.html", sites=sites, services=services, service_groups=service_groups, ad=ad,
-                           title="Discover services, websites and apps across Kenya",
-                           meta_description=description, robots="index,follow", current_year=datetime.utcnow().year)
+                           title="Toror Technology & Innovations in Kenya",
+                           meta_description="Discover Toror Technology & Innovations Ltd. services in Kenya, including Android app release information, travel and group retreats, event ticketing, property, furniture, mobility, online shopping, and website or app development.",
+                           robots="index,follow", current_year=datetime.utcnow().year)
 
 
 @app.route("/account/register", methods=["GET", "POST"])
@@ -1509,10 +1601,16 @@ def service_detail(slug):
     elif len(wa_digits) == 10 and wa_digits.startswith(("07", "01")): wa_digits = "254" + wa_digits[1:]
     service_whatsapp_url = ("https://wa.me/" + wa_digits + "?text=" + quote_plus(f"Hello, I found {service['name']} on {brand}. Please help me with the correct link or next steps.")) if len(wa_digits) >= 10 else ""
     keyword_phrase = ", ".join([x.strip() for x in str(service.get("keywords") or "").split(",") if x.strip()][:4])
-    meta = (service["description"].strip() + (f" Find {keyword_phrase} in Kenya." if keyword_phrase else " Explore this connected service in Kenya."))[:300]
+    app_landing = APP_DISCOVERY_CONTENT.get(slug)
+    if app_landing:
+        page_title = app_landing["page_title"]
+        meta = app_landing["meta_description"]
+    else:
+        page_title = f"{service['name']} in Kenya"
+        meta = (service["description"].strip() + (f" Find {keyword_phrase} in Kenya." if keyword_phrase else " Explore this connected service in Kenya."))[:300]
     return render_template("service_detail.html", service=service, target=target, siblings=siblings,
-                           service_whatsapp_url=service_whatsapp_url, title=f"{service['name']} in Kenya",
-                           meta_description=meta, robots="index,follow")
+                           service_whatsapp_url=service_whatsapp_url, app_landing=app_landing,
+                           title=page_title, meta_description=meta, robots="index,follow")
 
 
 @app.route("/open-service/<slug>")
@@ -1602,36 +1700,45 @@ def go_site(site_id):
 
 @app.route("/robots.txt")
 def robots_txt():
-    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /qaz", "Disallow: /go/", "Disallow: /account/", "Disallow: /my-projects", "Disallow: /download-file/", f"Sitemap: {url_for('sitemap_xml', _external=True)}"]
-    return app.response_class("\n".join(lines) + "\n", mimetype="text/plain")
+    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /qaz", "Disallow: /go/", "Disallow: /open-service/", "Disallow: /account/", "Disallow: /my-projects", "Disallow: /download-file/", "Disallow: /api/", f"Sitemap: {canonical_url(url_for('sitemap_xml'))}"]
+    response = app.response_class("\n".join(lines) + "\n", mimetype="text/plain")
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/sitemap.xml")
 def sitemap_xml():
-    host = request.url_root.rstrip("/")
-    urls = [host + "/", host + url_for("project_request")]
+    # Canonical URLs always use the configured public custom domain, even when the
+    # visitor or crawler reaches a hosting-provider alias.
+    paths = ["/", url_for("project_request"), url_for("availability_centre")]
     for category in get_categories():
-        urls.append(host + url_for("explore_category", category_slug=slugify(category)))
+        paths.append(url_for("explore_category", category_slug=slugify(category)))
     public_services = get_services(visible_only=True)
     for service in public_services:
-        urls.append(host + url_for("service_detail", slug=service["slug"]))
+        paths.append(url_for("service_detail", slug=service["slug"]))
     seen_groups = set()
     for service in public_services:
         group_slug = slugify(service["group_name"])
         if group_slug not in seen_groups:
             seen_groups.add(group_slug)
-            urls.append(host + url_for("service_group", group_slug=group_slug))
-    urls.append(host + url_for("downloads_page"))
-    for item in get_public_downloads():
-        urls.append(host + url_for("download_detail", slug=item["slug"]))
-    lastmod = datetime.utcnow().date().isoformat()
+            paths.append(url_for("service_group", group_slug=group_slug))
+    public_downloads = get_public_downloads()
+    # The internal downloads directory intentionally declares noindex when it has no
+    # published files. Keep it out of the sitemap in that case to avoid conflicting signals.
+    if public_downloads:
+        paths.append(url_for("downloads_page"))
+    for item in public_downloads:
+        paths.append(url_for("download_detail", slug=item["slug"]))
+    urls = list(dict.fromkeys(canonical_url(path) for path in paths))
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for location in urls:
-        xml += f"  <url><loc>{xml_escape.escape(location)}</loc><lastmod>{lastmod}</lastmod><changefreq>weekly</changefreq><priority>{'1.0' if location == host + '/' else '0.7'}</priority></url>\n"
+        xml += f"  <url><loc>{xml_escape.escape(location)}</loc></url>\n"
     xml += "</urlset>\n"
     response = make_response(xml)
     response.headers["Content-Type"] = "application/xml; charset=utf-8"
+    response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
 
@@ -1657,6 +1764,119 @@ def service_worker():
 @app.route("/offline")
 def offline():
     return render_template("offline.html", title="You're offline")
+
+
+# Fixed, trusted list only: the public availability tool never accepts arbitrary URLs,
+# avoiding open-proxy/SSRF behaviour. A short per-process cache prevents repeated probes.
+PLATFORM_PROBES = [
+    {"name": "House Hunter", "url": "https://house-hunter-ba7e.onrender.com/", "purpose": "Property, rentals and short stays"},
+    {"name": "OTravel", "url": "https://otravel-bleg.onrender.com/", "purpose": "Trips, retreats, ticketing and events"},
+    {"name": "TRT Furniture", "url": "https://trt-isfa.onrender.com/", "purpose": "Furniture, lighting and interiors"},
+    {"name": "Luxhari", "url": "https://luxhari.onrender.com/", "purpose": "Fashion, fabrics and accessories"},
+    {"name": "Oedge Mobility", "url": "https://oedge.onrender.com/services", "purpose": "Rides, moving and delivery"},
+    {"name": "Denmart", "url": "https://denmart.co.ke/", "purpose": "Online shopping"},
+    {"name": "Toror APK Site", "url": TOROR_APK_SITE_URL, "purpose": "Independent Android app catalogue"},
+]
+_AVAILABILITY_CACHE = {"checked_at": 0.0, "results": []}
+_AVAILABILITY_LOCK = threading.Lock()
+_AVAILABILITY_REFRESH_LOCK = threading.Lock()
+_AVAILABILITY_TTL_SECONDS = 75
+
+
+def _probe_platform(platform):
+    started = time.monotonic()
+    result = {"name": platform["name"], "url": platform["url"], "purpose": platform["purpose"],
+              "status": "unknown", "label": "Could not verify", "detail": "No reliable response was received.", "checked_at": None}
+    try:
+        request_obj = urllib.request.Request(
+            platform["url"], method="HEAD",
+            headers={"User-Agent": "Toror-Discovery-Availability/1.0 (+https://trorinovationstech.co.ke/)", "Accept": "text/html,*/*"},
+        )
+        try:
+            response = urllib.request.urlopen(request_obj, timeout=3.5)
+        except urllib.error.HTTPError as exc:
+            # HTTP errors still prove that a server responded; never call these "offline".
+            code = int(exc.code)
+            if code in (405, 501):
+                get_request = urllib.request.Request(platform["url"], headers={"User-Agent": "Toror-Discovery-Availability/1.0", "Range": "bytes=0-0"})
+                response = urllib.request.urlopen(get_request, timeout=3.5)
+            else:
+                result["status_code"] = code
+                if code < 500:
+                    result.update(status="online", label="Responding", detail=f"The server responded with HTTP {code}.")
+                else:
+                    result.update(status="issue", label="Server issue", detail=f"The server responded with HTTP {code}.")
+                result["checked_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                result["duration_ms"] = round((time.monotonic() - started) * 1000)
+                return result
+        with response:
+            code = int(getattr(response, "status", 200) or 200)
+        result["status_code"] = code
+        if code < 400:
+            result.update(status="online", label="Responding", detail=f"The server responded with HTTP {code}.")
+        elif code < 500:
+            result.update(status="online", label="Responding", detail=f"The server responded with HTTP {code}.")
+        else:
+            result.update(status="issue", label="Server issue", detail=f"The server responded with HTTP {code}.")
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        # Keep the wording cautious; DNS/network blocks and timeouts do not prove a site is down.
+        if isinstance(exc, urllib.error.HTTPError):
+            code = int(exc.code)
+            result["status_code"] = code
+            result.update(status="issue" if code >= 500 else "online",
+                          label="Server issue" if code >= 500 else "Responding",
+                          detail=f"The server responded with HTTP {code}.")
+        else:
+            result["detail"] = "The check timed out or the network did not allow verification. The site may still be available."
+    result["checked_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    result["duration_ms"] = round((time.monotonic() - started) * 1000)
+    return result
+
+
+def get_platform_availability(force=False):
+    now = time.time()
+    with _AVAILABILITY_LOCK:
+        if not force and _AVAILABILITY_CACHE["results"] and now - _AVAILABILITY_CACHE["checked_at"] < _AVAILABILITY_TTL_SECONDS:
+            return _AVAILABILITY_CACHE["results"], _AVAILABILITY_CACHE["checked_at"]
+
+    # Avoid a burst of parallel external probes when multiple visitors press Check again.
+    with _AVAILABILITY_REFRESH_LOCK:
+        now = time.time()
+        with _AVAILABILITY_LOCK:
+            cache_age = now - _AVAILABILITY_CACHE["checked_at"] if _AVAILABILITY_CACHE["results"] else float("inf")
+            if _AVAILABILITY_CACHE["results"] and (cache_age < _AVAILABILITY_TTL_SECONDS and not force or cache_age < 8):
+                return _AVAILABILITY_CACHE["results"], _AVAILABILITY_CACHE["checked_at"]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(PLATFORM_PROBES)) as pool:
+            futures = [pool.submit(_probe_platform, platform) for platform in PLATFORM_PROBES]
+            results = []
+            for index, future in enumerate(futures):
+                try:
+                    results.append(future.result(timeout=4.5))
+                except Exception:
+                    platform = PLATFORM_PROBES[index]
+                    results.append({"name": platform["name"], "url": platform["url"], "purpose": platform["purpose"],
+                                    "status": "unknown", "label": "Could not verify", "detail": "This check did not complete. The site may still be available.", "checked_at": None})
+        checked_at = time.time()
+        with _AVAILABILITY_LOCK:
+            _AVAILABILITY_CACHE.update(checked_at=checked_at, results=results)
+        return results, checked_at
+
+
+@app.route("/availability")
+def availability_centre():
+    return render_template("availability.html", title="Platform availability checker",
+                           meta_description="Check whether connected Toror network platforms are responding, then open the service you need.",
+                           robots="index,follow")
+
+
+@app.route("/api/availability")
+def api_availability():
+    force = request.args.get("refresh") == "1"
+    results, checked_at = get_platform_availability(force=force)
+    response = make_response({"results": results, "checked_at": datetime.fromtimestamp(checked_at, tz=timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                              "cache_seconds": _AVAILABILITY_TTL_SECONDS})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/health")
@@ -2675,7 +2895,7 @@ def admin_backup_download(filename):
 @app.after_request
 def secure_response_headers(response):
     try:
-        if response.status_code < 400 and not request.path.startswith(("/admin/backup", "/admin/login", "/admin/logout", "/admin/ads/render.mp4", "/qaz", "/account/login", "/account/register", "/account/logout", "/service-worker.js", "/static/", "/health")):
+        if response.status_code < 400 and not request.path.startswith(("/admin/backup", "/admin/login", "/admin/logout", "/admin/ads/render.mp4", "/qaz", "/account/login", "/account/register", "/account/logout", "/service-worker.js", "/static/", "/health", "/api/availability")) and request.path != "/availability":
             _auto_backup(force=(request.method == "POST"))
     except Exception:
         app.logger.exception("Backup lifecycle hook failed")
