@@ -208,6 +208,76 @@ _service_seed("AdShield for Android", "toror-adshield-apk", "Toror apps & downlo
               "Find published AdShield Android releases and version notes when available.",
               "Toror, AdShield, ad blocker, privacy, Android APK, network tool", "shield-check", "", "/downloads?q=AdShield", 0, 630)
 
+# Verified external destinations for services advertised by the Discovery Hub.
+# Deep links are only used when they are present in the connected platform's source
+# or were explicitly supplied by the owner; otherwise open the owning live platform.
+SERVICE_DIRECT_DESTINATIONS = {
+    # OTravel / Open Road Adventures
+    "otravel-tours-travel-booking": "https://otravel-bleg.onrender.com/",
+    "otravel-group-retreats": "https://otravel-bleg.onrender.com/group-retreats",
+    "otravel-ticketing": "https://otravel-bleg.onrender.com/register?next=/ticketing",
+    "otravel-invoices-receipts": "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
+    "otravel-private-events": "https://otravel-bleg.onrender.com/services#events",
+    # Fashion, fabrics and accessories all open the live Luxhari commerce platform.
+    "luxhari-fashion-modelling": "https://luxhari.onrender.com/?category=Clothing",
+    "luxhari-fabrics-materials": "https://luxhari.onrender.com/?category=Materials",
+    "luxhari-accessories-jewellery": "https://luxhari.onrender.com/?category=Accessories",
+    "luxhari-bags-handbags": "https://luxhari.onrender.com/?category=Accessories",
+    # TRT product doors open its real furniture/interior platform rather than empty Hub pages.
+    "trt-furniture-lighting": "https://trt-isfa.onrender.com/",
+    "trt-sofas-living": "https://trt-isfa.onrender.com/",
+    "trt-coffee-tables": "https://trt-isfa.onrender.com/",
+    "trt-dining-furniture": "https://trt-isfa.onrender.com/",
+    "trt-bedroom-furniture": "https://trt-isfa.onrender.com/",
+    "trt-wardrobes-storage": "https://trt-isfa.onrender.com/",
+    "trt-mirrors-console": "https://trt-isfa.onrender.com/",
+    "trt-lighting": "https://trt-isfa.onrender.com/",
+    "trt-home-decor": "https://trt-isfa.onrender.com/",
+    "trt-office-furniture": "https://trt-isfa.onrender.com/",
+    "trt-doors-glass": "https://trt-isfa.onrender.com/",
+    "trt-tiles-surfaces": "https://trt-isfa.onrender.com/",
+    "trt-outdoor-living": "https://trt-isfa.onrender.com/",
+    # Property and short-stay discovery doors open House Hunter.
+    "pata-mahali-property-discovery": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-list-property": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-find-a-place": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-short-stays-kenya": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-rentals-houses-apartments": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-shops-offices": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-hotels-guest-stays": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-warehouses": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-land-plots": "https://house-hunter-ba7e.onrender.com/",
+    "pata-mahali-property-for-sale": "https://house-hunter-ba7e.onrender.com/",
+    # Oedge provides the transport booking interface for O-Ride, O-Drive and O-Movers.
+    "oride-rides-transport": "https://oedge.onrender.com/services",
+    "oride-motorcycle-rides": "https://oedge.onrender.com/services",
+    "oride-car-rides": "https://oedge.onrender.com/services",
+    "omovers-moving-relocation": "https://oedge.onrender.com/services",
+    "oride-delivery-errands": "https://oedge.onrender.com/services",
+    "oedge-digital-services": "https://oedge.onrender.com/services",
+    "denmart-online-shopping": "https://denmart.co.ke/",
+}
+
+# These are genuine workflows provided by the Hub itself and therefore remain internal.
+FIRST_PARTY_SERVICE_DESTINATIONS = {
+    "hub-build-website-app": "/build-a-website-or-app",
+    "toror-apk-android-downloads": "/downloads",
+    "toror-websites-digital-products": "/build-a-website-or-app",
+}
+APP_DOWNLOAD_TERMS = {
+    "toror-tomorrow-music-apk": ("tomorrow music", "tomorrowmusic"),
+    "toror-tomorrow-messages-apk": ("tomorrow messages", "tomorrowmessages"),
+    "toror-adshield-apk": ("adshield", "ad shield"),
+}
+SERVICE_GROUP_DESTINATIONS = {
+    "Travel & experiences": "https://otravel-bleg.onrender.com/",
+    "Fashion & lifestyle": "https://luxhari.onrender.com/",
+    "Furniture, building & interiors": "https://trt-isfa.onrender.com/",
+    "Property & places": "https://house-hunter-ba7e.onrender.com/",
+    "Mobility & logistics": "https://oedge.onrender.com/services",
+    "Toror apps & downloads": "/downloads",
+}
+
 AD_STYLE_OPTIONS = {
     "cinematic": "Cinematic dusk", "champagne": "Champagne editorial", "electric": "Electric colour",
     "sunset": "Sunset gradient", "minimal": "Minimal monochrome", "orchid": "Orchid glow"
@@ -501,44 +571,100 @@ def initialise_database():
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
         seed_service_catalog(conn, now)
-        # One-time destination repair for the live service directory. These are verified
-        # service endpoints (not just parent homepages), so visitor cards can open the
-        # intended destination in one click. Run once to repair older persistent databases;
-        # after migration, administrator-edited destinations remain authoritative.
-        destination_migration = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v2_done'").fetchone()
+        # Comprehensive one-time repair: every visitor-facing service card must resolve
+        # to its connected platform or to a real first-party workflow. This upgrades
+        # persistent databases as well as fresh installations, without changing links again
+        # after an administrator has subsequently edited them.
+        destination_migration = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v3_done'").fetchone()
         if not destination_migration:
-            direct_destinations = {
-                # OTravel / Open Road Adventures
-                "otravel-tours-travel-booking": "https://otravel-bleg.onrender.com",
-                "otravel-group-retreats": "https://otravel-bleg.onrender.com/group-retreats",
-                "otravel-ticketing": "https://otravel-bleg.onrender.com/register?next=/ticketing",
-                "otravel-invoices-receipts": "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
-                "otravel-private-events": "https://otravel-bleg.onrender.com/services",
-                # Oedge hosts O-Ride, O-Drive and O-Movers on its service screen.
-                "oride-rides-transport": "https://oedge.onrender.com/services",
-                "oride-motorcycle-rides": "https://oedge.onrender.com/services",
-                "oride-car-rides": "https://oedge.onrender.com/services",
-                "omovers-moving-relocation": "https://oedge.onrender.com/services",
-                "oride-delivery-errands": "https://oedge.onrender.com/services",
-                "oedge-digital-services": "https://oedge.onrender.com/services",
-                # Property-related tasks open the connected property platform.
-                "pata-mahali-property-discovery": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-list-property": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-find-a-place": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-short-stays-kenya": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-rentals-houses-apartments": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-shops-offices": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-hotels-guest-stays": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-warehouses": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-land-plots": "https://house-hunter-ba7e.onrender.com",
-                "pata-mahali-property-for-sale": "https://house-hunter-ba7e.onrender.com",
-            }
-            for service_slug, destination in direct_destinations.items():
+            for service_slug, destination in SERVICE_DIRECT_DESTINATIONS.items():
                 conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
                              (destination, now, service_slug))
-            # Match the car-booking label to the connected platform's real service name.
+            # City-specific short-stay entries all belong to the live House Hunter property platform.
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'airbnb-stays-%'",
+                         ("https://house-hunter-ba7e.onrender.com/", now))
+            # Future sub-category rows should still leave the Hub for their owner platform.
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'trt-%'",
+                         ("https://trt-isfa.onrender.com/", now))
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'luxhari-%'",
+                         ("https://luxhari.onrender.com/", now))
+            # First-party tools and download filters are the only intended service-card URLs
+            # that remain on the Hub itself.
+            for service_slug, destination in FIRST_PARTY_SERVICE_DESTINATIONS.items():
+                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                             (destination, now, service_slug))
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='toror-tomorrow-music-apk'",
+                         ("/downloads?q=Tomorrow%20Music", now))
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='toror-tomorrow-messages-apk'",
+                         ("/downloads?q=Tomorrow%20Messages", now))
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='toror-adshield-apk'",
+                         ("/downloads?q=AdShield", now))
+            # Use the connected transport service screen for the quick Oedge platform link too.
+            conn.execute("UPDATE sites SET url=?, updated_at=? WHERE lower(name)='oedge' AND lower(url)='https://oedge.onrender.com'",
+                         ("https://oedge.onrender.com/services", now))
+            # Keep the actual car-ride service name accurate.
             conn.execute("UPDATE hub_services SET name='O-Drive — car rides', description='Open Oedge O-Drive to request a car ride, set pickup and destination, and continue your trip.', keywords='O-Drive, O Drive, car ride, taxi, driver, transport, car booking, Oedge, Kenya', updated_at=? WHERE slug='oride-car-rides'", (now,))
-            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v2_done','1')")
+            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v3_done','1')")
+        # Final link audit migration. Older deployments may already have the v3 marker,
+        # so this separately repairs all known routes once, including platform cards.
+        # It deliberately runs only once; later admin changes remain authoritative.
+        direct_destinations_v4 = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v4_done'").fetchone()
+        if not direct_destinations_v4:
+            for service_slug, destination in SERVICE_DIRECT_DESTINATIONS.items():
+                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                             (destination, now, service_slug))
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'airbnb-stays-%'",
+                         ("https://house-hunter-ba7e.onrender.com/", now))
+            # Normalize every platform card to the owning live domain/feature screen.
+            platform_targets = {
+                "house hunter": "https://house-hunter-ba7e.onrender.com/",
+                "otravel": "https://otravel-bleg.onrender.com/",
+                "trt": "https://trt-isfa.onrender.com/",
+                "luxhari": "https://luxhari.onrender.com/",
+                "oedge": "https://oedge.onrender.com/services",
+                "denmart": "https://denmart.co.ke/",
+            }
+            for platform_name, platform_url in platform_targets.items():
+                conn.execute("UPDATE sites SET url=?, updated_at=? WHERE lower(trim(name))=?",
+                             (platform_url, now, platform_name))
+            # OTravel section anchors are confirmed in its supplied template/source.
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='otravel-private-events'",
+                         ("https://otravel-bleg.onrender.com/services#events", now))
+            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='otravel-group-retreats'",
+                         ("https://otravel-bleg.onrender.com/services#groups", now))
+            # Luxhari exposes real category query routes, so category doors land on the
+            # correct collection instead of its generic front page.
+            luxhari_categories = {
+                "luxhari-fashion-modelling": "https://luxhari.onrender.com/?category=Clothing",
+                "luxhari-fabrics-materials": "https://luxhari.onrender.com/?category=Materials",
+                "luxhari-accessories-jewellery": "https://luxhari.onrender.com/?category=Accessories",
+                "luxhari-bags-handbags": "https://luxhari.onrender.com/?category=Accessories",
+            }
+            for service_slug, destination in luxhari_categories.items():
+                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                             (destination, now, service_slug))
+            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v4_done','1')")
+        # Exact-route refinement for the two OTravel doors verified against the live app.
+        # This also upgrades an installation that already ran the v4 migration, while only
+        # replacing known previous Hub defaults (not a custom destination edited by Admin).
+        direct_destinations_v5 = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v5_done'").fetchone()
+        if not direct_destinations_v5:
+            known_route_upgrades = {
+                "otravel-group-retreats": (
+                    "https://otravel-bleg.onrender.com/group-retreats",
+                    {"", "/service-group/travel-experiences", "https://otravel-bleg.onrender.com/", "https://otravel-bleg.onrender.com/services#groups"},
+                ),
+                "otravel-invoices-receipts": (
+                    "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
+                    {"", "/service-group/travel-experiences", "https://otravel-bleg.onrender.com/", "https://otravel-bleg.onrender.com/account"},
+                ),
+            }
+            for service_slug, (destination, old_targets) in known_route_upgrades.items():
+                row = conn.execute("SELECT target_url FROM hub_services WHERE slug=?", (service_slug,)).fetchone()
+                if row and str(row["target_url"] or "").strip() in old_targets:
+                    conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                                 (destination, now, service_slug))
+            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v5_done','1')")
         seed_default_ad(conn, now)
         conn.commit()
 
@@ -735,45 +861,197 @@ def get_service_by_slug(slug, visible_only=True):
     return item
 
 
-# Direct destination resolver: prefer an exact service target. When one is not known,
-# send visitors to the live parent platform rather than to an empty hub-only page.
-# High-intent doors with known routes are repaired by the one-time migration above.
-PLATFORM_ENTRY_SLUGS = {
-    "otravel-tours-travel-booking", "luxhari-fashion-modelling", "trt-furniture-lighting",
-    "oride-rides-transport", "denmart-online-shopping", "oedge-digital-services",
-    "toror-websites-digital-products", "toror-tomorrow-music-apk",
-    "toror-tomorrow-messages-apk", "toror-adshield-apk",
-}
+# Destination routing. External URLs are returned as the final anchor href, not as an
+# intermediate Hub detail page. The only intentional internal destinations are real Hub
+# workflows (project requests and its own published-download library).
+def _published_app_download_target(service_slug):
+    terms = APP_DOWNLOAD_TERMS.get(service_slug)
+    if not terms:
+        return ""
+    try:
+        downloads = get_public_downloads()
+    except Exception:
+        return ""
+    normalise = lambda value: re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+    # Prefer exact title matches. Only an Android installer or an explicit external download
+    # URL is eligible; source ZIPs are deliberately not represented as installable APKs.
+    ranked = []
+    for item in downloads:
+        title = normalise(item.get("title"))
+        keywords = normalise(item.get("keywords"))
+        platform = normalise(item.get("platform"))
+        filename = str(item.get("original_filename") or item.get("stored_filename") or "")
+        external = str(item.get("external_url") or "").strip()
+        extension = Path(urlparse(external).path if external else filename).suffix.casefold()
+        title_match = any(term in title for term in terms)
+        keyword_match = any(term in keywords for term in terms)
+        installable = extension in {".apk", ".aab"}
+        explicit_external = bool(external and (installable or ("android" in platform and title_match)))
+        if (title_match or keyword_match) and (installable or explicit_external):
+            score = (100 if title_match else 0) + (25 if installable else 0) + (10 if "android" in platform else 0)
+            ranked.append((score, str(item.get("slug") or "")))
+    if ranked:
+        ranked.sort(reverse=True)
+        return "/download-file/" + quote(ranked[0][1], safe="")
+    return ""
 
 
 def service_target(service):
-    target = str(service.get("target_url") or "").strip()
-    if target:
-        return target
-    # An item tied to a connected platform should still go to that live website if
-    # a feature-level deep link has not been configured. Never strand it on the hub.
-    parent_url = str(service.get("parent_url") or "").strip()
-    if parent_url and service.get("parent_visible", 1):
-        return parent_url
     slug = str(service.get("slug") or "").strip().lower()
-    if slug in PLATFORM_ENTRY_SLUGS and parent_url and service.get("parent_visible", 1):
+    target = str(service.get("target_url") or "").strip()
+
+    # For Toror app listings, jump straight to the published installable release when one
+    # exists. If no APK/AAB is published yet, show the matching first-party download catalogue.
+    if slug in APP_DOWNLOAD_TERMS:
+        download_target = _published_app_download_target(slug)
+        if download_target:
+            return download_target
+        if target.startswith("https://") or target.startswith("http://"):
+            return target
+        term = {
+            "toror-tomorrow-music-apk": "Tomorrow%20Music",
+            "toror-tomorrow-messages-apk": "Tomorrow%20Messages",
+            "toror-adshield-apk": "AdShield",
+        }[slug]
+        return "/downloads?q=" + term
+
+    # A valid administrator-provided external URL is authoritative after deployment.
+    if target.lower().startswith(("https://", "http://")):
+        return target
+
+    # First-party requests and the general download catalogue are real Hub features.
+    if slug in FIRST_PARTY_SERVICE_DESTINATIONS:
+        return target if target.startswith("/") and not target.startswith("//") else FIRST_PARTY_SERVICE_DESTINATIONS[slug]
+
+    # Known external service doors take precedence over stale legacy internal targets such
+    # as /service-group/... that previously caused visitors to loop around the Hub.
+    if slug in SERVICE_DIRECT_DESTINATIONS:
+        return SERVICE_DIRECT_DESTINATIONS[slug]
+
+    # Route every city-specific Airbnb/short-stay entry to the actual property platform.
+    if slug.startswith("airbnb-stays-"):
+        return "https://house-hunter-ba7e.onrender.com/"
+
+    # A leftover internal link for an externally provided service must never become a dead end.
+    if target.startswith("/") and not target.startswith("//"):
+        # Honor recognised first-party routes only; otherwise fall through to the owning platform.
+        if slug == "hub-build-website-app":
+            return "/build-a-website-or-app"
+        if slug == "toror-apk-android-downloads":
+            return "/downloads"
+        if slug == "toror-websites-digital-products":
+            return "/build-a-website-or-app"
+
+    parent_url = str(service.get("parent_url") or "").strip()
+    if parent_url.lower().startswith(("https://", "http://")):
         return parent_url
-    return ""
+
+    group = str(service.get("group_name") or "").strip()
+    if group in SERVICE_GROUP_DESTINATIONS:
+        return SERVICE_GROUP_DESTINATIONS[group]
+    # Fail useful rather than pointing at a service-detail page with no destination.
+    return "/build-a-website-or-app"
+
+SEARCH_TOKEN_ALIASES = {
+    # Everyday language and common alternative names used in Kenya's search queries.
+    "flat": ("flats", "apartment", "apartments", "rental"),
+    "flats": ("flat", "apartment", "apartments", "rental"),
+    "bedsitter": ("bedsitters", "studio", "studio apartment", "rental"),
+    "bedsitters": ("bedsitter", "studio", "studio apartment", "rental"),
+    "plot": ("plots", "land", "property"),
+    "plots": ("plot", "land", "property"),
+    "home": ("house", "houses", "property", "real estate"),
+    "homes": ("house", "houses", "property", "real estate"),
+    "couch": ("sofa", "sofas", "couches", "living room"),
+    "couches": ("sofa", "sofas", "couch", "living room"),
+    "sofa": ("sofas", "couch", "couches", "living room"),
+    "centre": ("center", "coffee table", "coffee tables"),
+    "center": ("centre", "coffee table", "coffee tables"),
+    "bike": ("motorbike", "motorcycle", "boda boda", "o ride"),
+    "motorbike": ("bike", "motorcycle", "boda boda", "o ride"),
+    "boda": ("boda boda", "bike", "motorcycle", "o ride"),
+    "taxi": ("car ride", "driver", "o drive", "transport"),
+    "uber": ("taxi", "car ride", "driver", "o drive"),
+    "mover": ("movers", "moving", "relocation", "house moving"),
+    "movers": ("mover", "moving", "relocation", "house moving"),
+    "relocate": ("relocation", "movers", "moving"),
+    "ticket": ("tickets", "ticketing", "event pass", "qr ticket"),
+    "tickets": ("ticket", "ticketing", "event pass", "qr ticket"),
+    "retreat": ("retreats", "group travel", "team day", "fun travel"),
+    "retreats": ("retreat", "group travel", "team day", "fun travel"),
+    "holiday": ("holidays", "travel", "short stay", "accommodation"),
+    "holidays": ("holiday", "travel", "short stay", "accommodation"),
+    "lodging": ("accommodation", "hotel", "guest stay", "short stay"),
+    "clothes": ("clothing", "fashion", "apparel", "wear"),
+    "apparel": ("clothing", "fashion", "clothes"),
+    "fabric": ("fabrics", "textile", "textiles", "materials"),
+    "textile": ("textiles", "fabric", "fabrics", "materials"),
+    "bag": ("bags", "handbag", "handbags", "accessories"),
+    "handbag": ("handbags", "bags", "accessories"),
+    "apk": ("apks", "android", "android app", "app download"),
+    "apks": ("apk", "android", "android app", "app download"),
+    "application": ("app", "mobile app", "android app", "software"),
+    "applications": ("apps", "mobile apps", "android apps", "software"),
+    "invoice": ("invoices", "receipt", "receipts", "billing"),
+    "receipt": ("receipts", "invoice", "invoices", "billing"),
+    "warehouse": ("warehouses", "industrial space", "storage property"),
+    "furniture": ("sofa", "couch", "coffee table", "dining table", "wardrobe", "office chair", "home decor"),
+    "table": ("coffee table", "centre table", "center table", "dining table", "furniture"),
+    "wardrobe": ("wardrobes", "closet", "storage", "bedroom furniture"),
+    "cabinet": ("cabinets", "storage", "wardrobe", "furniture"),
+    "lamp": ("lighting", "lights", "pendant light", "chandelier", "TRT"),
+    "light": ("lighting", "lamp", "lights", "pendant light", "TRT"),
+    "rent": ("rental", "rentals", "house for rent", "apartment", "bedsitter"),
+    "rental": ("rentals", "rent", "house for rent", "apartment", "bedsitter"),
+    "house": ("houses", "home", "homes", "property", "real estate", "rental"),
+    "apartment": ("apartments", "flat", "flats", "bedsitter", "rental"),
+    "land": ("plot", "plots", "acreage", "property for sale"),
+    "accommodation": ("hotel", "hotels", "guest house", "short stay", "holiday rental"),
+    "hotel": ("hotels", "guest house", "lodge", "accommodation", "short stay"),
+    "wedding": ("weddings", "private events", "event planning", "ticketing"),
+    "event": ("events", "ticketing", "tickets", "event pass", "private events"),
+    "celebration": ("celebrations", "birthday", "wedding", "private event"),
+    "roadtrip": ("road trip", "road trips", "travel", "tour", "group retreat"),
+    "trip": ("trips", "travel", "tour", "holiday", "retreat"),
+    "jewelry": ("jewellery", "accessories", "necklace", "earrings", "bags"),
+    "jewellery": ("jewelry", "accessories", "necklace", "earrings", "bags"),
+    "dress": ("dresses", "clothing", "fashion", "apparel"),
+    "clothing": ("clothes", "fashion", "apparel", "fabric"),
+    "shop": ("shopping", "online shopping", "store", "groceries", "Denmart"),
+    "groceries": ("shopping", "supermarket", "online shopping", "Denmart"),
+    "courier": ("delivery", "errands", "parcel", "Oedge"),
+    "parcel": ("delivery", "courier", "errands", "Oedge"),
+    "developer": ("website developer", "web development", "app developer", "software", "Toror"),
+    "website": ("websites", "web development", "website design", "app development"),
+    "software": ("apps", "digital products", "APK", "Android", "web app"),
+}
 
 
 def service_matches(service, query):
     q = query.casefold().strip()
-    fields = [service.get("name", ""), service.get("group_name", ""), service.get("description", ""), service.get("keywords", "")]
+    fields = [service.get("name", ""), service.get("slug", ""), service.get("group_name", ""),
+              service.get("parent_name", ""), service.get("description", ""), service.get("keywords", "")]
     hay = " ".join(str(x or "") for x in fields).casefold()
     tokens = [t for t in re.findall(r"[a-z0-9]+", q) if len(t) > 1]
+    expanded_tokens = list(tokens)
+    # Expand a query into common synonymous terms so visitors do not need the exact
+    # catalogue wording to find the right connected service.
+    for token in tokens:
+        for alias in SEARCH_TOKEN_ALIASES.get(token, ()):
+            for alias_token in re.findall(r"[a-z0-9]+", alias.casefold()):
+                if len(alias_token) > 1 and alias_token not in expanded_tokens:
+                    expanded_tokens.append(alias_token)
     score = 0
     name = str(service.get("name", "")).casefold()
     if q == name: score += 15
     elif q in name: score += 10
     if q in str(service.get("keywords", "")).casefold(): score += 6
     if q in str(service.get("group_name", "")).casefold(): score += 4
-    for token in tokens:
-        if token in hay: score += 2
+    matched = set()
+    for token in expanded_tokens:
+        if token in hay and token not in matched:
+            matched.add(token)
+            score += 2 if token in tokens else 1
     return score
 
 
@@ -866,8 +1144,19 @@ def site_matches(site, query):
     elif any(query_l in keyword or keyword in query_l for keyword in keywords):
         score += 5
     terms = [t for t in re.findall(r"[a-z0-9]+", query_l) if len(t) > 2]
+    expanded = list(terms)
+    for term in terms:
+        for alias in SEARCH_TOKEN_ALIASES.get(term, ()):
+            for alias_term in re.findall(r"[a-z0-9]+", alias.casefold()):
+                if len(alias_term) > 2 and alias_term not in expanded:
+                    expanded.append(alias_term)
     haystack = " ".join([title, categories, description, " ".join(keywords)])
     for term in terms:
+        if term in haystack:
+            score += 1
+    # Synonym-only matches can reveal a platform even when its official name differs
+    # from the customer's everyday wording (for example, boda -> motorcycle transport).
+    for term in expanded[len(terms):]:
         if term in haystack:
             score += 1
     return score
@@ -1219,7 +1508,8 @@ def service_detail(slug):
     if wa_digits.startswith("00"): wa_digits = wa_digits[2:]
     elif len(wa_digits) == 10 and wa_digits.startswith(("07", "01")): wa_digits = "254" + wa_digits[1:]
     service_whatsapp_url = ("https://wa.me/" + wa_digits + "?text=" + quote_plus(f"Hello, I found {service['name']} on {brand}. Please help me with the correct link or next steps.")) if len(wa_digits) >= 10 else ""
-    meta = service["description"][:300] + " Search keywords: " + service["keywords"][:150]
+    keyword_phrase = ", ".join([x.strip() for x in str(service.get("keywords") or "").split(",") if x.strip()][:4])
+    meta = (service["description"].strip() + (f" Find {keyword_phrase} in Kenya." if keyword_phrase else " Explore this connected service in Kenya."))[:300]
     return render_template("service_detail.html", service=service, target=target, siblings=siblings,
                            service_whatsapp_url=service_whatsapp_url, title=f"{service['name']} in Kenya",
                            meta_description=meta, robots="index,follow")
@@ -1246,7 +1536,8 @@ def downloads_page():
         terms = [term for term in re.findall(r"[a-z0-9]+", query.casefold()) if len(term) > 1]
         items = [item for item in items if all(term in " ".join(str(item.get(field, "")) for field in ("title", "description", "platform", "version", "keywords")).casefold() for term in terms)]
     return render_template("downloads.html", items=items, query=query, title=(f"{query} downloads" if query else "Toror apps, APKs and digital downloads"),
-                           meta_description="Browse Android APKs and other digital downloads published through the Toror network.", robots="index,follow")
+                           meta_description="Browse Android APKs, app releases and digital downloads published by Toror Technology & Innovations Ltd. in Kenya.",
+                           robots="noindex,follow" if query or not items else "index,follow")
 
 
 @app.route("/downloads/<slug>")

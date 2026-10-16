@@ -1,0 +1,572 @@
+{
+  "service_count": 63,
+  "services": [
+    {
+      "name": "Tour & travel booking",
+      "slug": "otravel-tours-travel-booking",
+      "group": "Travel & experiences",
+      "description": "Explore trips, tours and travel booking through OTravel.",
+      "parent": "OTravel",
+      "destination": "https://otravel-bleg.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Group retreats & fun travel",
+      "slug": "otravel-group-retreats",
+      "group": "Travel & experiences",
+      "description": "Find group escapes, retreats and fun travel experiences.",
+      "parent": "OTravel",
+      "destination": "https://otravel-bleg.onrender.com/group-retreats",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Ticketing & event passes",
+      "slug": "otravel-ticketing",
+      "group": "Travel & experiences",
+      "description": "A separate doorway for ticketing, event tickets and passes.",
+      "parent": "OTravel",
+      "destination": "https://otravel-bleg.onrender.com/register?next=/ticketing",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Invoices & receipts",
+      "slug": "otravel-invoices-receipts",
+      "group": "Travel & experiences",
+      "description": "A dedicated entry for invoice and receipt services associated with OTravel.",
+      "parent": "OTravel",
+      "destination": "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Private events",
+      "slug": "otravel-private-events",
+      "group": "Travel & experiences",
+      "description": "Explore planning and coordination for private events and experiences.",
+      "parent": "OTravel",
+      "destination": "https://otravel-bleg.onrender.com/services#events",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Fashion & modelling",
+      "slug": "luxhari-fashion-modelling",
+      "group": "Fashion & lifestyle",
+      "description": "Explore Luxhari's fashion, modelling and style destination.",
+      "parent": "Luxhari",
+      "destination": "https://luxhari.onrender.com/?category=Clothing",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Fabrics & clothing materials",
+      "slug": "luxhari-fabrics-materials",
+      "group": "Fashion & lifestyle",
+      "description": "A focused doorway for fabrics, cloth and clothing-material enquiries.",
+      "parent": "Luxhari",
+      "destination": "https://luxhari.onrender.com/?category=Materials",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Accessories & jewellery",
+      "slug": "luxhari-accessories-jewellery",
+      "group": "Fashion & lifestyle",
+      "description": "Discover accessories and jewellery through the Luxhari network.",
+      "parent": "Luxhari",
+      "destination": "https://luxhari.onrender.com/?category=Accessories",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Bags & handbags",
+      "slug": "luxhari-bags-handbags",
+      "group": "Fashion & lifestyle",
+      "description": "A direct catalogue entry for bags, handbags and carry accessories.",
+      "parent": "Luxhari",
+      "destination": "https://luxhari.onrender.com/?category=Accessories",
+      "kind": "External direct route"
+    },
+    {
+      "name": "TRT furniture & lighting",
+      "slug": "trt-furniture-lighting",
+      "group": "Furniture, building & interiors",
+      "description": "Open TRT's furniture, lighting and interior-products destination.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Sofas & living room",
+      "slug": "trt-sofas-living",
+      "group": "Furniture, building & interiors",
+      "description": "Furniture and styling for living rooms, lounges and sofa spaces.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Coffee tables",
+      "slug": "trt-coffee-tables",
+      "group": "Furniture, building & interiors",
+      "description": "Find coffee tables and matching living-room pieces.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Dining furniture",
+      "slug": "trt-dining-furniture",
+      "group": "Furniture, building & interiors",
+      "description": "Dining tables, dining chairs and furniture for shared meals.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Bedroom furniture",
+      "slug": "trt-bedroom-furniture",
+      "group": "Furniture, building & interiors",
+      "description": "Explore furniture ideas and products for the bedroom.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Wardrobes & storage",
+      "slug": "trt-wardrobes-storage",
+      "group": "Furniture, building & interiors",
+      "description": "Wardrobes and storage solutions for homes and workspaces.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Mirrors & console tables",
+      "slug": "trt-mirrors-console",
+      "group": "Furniture, building & interiors",
+      "description": "Discover mirrors, console tables and statement interior pieces.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Lighting",
+      "slug": "trt-lighting",
+      "group": "Furniture, building & interiors",
+      "description": "A dedicated entry for lighting solutions and decorative lights.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Home decor",
+      "slug": "trt-home-decor",
+      "group": "Furniture, building & interiors",
+      "description": "Decorative details and accents for residential spaces.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Office furniture",
+      "slug": "trt-office-furniture",
+      "group": "Furniture, building & interiors",
+      "description": "Furniture for offices, workrooms and professional spaces.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Doors & glass",
+      "slug": "trt-doors-glass",
+      "group": "Furniture, building & interiors",
+      "description": "A dedicated doorway for doors, glazing and glass-work enquiries.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Tiles & surfaces",
+      "slug": "trt-tiles-surfaces",
+      "group": "Furniture, building & interiors",
+      "description": "Explore tiles and surface finishes for building projects.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Outdoor living",
+      "slug": "trt-outdoor-living",
+      "group": "Furniture, building & interiors",
+      "description": "Furniture and style ideas for gardens, patios and outdoor areas.",
+      "parent": "TRT",
+      "destination": "https://trt-isfa.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Pata Mahali — property discovery",
+      "slug": "pata-mahali-property-discovery",
+      "group": "Property & places",
+      "description": "A central doorway for finding or listing homes, short stays, commercial spaces, land and properties to buy.",
+      "parent": "",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "List your property",
+      "slug": "pata-mahali-list-property",
+      "group": "Property & places",
+      "description": "A dedicated doorway for owners and agents who want to list a property.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Find a place",
+      "slug": "pata-mahali-find-a-place",
+      "group": "Property & places",
+      "description": "Start searching for a place to rent, buy, stay or use for business.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Airbnb & holiday stays in Kenya",
+      "slug": "pata-mahali-short-stays-kenya",
+      "group": "Property & places",
+      "description": "Explore short stays and holiday accommodation across Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Houses & apartments for rent",
+      "slug": "pata-mahali-rentals-houses-apartments",
+      "group": "Property & places",
+      "description": "Search for rental houses, apartments and homes around Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Shops & offices",
+      "slug": "pata-mahali-shops-offices",
+      "group": "Property & places",
+      "description": "Find or list commercial space including shops and offices.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Hotels & guest stays",
+      "slug": "pata-mahali-hotels-guest-stays",
+      "group": "Property & places",
+      "description": "A dedicated entry for hotels, guesthouses and overnight stays.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Warehouses & industrial space",
+      "slug": "pata-mahali-warehouses",
+      "group": "Property & places",
+      "description": "Find warehouse and industrial spaces for rent or purchase.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Land & plots for sale",
+      "slug": "pata-mahali-land-plots",
+      "group": "Property & places",
+      "description": "A focused doorway for land, plots and development sites.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Property for sale",
+      "slug": "pata-mahali-property-for-sale",
+      "group": "Property & places",
+      "description": "Explore homes, commercial buildings and other properties for sale.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "O Ride — rides & transport",
+      "slug": "oride-rides-transport",
+      "group": "Mobility & logistics",
+      "description": "Start here to choose a motorcycle ride, a car ride, moving support or local delivery and errands.",
+      "parent": "",
+      "destination": "https://oedge.onrender.com/services",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Book a motorcycle ride",
+      "slug": "oride-motorcycle-rides",
+      "group": "Mobility & logistics",
+      "description": "A direct discovery page for motorcycle and biker ride requests.",
+      "parent": "",
+      "destination": "https://oedge.onrender.com/services",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Book a car ride",
+      "slug": "oride-car-rides",
+      "group": "Mobility & logistics",
+      "description": "A separate doorway for booking a car ride.",
+      "parent": "",
+      "destination": "https://oedge.onrender.com/services",
+      "kind": "External direct route"
+    },
+    {
+      "name": "O Movers — moving & relocation",
+      "slug": "omovers-moving-relocation",
+      "group": "Mobility & logistics",
+      "description": "A dedicated entry for home, office and furniture moving services.",
+      "parent": "",
+      "destination": "https://oedge.onrender.com/services",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Delivery & errands",
+      "slug": "oride-delivery-errands",
+      "group": "Mobility & logistics",
+      "description": "A separate discovery page for delivery and local errand services.",
+      "parent": "",
+      "destination": "https://oedge.onrender.com/services",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Denmart online shopping",
+      "slug": "denmart-online-shopping",
+      "group": "Shopping & digital tools",
+      "description": "Shop online and explore available products and ordering at Denmart.",
+      "parent": "Denmart",
+      "destination": "https://denmart.co.ke/",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Oedge digital services",
+      "slug": "oedge-digital-services",
+      "group": "Shopping & digital tools",
+      "description": "Explore Oedge's digital services and connected online tools.",
+      "parent": "Oedge",
+      "destination": "https://oedge.onrender.com/services",
+      "kind": "External direct route"
+    },
+    {
+      "name": "Build a website or app",
+      "slug": "hub-build-website-app",
+      "group": "Shopping & digital tools",
+      "description": "Brief your website, online store, web app or mobile app and get a scope-based estimate.",
+      "parent": "",
+      "destination": "/build-a-website-or-app",
+      "kind": "First-party workflow"
+    },
+    {
+      "name": "Toror APK & Android downloads",
+      "slug": "toror-apk-android-downloads",
+      "group": "Shopping & digital tools",
+      "description": "Find Android APKs and other downloadable digital tools published through the hub.",
+      "parent": "",
+      "destination": "/downloads",
+      "kind": "First-party workflow"
+    },
+    {
+      "name": "Toror websites & digital products",
+      "slug": "toror-websites-digital-products",
+      "group": "Shopping & digital tools",
+      "description": "Discover websites, tools and software products from the Toror network.",
+      "parent": "",
+      "destination": "/build-a-website-or-app",
+      "kind": "First-party workflow"
+    },
+    {
+      "name": "Tomorrow Music for Android",
+      "slug": "toror-tomorrow-music-apk",
+      "group": "Toror apps & downloads",
+      "description": "Find Android releases and update files for Tomorrow Music when they are published.",
+      "parent": "",
+      "destination": "/downloads?q=Tomorrow%20Music",
+      "kind": "Published installer if available; filtered library otherwise"
+    },
+    {
+      "name": "Tomorrow Messages for Android",
+      "slug": "toror-tomorrow-messages-apk",
+      "group": "Toror apps & downloads",
+      "description": "Find Android releases and update files for Tomorrow Messages when they are published.",
+      "parent": "",
+      "destination": "/downloads?q=Tomorrow%20Messages",
+      "kind": "Published installer if available; filtered library otherwise"
+    },
+    {
+      "name": "AdShield for Android",
+      "slug": "toror-adshield-apk",
+      "group": "Toror apps & downloads",
+      "description": "Find published AdShield Android releases and version notes when available.",
+      "parent": "",
+      "destination": "/downloads?q=AdShield",
+      "kind": "Published installer if available; filtered library otherwise"
+    },
+    {
+      "name": "Airbnb stays in Nairobi",
+      "slug": "airbnb-stays-nairobi",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Nairobi, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Mombasa",
+      "slug": "airbnb-stays-mombasa",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Mombasa, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Kisumu",
+      "slug": "airbnb-stays-kisumu",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Kisumu, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Eldoret",
+      "slug": "airbnb-stays-eldoret",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Eldoret, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Nakuru",
+      "slug": "airbnb-stays-nakuru",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Nakuru, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Naivasha",
+      "slug": "airbnb-stays-naivasha",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Naivasha, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Kitale",
+      "slug": "airbnb-stays-kitale",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Kitale, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Bungoma",
+      "slug": "airbnb-stays-bungoma",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Bungoma, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Thika",
+      "slug": "airbnb-stays-thika",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Thika, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Nyeri",
+      "slug": "airbnb-stays-nyeri",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Nyeri, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Embu",
+      "slug": "airbnb-stays-embu",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Embu, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Machakos",
+      "slug": "airbnb-stays-machakos",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Machakos, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Kitengela",
+      "slug": "airbnb-stays-kitengela",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Kitengela, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Mlolongo",
+      "slug": "airbnb-stays-mlolongo",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Mlolongo, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Syokimau",
+      "slug": "airbnb-stays-syokimau",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Syokimau, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Taita Taveta",
+      "slug": "airbnb-stays-taita-taveta",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Taita Taveta, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Lamu",
+      "slug": "airbnb-stays-lamu",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Lamu, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    },
+    {
+      "name": "Airbnb stays in Turkana",
+      "slug": "airbnb-stays-turkana",
+      "group": "Property & places",
+      "description": "A dedicated search doorway for Airbnb-style short stays and holiday accommodation in Turkana, Kenya.",
+      "parent": "House Hunter",
+      "destination": "https://house-hunter-ba7e.onrender.com/",
+      "kind": "External property platform"
+    }
+  ]
+}

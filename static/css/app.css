@@ -741,7 +741,7 @@ body.public-mode{font-family:'DM Sans',system-ui,-apple-system,BlinkMacSystemFon
   .platform-link { min-height: 81px; align-items: center; padding: 12px 10px; gap: 9px; border-radius: 10px; }
   .platform-link-icon { width: 35px; height: 35px; flex-basis: 35px; }
   .platform-link-icon .line-icon { width: 21px !important; height: 21px !important; }
-  .platform-link strong { font-size: 13px; line-height: 1.35; ove2flow-wrap: anywhere; }
+  .platform-link strong { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
   .platform-link small { margin-top: 4px; font-size: 11px; line-height: 1.4; }
   .platform-open { font-size: 16px; }
   .motion-ad { min-height: 260px; padding: 26px 22px; }
@@ -968,3 +968,28 @@ body.public-mode .site-footer strong { color: #17212f; }
   body.public-mode .hub-popular-searches a { font-size: 13px; color: #17212f; }
   body.public-mode .gateway-footer { color: #53657a; }
 }
+
+
+/* Final destination/download polish: visible ink and controls never overlap copy. */
+body.public-mode .download-direct-title { display:block; color:#17212f; text-decoration:none; }
+body.public-mode .download-direct-title:hover { text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; }
+body.public-mode .download-release-details { display:inline-flex; margin-top:5px; color:#214f83; font-size:12px; font-weight:750; text-decoration:underline; text-underline-offset:3px; }
+body.public-mode .download-open { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:10px 12px; border:1px solid #214f83; border-radius:8px; background:#214f83; color:#fff; text-decoration:none; font-size:13px; font-weight:800; }
+body.public-mode .download-open:hover { background:#173d68; color:#fff; }
+@media (max-width:620px) {
+  body.public-mode .service-button-item { display:grid; grid-template-columns:38px minmax(0,1fr); grid-template-areas:"icon copy" "icon action"; align-items:start; gap:7px 10px; min-height:106px; padding:13px 11px; }
+  body.public-mode .service-button-icon { grid-area:icon; width:34px; height:34px; flex-basis:34px; }
+  body.public-mode .service-button-copy { grid-area:copy; padding:0; min-width:0; }
+  body.public-mode .service-button-copy strong { font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
+  body.public-mode .service-button-copy small { font-size:12px; line-height:1.5; }
+  body.public-mode .service-button-action { grid-area:action; position:static; justify-self:end; align-self:end; margin-top:2px; padding:5px 8px; font-size:12px; border-radius:6px; }
+  body.public-mode .download-list-item { align-items:flex-start; gap:10px; padding:13px; }
+  body.public-mode .download-copy { min-width:0; }
+  body.public-mode .download-open { padding:9px 10px; min-height:42px; font-size:12px; white-space:nowrap; }
+}
+
+/* The whole published-download card is one direct action. */
+body.public-mode .download-list-item { cursor:pointer; }
+body.public-mode .download-list-item .download-copy strong { color:#17212f; }
+body.public-mode .download-list-item .download-open { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:10px 12px; border:1px solid #214f83; border-radius:8px; background:#214f83; color:#fff; text-decoration:none; font-size:13px; font-weight:800; }
+body.public-mode .download-list-item:hover .download-open { background:#173d68; border-color:#173d68; color:#fff; }
