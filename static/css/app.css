@@ -741,7 +741,7 @@ body.public-mode{font-family:'DM Sans',system-ui,-apple-system,BlinkMacSystemFon
   .platform-link { min-height: 81px; align-items: center; padding: 12px 10px; gap: 9px; border-radius: 10px; }
   .platform-link-icon { width: 35px; height: 35px; flex-basis: 35px; }
   .platform-link-icon .line-icon { width: 21px !important; height: 21px !important; }
-  .platform-link strong { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+  .platform-link strong { font-size: 13px; line-height: 1.35; ove2flow-wrap: anywhere; }
   .platform-link small { margin-top: 4px; font-size: 11px; line-height: 1.4; }
   .platform-open { font-size: 16px; }
   .motion-ad { min-height: 260px; padding: 26px 22px; }
@@ -864,4 +864,107 @@ body.public-mode{font-family:'DM Sans',system-ui,-apple-system,BlinkMacSystemFon
   .public-mode .hub-popular-searches a,.public-mode .hub-group-shortcuts a { font-size:13px; min-height:40px; padding:9px 12px; }
   .public-mode .hub-builder-shortcut a { font-size:14px; min-height:46px; }
   .public-mode .gateway-footer { align-items:flex-start; padding:21px 0; font-size:12px; }
+}
+
+
+/* FINAL CONTRAST PATCH — the public Discovery Hub is deliberately white/paper-light
+   regardless of the visitor's device dark-mode preference. Dark promotional cards keep
+   their own explicit foreground colours, while directory cards and form surfaces stay legible. */
+body.public-mode {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --ink: #17212f;
+  --muted: #53657a;
+  --primary: #214f83;
+  --primary-ink: #ffffff;
+  --accent: #dce9f8;
+  --accent-ink: #1b426e;
+  --line: #dce3ed;
+  --soft: #f3f7fc;
+  --hero: #f7f9fc;
+  --warm: #2d73b9;
+  color-scheme: light;
+  color: #17212f;
+  background: #ffffff;
+}
+body.public-mode .app-layout,
+body.public-mode .workarea,
+body.public-mode .main-content { background: #ffffff; color: #17212f; }
+body.public-mode .sidebar,
+body.public-mode .topbar,
+body.public-mode .hub-search,
+body.public-mode .service-button-item,
+body.public-mode .platform-link,
+body.public-mode .download-list-item,
+body.public-mode .download-detail,
+body.public-mode .project-form,
+body.public-mode .service-detail-explainer aside,
+body.public-mode .share-gateway,
+body.public-mode .public-qr { background-color: #ffffff; }
+body.public-mode .sidebar { color: #17212f; border-right-color: #dce3ed; }
+body.public-mode .side-link,
+body.public-mode .topbar-link,
+body.public-mode .mobile-brand,
+body.public-mode .brand-words strong,
+body.public-mode .service-button-copy strong,
+body.public-mode .platform-link strong,
+body.public-mode .download-copy strong,
+body.public-mode .service-detail-hero h1,
+body.public-mode .service-detail-summary,
+body.public-mode .service-detail-explainer h2,
+body.public-mode .share-gateway h2,
+body.public-mode .share-gateway p,
+body.public-mode .project-form-heading h2,
+body.public-mode .directory-page-intro h1,
+body.public-mode .directory-page-intro > p,
+body.public-mode .gateway-footer,
+body.public-mode .gateway-footer a,
+body.public-mode .public-qr { color: #17212f; }
+body.public-mode .service-button-copy small,
+body.public-mode .platform-link small,
+body.public-mode .download-copy p,
+body.public-mode .sidebar-bottom p,
+body.public-mode .brand-words small,
+body.public-mode .service-detail-platform,
+body.public-mode .service-detail-explainer p,
+body.public-mode .breadcrumb,
+body.public-mode .directory-results-heading,
+body.public-mode .directory-disclaimer,
+body.public-mode .share-eyebrow { color: #53657a; }
+body.public-mode .gateway-footer { border-top-color: #dce3ed; }
+body.public-mode .gateway-footer a,
+body.public-mode .service-detail-platform a,
+body.public-mode .service-breadcrumb a,
+body.public-mode .download-search-form a { color: #214f83; }
+body.public-mode .public-mode .sidebar-bottom,
+body.public-mode .sidebar-bottom { background: #f3f7fc; border-color: #dce3ed; }
+body.public-mode .service-button-item,
+body.public-mode .platform-link,
+body.public-mode .download-list-item { border-color: #dce3ed; }
+body.public-mode .service-button-item:hover,
+body.public-mode .platform-link:hover,
+body.public-mode .download-list-item:hover { background: #f7faff; border-color: #a9c2df; }
+body.public-mode .service-button-action,
+body.public-mode .platform-open,
+body.public-mode .download-open { color: #214f83; }
+body.public-mode .share-gateway-actions button { background: #214f83; border-color: #214f83; color: #ffffff; }
+body.public-mode .share-gateway-actions .share-copy-button { background: #ffffff; border-color: #dce3ed; color: #214f83; }
+body.public-mode .public-qr { border-color: #dce3ed; }
+body.public-mode .sidebar-bottom strong { color: #17212f; }
+body.public-mode .sidebar-cta { color: #214f83; }
+body.public-mode .site-footer { background: #ffffff; border-top-color: #dce3ed; color: #53657a; }
+body.public-mode .site-footer strong { color: #17212f; }
+@media (max-width: 620px) {
+  body.public-mode .sidebar { background: #ffffff; color: #17212f; }
+  body.public-mode .side-link { color: #253c57; }
+  body.public-mode .side-link:hover,
+  body.public-mode .side-link.active { background: #f3f7fc; color: #214f83; }
+  body.public-mode .sidebar-bottom { background: #f3f7fc; }
+  body.public-mode .service-button-item { min-height: 82px; padding: 14px 13px; }
+  body.public-mode .service-button-copy strong { font-size: 15px; }
+  body.public-mode .service-button-copy small { font-size: 13px; line-height: 1.55; }
+  body.public-mode .service-button-action { font-size: 12px; }
+  body.public-mode .hub-group-shortcuts a,
+  body.public-mode .hub-popular-searches a { font-size: 13px; color: #17212f; }
+  body.public-mode .gateway-footer { color: #53657a; }
 }

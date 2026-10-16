@@ -501,10 +501,44 @@ def initialise_database():
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
         seed_service_catalog(conn, now)
-        # These two top-level doors are useful landing pages inside the hub itself.
-        # Only fill missing destinations, so an administrator's real URL is never overwritten.
-        conn.execute("UPDATE hub_services SET parent_site_id=NULL,target_url='/service-group/property-places',updated_at=? WHERE slug='pata-mahali-property-discovery' AND COALESCE(trim(target_url),'')=''", (now,))
-        conn.execute("UPDATE hub_services SET target_url='/service-group/mobility-logistics',updated_at=? WHERE slug='oride-rides-transport' AND COALESCE(trim(target_url),'')=''", (now,))
+        # One-time destination repair for the live service directory. These are verified
+        # service endpoints (not just parent homepages), so visitor cards can open the
+        # intended destination in one click. Run once to repair older persistent databases;
+        # after migration, administrator-edited destinations remain authoritative.
+        destination_migration = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v2_done'").fetchone()
+        if not destination_migration:
+            direct_destinations = {
+                # OTravel / Open Road Adventures
+                "otravel-tours-travel-booking": "https://otravel-bleg.onrender.com",
+                "otravel-group-retreats": "https://otravel-bleg.onrender.com/group-retreats",
+                "otravel-ticketing": "https://otravel-bleg.onrender.com/register?next=/ticketing",
+                "otravel-invoices-receipts": "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
+                "otravel-private-events": "https://otravel-bleg.onrender.com/services",
+                # Oedge hosts O-Ride, O-Drive and O-Movers on its service screen.
+                "oride-rides-transport": "https://oedge.onrender.com/services",
+                "oride-motorcycle-rides": "https://oedge.onrender.com/services",
+                "oride-car-rides": "https://oedge.onrender.com/services",
+                "omovers-moving-relocation": "https://oedge.onrender.com/services",
+                "oride-delivery-errands": "https://oedge.onrender.com/services",
+                "oedge-digital-services": "https://oedge.onrender.com/services",
+                # Property-related tasks open the connected property platform.
+                "pata-mahali-property-discovery": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-list-property": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-find-a-place": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-short-stays-kenya": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-rentals-houses-apartments": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-shops-offices": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-hotels-guest-stays": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-warehouses": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-land-plots": "https://house-hunter-ba7e.onrender.com",
+                "pata-mahali-property-for-sale": "https://house-hunter-ba7e.onrender.com",
+            }
+            for service_slug, destination in direct_destinations.items():
+                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
+                             (destination, now, service_slug))
+            # Match the car-booking label to the connected platform's real service name.
+            conn.execute("UPDATE hub_services SET name='O-Drive — car rides', description='Open Oedge O-Drive to request a car ride, set pickup and destination, and continue your trip.', keywords='O-Drive, O Drive, car ride, taxi, driver, transport, car booking, Oedge, Kenya', updated_at=? WHERE slug='oride-car-rides'", (now,))
+            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v2_done','1')")
         seed_default_ad(conn, now)
         conn.commit()
 
@@ -681,7 +715,12 @@ def get_services(visible_only=False):
         query += " WHERE s.visible=1"
     query += " ORDER BY s.group_name COLLATE NOCASE, s.featured DESC, s.sort_order ASC, s.name COLLATE NOCASE"
     with db_session() as conn:
-        return [dict(row) for row in conn.execute(query).fetchall()]
+        items = [dict(row) for row in conn.execute(query).fetchall()]
+    # Resolve destinations once so cards can link straight to the external app or
+    # to a real first-party workflow, instead of sending visitors to empty detail pages.
+    for item in items:
+        item["resolved_target"] = service_target(item)
+    return items
 
 
 def get_service_by_slug(slug, visible_only=True):
@@ -690,12 +729,15 @@ def get_service_by_slug(slug, visible_only=True):
         query += " AND s.visible=1"
     with db_session() as conn:
         row = conn.execute(query, (slug,)).fetchone()
-    return dict(row) if row else None
+    item = dict(row) if row else None
+    if item:
+        item["resolved_target"] = service_target(item)
+    return item
 
 
-# Only broad platform-level service doors should fall back to a parent homepage.
-# Feature-level doors need an exact target URL; sending a ticketing/customer task to a
-# generic homepage is misleading and looks like a broken link.
+# Direct destination resolver: prefer an exact service target. When one is not known,
+# send visitors to the live parent platform rather than to an empty hub-only page.
+# High-intent doors with known routes are repaired by the one-time migration above.
 PLATFORM_ENTRY_SLUGS = {
     "otravel-tours-travel-booking", "luxhari-fashion-modelling", "trt-furniture-lighting",
     "oride-rides-transport", "denmart-online-shopping", "oedge-digital-services",
@@ -708,9 +750,14 @@ def service_target(service):
     target = str(service.get("target_url") or "").strip()
     if target:
         return target
+    # An item tied to a connected platform should still go to that live website if
+    # a feature-level deep link has not been configured. Never strand it on the hub.
+    parent_url = str(service.get("parent_url") or "").strip()
+    if parent_url and service.get("parent_visible", 1):
+        return parent_url
     slug = str(service.get("slug") or "").strip().lower()
-    if slug in PLATFORM_ENTRY_SLUGS and service.get("parent_url") and service.get("parent_visible", 1):
-        return service["parent_url"]
+    if slug in PLATFORM_ENTRY_SLUGS and parent_url and service.get("parent_visible", 1):
+        return parent_url
     return ""
 
 

@@ -33,10 +33,10 @@
   <section class="service-group" aria-label="{{ group }}">
     <div class="service-group-heading"><h3>{{ group }}</h3><span>{{ items|length }} services</span></div>
     <div class="service-button-grid">
-      {% for service in items %}<a href="{{ url_for('open_service', slug=service.slug) }}" class="service-button-item" aria-label="Explore {{ service.name }}">
+      {% for service in items %}{% set destination = service.resolved_target or url_for('service_detail', slug=service.slug) %}<a href="{{ destination }}" class="service-button-item" aria-label="Open {{ service.name }}">
         <span class="service-button-icon service-colour-{{ (loop.index0 + loop.index) % 10 }}">{{ icon_svg(service.icon, 25) }}</span>
         <span class="service-button-copy"><strong>{{ service.name }}</strong><small>{{ service.description|truncate(86, True, '…') }}</small></span>
-        <span class="service-button-action" aria-hidden="true">Open</span>
+        <span class="service-button-action" aria-hidden="true">{{ 'Open ↗' if destination.startswith('http') else 'Open' }}</span>
       </a>{% endfor %}
     </div>
   </section>
