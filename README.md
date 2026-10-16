@@ -1,11 +1,11 @@
-# Discovery Hub — Render-ready source
+# Discovery Hub — Professional finishing release
 
-A standalone, mobile-first discovery gateway for a growing network of independent websites, products and individual services. The network currently seeds 63 separate service doorways across travel, fashion, furniture, property, mobility, shopping, software and website/app development, alongside the connected platforms House Hunter, OTravel, TRT, Oedge, Denmart and Luxhari. The hub is a discovery layer: each destination application keeps its own database, booking/payment features and customer workflows.
+A standalone, mobile-first discovery gateway for a growing network of independent websites, products and individual services. The network currently seeds more than 60 separate service doorways across travel, fashion, furniture, property, mobility, shopping, software and website/app development, alongside the connected platforms House Hunter, OTravel, TRT, Oedge, Denmart and Luxhari. The hub is a discovery layer: each destination application keeps its own database, booking/payment features and customer workflows.
 
 ## What's included
 
 - Premium responsive public homepage with individually searchable service doors, service-family pages, mobile navigation, quick-search phrases and direct links to the connected platforms.
-- Service entries are independently crawlable, with a unique page, descriptive text, relevant keyword metadata and a separately configurable destination URL. A service may use its parent platform as a temporary fallback where that relationship is accurate. Pata Mahali and O Ride have hub-level landing pages that open their complete service group until the eventual dedicated applications are connected.
+- Service entries are independently crawlable, with a unique page, descriptive text, relevant keyword metadata and a separately configurable destination URL. Broad platform entries may use their parent homepage; feature-level doors require their exact route so tickets, product categories and other specific tasks are not silently sent to unrelated homepages. Pata Mahali and O Ride have hub-level landing pages that open their complete service group until the eventual dedicated applications are connected.
 - Search across the **hub's destination directory metadata**. Optional per-site search URL templates can pass a visitor's query into a destination that genuinely supports that format.
 - Admin dashboard with tracked outbound destination clicks, hub searches, top destinations and popular search phrases.
 - Public website/app project brief with live, indicative KES estimate based on project type, size, features, content support and timing. Requests are saved to SQLite and can be reviewed, status-tracked and exported from admin.
@@ -13,11 +13,11 @@ A standalone, mobile-first discovery gateway for a growing network of independen
 - Add/edit/hide/feature/reorder/remove destinations without deleting their actual websites; assign a destination to multiple relevant categories.
 - Brand name and homepage copy settings; manual themes plus automatic date-based Christmas, Valentine's, Easter, Black Friday and New Year styling.
 - QR codes for the main hub and each destination; destination QR codes pass through the hub's click tracker.
-- Motion Ad Studio: multiple campaign records, six visual styles, optional image overlays, scheduled start/end times, rotating admin-authored headlines, publish/hide/delete controls and an optional visitor-initiated soft sound. This generates animated web advert compositions; it does not export MP4 video files or call an external AI generation service.
+- Motion Ad Studio: multiple campaign records, six visual styles, optional image overlays, scheduled start/end times, rotating headlines, publish/hide/delete controls and an optional visitor-initiated soft sound. The preview animates, and the admin can render an actual 8-second, 720p H.264 MP4 with animated backgrounds, text transitions and optional artwork. Rendering uses the bundled `imageio-ffmpeg` dependency and does not publish or alter a campaign.
 - Toror Apps & Downloads library for admin-uploaded APK/AAB/ZIP/PDF/image assets or direct download URLs, each with its own public detail page and download counter.
 - Consistent SQLite snapshots (daily and after successful changing form submissions), downloadable full ZIP backups containing the database and managed advert/download assets, pre-restore snapshots, archive validation and a rollback attempt if restore fails.
 - PWA manifest, app icons, install prompt support, service-worker shell caching for the gateway and visited service/category pages, and a friendly offline page. Offline cache is not a replacement for persistent server storage.
-- Dynamic robots.txt, sitemap.xml, canonical tags, descriptive category pages, accessibility touches, security headers and health check.
+- Dynamic robots.txt and XML sitemap for crawlers (not exposed as a visitor-navigation link), canonical and Open Graph metadata, Organization/WebSite/SearchAction structured data, descriptive service landing pages, responsive accessibility refinements, security headers and health check.
 - Render `requirements.txt`, `Procfile`, `runtime.txt` and `.gitignore`.
 
 ## Render deployment
@@ -43,10 +43,12 @@ A standalone, mobile-first discovery gateway for a growing network of independen
 
    Do not put credentials in source code or in the SQLite database. The Flask session signing secret is generated once and saved in the database at first boot; it is not a third environment variable. Keep database storage persistent so the secret and admin configuration survive deployments.
 
-6. Deploy and open `/admin/login`. Sign in using the values configured in `USER_NAME` and `USER_PASSWORD`.
-7. In **Destinations**, verify every platform URL. In **Service directory**, connect the exact URL for each service that should open a page deeper inside a platform. The O Ride links need their actual live URLs before those services can send users to a ride/mover ordering flow; set these in Admin rather than leaving the pages as placeholders. If Pata Mahali or another brand gets its own hosted app, enter its live URL for the parent service and change child service destinations to the correct feature routes.
-8. In **Appearance**, change “The Discovery Hub” to your final brand and set the headline, description and theme.
-9. Open **Backups & data**, download an initial SQLite copy, then configure persistent storage as described below.
+6. Deploy and open `/qaz` (the existing `/admin/login` route also remains available). Sign in using the values configured in `USER_NAME` and `USER_PASSWORD`.
+7. In **Destinations**, verify every platform URL. In **Service directory**, review rows marked “Exact page URL needed” and enter the verified route for each feature that should open a specific page. In particular, connect the exact OTravel ticketing page URL when it is available; the hub intentionally does not guess an undocumented route. Also connect the O Ride ride/mover order pages rather than leaving them as placeholders.
+8. In **Apps & downloads**, upload the actual installable `.apk` release for each Android app (or provide its verified download URL). A source-code ZIP is not itself an installable APK.
+9. In **Appearance**, change “The Discovery Hub” to your final brand and set the headline, description and theme. The visible public footer carries the Toror Technology & Innovations Ltd. rights notice; the crawler sitemap remains available at `/sitemap.xml` without a visitor-facing sitemap link.
+10. For search discovery, add/verify the domain in Google Search Console and Bing Webmaster Tools, then submit `https://trorinovationstech.co.ke/sitemap.xml`. Discovery and rankings take time and depend on query relevance, content quality, site health and indexing; metadata alone cannot guarantee ranking for every search phrase.
+11. Open **Backups & data**, download an initial SQLite copy, then configure persistent storage as described below.
 
 ### Persistent storage is important
 
@@ -69,7 +71,7 @@ The named Tomorrow Music, Tomorrow Messages and AdShield doorways filter the pub
 
 ## Advert studio boundaries
 
-Ads can be published/unpublished, scheduled, styled with motion gradients and artwork, and rotated through different saved headlines so the same campaign does not immediately repeat for the same visitor. Audio is offered only behind an explicit visitor click because browsers generally block unrequested autoplay sound. There is no connected external AI model or MP4-rendering engine in this version; headline variants are supplied in the admin editor rather than generated by a remote AI service.
+Ads can be published/unpublished, scheduled, styled with motion gradients and artwork, and rotated through different saved headlines so the same campaign does not immediately repeat for the same visitor. Audio is offered only behind an explicit visitor click because browsers generally block unrequested autoplay sound. MP4 rendering is built into this version; it exports a real animated 8-second, 720p H.264 video. There is no connected external AI model, so the editor can automatically compose the video from the supplied message and its own motion treatments, while optional headline variants allow more variation.
 
 ## Connect one purchased domain to multiple Render apps
 
@@ -105,7 +107,7 @@ The service worker caches the public homepage and the local interface shell so t
 
 ## Admin pages
 
-- `/admin/login` — sign in
+- `/qaz` — administrator sign-in shortcut (the `/admin/login` alias also works)
 - `/admin` — analytics overview
 - `/admin/sites` — destination platforms and visibility
 - `/admin/services` — individual service pages and direct destination routes
@@ -122,7 +124,7 @@ Install dependencies and run `python app.py`. The local development server disab
 
 ## Mobile and project-account additions
 
-- The public phone layout uses the device's light/dark preference and a colourful, touch-friendly two-column destination directory.
+- The public layout uses a clean white professional theme with dark readable type and restrained blue accents. On phones, links are spaced for thumb use; narrow screens switch to a single-column service list to keep names and descriptions legible.
 - Curated destinations include House Hunter, OTravel, TRT, Oedge, Denmart and Luxhari. The retired Prime School Portal is removed during startup migration; the admin can still manage visibility and destination details.
 - Visitors can create an account at `/account/register`, sign in at `/account/login`, and track project requests at `/my-projects`. Only requests submitted while signed in are linked to that account.
 - Admin can set request status and write applicant-facing feedback from **Admin → Project requests**. Account pages are excluded from indexing and service-worker caching.

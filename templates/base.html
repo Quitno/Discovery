@@ -4,10 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="{{ active_theme.primary }}">
-  <meta name="theme-color" media="(max-width: 620px) and (prefers-color-scheme: light)" content="#f6f5f2">
+  <meta name="theme-color" media="(max-width: 620px) and (prefers-color-scheme: light)" content="#ffffff">
   <meta name="theme-color" media="(max-width: 620px) and (prefers-color-scheme: dark)" content="#101116">
   <meta name="description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
-  <meta name="robots" content="{{ 'noindex,nofollow' if request.path.startswith('/admin') else robots|default('index,follow') }}">
+  <meta name="robots" content="{{ 'noindex,nofollow' if request.path.startswith('/admin') or request.path == '/qaz' or request.endpoint == 'admin_login' else robots|default('index,follow') }}">
+  <meta name="author" content="Toror Technology &amp; Innovations Ltd.">
+  <meta name="application-name" content="{{ brand_name|e }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ brand_name|e }}">
+  <meta property="og:title" content="{% if title is defined and title and title != brand_name %}{{ title|e }} · {{ brand_name|e }}{% else %}{{ brand_name|e }}{% endif %}">
+  <meta property="og:description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
+  <meta property="og:url" content="{{ request.base_url }}">
+  <meta property="og:image" content="{{ url_for('static', filename='icons/icon-512.png', _external=True) }}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{% if title is defined and title and title != brand_name %}{{ title|e }} · {{ brand_name|e }}{% else %}{{ brand_name|e }}{% endif %}">
+  <meta name="twitter:description" content="{{ meta_description|default(site_settings.hero_description)|e }}">
   <title>{% if title is defined and title and title != brand_name %}{{ title }} · {{ brand_name }}{% else %}{{ brand_name }}{% endif %}</title>
   <link rel="canonical" href="{{ request.base_url }}">
   <link rel="manifest" href="{{ url_for('manifest') }}">
@@ -23,7 +34,7 @@
     }
   </style>
 </head>
-<body class="{{ 'admin-mode' if request.path.startswith('/admin') else 'public-mode' }}">
+<body class="{{ 'admin-mode' if request.path.startswith('/admin') or request.path == '/qaz' or request.endpoint == 'admin_login' else 'public-mode' }}">
   <a class="skip-link" href="#main-content">Skip to content</a>
   <div class="app-layout">
     {% block shell_sidebar %}
@@ -74,12 +85,14 @@
       {% block page_footer %}
       <footer class="site-footer">
         <div><span class="footer-mark">{{ icon_svg('sparkles', 18) }}</span><strong>{{ brand_name }}</strong><span class="footer-dot">·</span>{{ site_settings.footer_note }}</div>
-        <div class="footer-links"><a href="{{ url_for('home') }}">Home</a><a href="{{ url_for('sitemap_xml') }}">Sitemap</a><a href="{{ url_for('admin_login') }}">Admin</a></div>
+        <div class="footer-legal">© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</div>
+        <div class="footer-links"><a href="{{ url_for('home') }}">Home</a><a href="{{ url_for('project_request') }}">Build with us</a></div>
       </footer>
       {% endblock %}
     </div>
   </div>
   <div class="sidebar-scrim" id="sidebar-scrim"></div>
+  <script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"Organization","name":"Toror Technology & Innovations Ltd.","legalName":"Toror Technology & Innovations Ltd.","url":request.url_root,"logo":url_for('static', filename='icons/icon-512.png', _external=True),"areaServed":{"@type":"Country","name":"Kenya"},"brand":{"@type":"Brand","name":brand_name},"description":"A Kenyan technology company connecting visitors with specialist digital services, websites, applications and project development."}|tojson }}</script>
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
   {% block extra_scripts %}{% endblock %}
 </body>

@@ -7,4 +7,4 @@
 {% else %}<section class="download-empty"><span>{{ icon_svg('app-window',32) }}</span><h2>The library is ready for its first release.</h2><p>Published APKs and other files will appear here. The administrator can upload an APK or connect a verified download URL in the download manager.</p></section>{% endif %}
 <section class="download-safety-note"><strong>Install carefully.</strong><p>Only install APKs from sources you trust, review the app permissions and keep a copy of important files. This page lists files published by the site administrator; it does not independently audit the software.</p></section>
 {% endblock %}
-{% block page_footer %}{% endblock %}
+{% block page_footer %}<footer class="gateway-footer legal-page-footer"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</span><span>Kenya · The Discovery Hub</span><a href="{{ url_for('home') }}">Back to gateway</a></footer>{% endblock %}

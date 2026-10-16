@@ -25,4 +25,4 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}<script type="application/ld+json">{{ {"@context":"https://schema.org","@type":"Service","name":"Website and app development","serviceType":"Business websites, e-commerce, web apps and mobile apps","areaServed":{"@type":"Country","name":"Kenya"},"provider":{"@type":"Organization","name":brand_name},"url":request.url,"description":"Request an indicative, scope-based estimate for a website, online store, web application or mobile app project."}|tojson }}</script>{% endblock %}
-{% block page_footer %}<footer class="gateway-footer project-footer"><span>© {{ current_year if current_year is defined else 2026 }} {{ brand_name }}</span><span>Project enquiries · Kenya</span><a href="{{ url_for('home') }}">Back to gateway</a></footer>{% endblock %}
+{% block page_footer %}<footer class="gateway-footer project-footer"><span>© {{ current_year if current_year is defined else 2026 }} Toror Technology &amp; Innovations Ltd. All rights reserved.</span><span>Project enquiries · Kenya</span><a href="{{ url_for('home') }}">Back to gateway</a></footer>{% endblock %}

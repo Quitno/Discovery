@@ -9,4 +9,4 @@
 {% else %}<section class="search-result-section"><div class="search-section-title"><h2>Start with a category</h2></div><div class="service-suggestion-grid">{% for phrase in ['Airbnb in Nairobi','houses for rent','land and plots','group retreats','event ticketing','sofas and living room','coffee tables','fabrics and materials','motorcycle ride','movers and relocation','APK downloads','website developer'] %}<a href="{{ url_for('search', q=phrase) }}">{{ phrase }} <span aria-hidden="true">⌕</span></a>{% endfor %}</div></section>{% endif %}
 <div class="directory-disclaimer">Listings are discovery links. Bookings, availability, payments and service delivery are managed by the relevant connected platform.</div>
 {% endblock %}
-{% block page_footer %}{% endblock %}
+{% block page_footer %}<footer class="gateway-footer legal-page-footer"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</span><span>Kenya · The Discovery Hub</span><a href="{{ url_for('home') }}">Back to gateway</a></footer>{% endblock %}

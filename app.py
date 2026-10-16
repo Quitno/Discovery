@@ -12,6 +12,9 @@ import sqlite3
 import tempfile
 import zipfile
 import mimetypes
+import subprocess
+import math
+import xml.sax.saxutils as xml_escape
 from contextlib import contextmanager
 from datetime import datetime, timedelta, date
 from functools import wraps
@@ -27,6 +30,7 @@ from flask import (
 from markupsafe import Markup
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -60,10 +64,10 @@ app.config.update(
 
 THEMES = {
     "evergreen": {
-        "label": "Luxe Editorial Signature", "bg": "#f8f4f0", "surface": "#fffdf9",
-        "ink": "#261f23", "muted": "#776b70", "primary": "#2b2228",
-        "primary_ink": "#ffffff", "accent": "#e8c9ad", "accent_ink": "#2b2228",
-        "line": "#e8deda", "soft": "#f5e9e8", "hero": "#f1e5df", "warm": "#c95f69"
+        "label": "White Professional", "bg": "#ffffff", "surface": "#ffffff",
+        "ink": "#17212f", "muted": "#586779", "primary": "#214f83",
+        "primary_ink": "#ffffff", "accent": "#dce9f8", "accent_ink": "#1b426e",
+        "line": "#e1e7ef", "soft": "#f4f7fb", "hero": "#f7f9fc", "warm": "#2d73b9"
     },
     "christmas": {
         "label": "Christmas", "bg": "#f8f7f1", "surface": "#ffffff",
@@ -113,7 +117,7 @@ DEFAULT_SETTINGS = {
     "brand_name": "The Discovery Hub",
     "tagline": "Good things are closer than you think.",
     "hero_title": "A gateway to more.",
-    "hero_description": "Discover connected websites for property, travel, furniture, business services and website or app projects.",
+    "hero_description": "The Discovery Hub by Toror Technology & Innovations Ltd. helps people in Kenya find property, short stays, travel, event tickets, furniture, fashion, transport, downloads and web or app development.",
     "theme_mode": "auto",
     "selected_theme": "evergreen",
     "show_search_suggestions": "1",
@@ -451,6 +455,11 @@ def initialise_database():
         # Seed defaults without overwriting settings an administrator has already changed.
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key, value))
+        # Refresh only the untouched factory description so existing installations gain
+        # the improved SEO summary without overwriting copy the owner customised.
+        old_factory_description = "Discover connected websites for property, travel, furniture, business services and website or app projects."
+        conn.execute("UPDATE settings SET value=? WHERE key='hero_description' AND value=?",
+                     (DEFAULT_SETTINGS["hero_description"], old_factory_description))
         conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('app_secret',?)", (secrets.token_urlsafe(48),))
         count = conn.execute("SELECT COUNT(*) AS n FROM sites").fetchone()["n"]
         if count == 0:
@@ -645,8 +654,8 @@ def admin_required(view):
         if not valid_session:
             session.clear()
             if request.path.startswith("/admin") and request.endpoint != "admin_login":
-                return redirect(url_for("admin_login", next=request.path))
-            return redirect(url_for("admin_login"))
+                return redirect("/qaz?next=" + quote_plus(request.path))
+            return redirect("/qaz")
         return view(*args, **kwargs)
     return wrapped
 
@@ -684,11 +693,23 @@ def get_service_by_slug(slug, visible_only=True):
     return dict(row) if row else None
 
 
+# Only broad platform-level service doors should fall back to a parent homepage.
+# Feature-level doors need an exact target URL; sending a ticketing/customer task to a
+# generic homepage is misleading and looks like a broken link.
+PLATFORM_ENTRY_SLUGS = {
+    "otravel-tours-travel-booking", "luxhari-fashion-modelling", "trt-furniture-lighting",
+    "oride-rides-transport", "denmart-online-shopping", "oedge-digital-services",
+    "toror-websites-digital-products", "toror-tomorrow-music-apk",
+    "toror-tomorrow-messages-apk", "toror-adshield-apk",
+}
+
+
 def service_target(service):
     target = str(service.get("target_url") or "").strip()
     if target:
         return target
-    if service.get("parent_url") and service.get("parent_visible", 1):
+    slug = str(service.get("slug") or "").strip().lower()
+    if slug in PLATFORM_ENTRY_SLUGS and service.get("parent_url") and service.get("parent_visible", 1):
         return service["parent_url"]
     return ""
 
@@ -1243,7 +1264,7 @@ def go_site(site_id):
 
 @app.route("/robots.txt")
 def robots_txt():
-    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /go/", "Disallow: /account/", "Disallow: /my-projects", "Disallow: /download-file/", f"Sitemap: {url_for('sitemap_xml', _external=True)}"]
+    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /qaz", "Disallow: /go/", "Disallow: /account/", "Disallow: /my-projects", "Disallow: /download-file/", f"Sitemap: {url_for('sitemap_xml', _external=True)}"]
     return app.response_class("\n".join(lines) + "\n", mimetype="text/plain")
 
 
@@ -1269,7 +1290,7 @@ def sitemap_xml():
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for location in urls:
-        xml += f"  <url><loc>{location}</loc><lastmod>{lastmod}</lastmod></url>\n"
+        xml += f"  <url><loc>{xml_escape.escape(location)}</loc><lastmod>{lastmod}</lastmod><changefreq>weekly</changefreq><priority>{'1.0' if location == host + '/' else '0.7'}</priority></url>\n"
     xml += "</urlset>\n"
     response = make_response(xml)
     response.headers["Content-Type"] = "application/xml; charset=utf-8"
@@ -1311,8 +1332,12 @@ def health():
 
 
 # ---------------------------- Administration ----------------------------
+@app.route("/qaz", methods=["GET", "POST"])
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
+    # Keep the old login URL working while making /qaz the single canonical entry.
+    if request.path == "/admin/login" and request.method == "GET":
+        return redirect("/qaz", code=302)
     if session.get("admin_logged_in"):
         return redirect(url_for("admin_dashboard"))
     if request.method == "POST":
@@ -1342,7 +1367,7 @@ def admin_login():
 def admin_logout():
     session.clear()
     flash("You have been signed out.", "success")
-    return redirect(url_for("admin_login"))
+    return redirect("/qaz")
 
 
 def admin_analytics():
@@ -1570,7 +1595,10 @@ def admin_qr_site_png(site_id):
 @app.route("/admin/services")
 @admin_required
 def admin_services():
-    return render_template("admin_services.html", title="Service directory", section="services", services=get_services(visible_only=False), sites=get_sites(visible_only=False))
+    services = get_services(visible_only=False)
+    for service in services:
+        service["effective_target"] = service_target(service)
+    return render_template("admin_services.html", title="Service directory", section="services", services=services, sites=get_sites(visible_only=False))
 
 
 def _service_form_data(form, current_id=None):
@@ -1704,6 +1732,245 @@ def _ad_form_data(form, current=None):
         upload.save(AD_UPLOAD_DIR / image_filename)
     return {"name":name,"headline":headline,"subheadline":subheadline,"body":body,"cta_label":cta_label,"target_url":target,"style":style,
             "headline_variants":variants,"music_enabled":music,"active":active,"sort_order":order,"start_at":start_at,"end_at":end_at,"image_filename":image_filename}
+
+
+_AD_VIDEO_PALETTES = {
+    "cinematic": ((22, 18, 30), (82, 44, 68), (232, 201, 173)),
+    "champagne": ((47, 34, 38), (124, 83, 75), (247, 221, 182)),
+    "electric": ((15, 17, 41), (77, 42, 135), (88, 219, 255)),
+    "sunset": ((74, 32, 49), (198, 83, 65), (255, 199, 119)),
+    "minimal": ((16, 18, 22), (58, 61, 68), (244, 244, 238)),
+    "orchid": ((35, 19, 47), (106, 54, 122), (240, 163, 212)),
+}
+
+
+def _ad_video_font(size, bold=False):
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+    ]
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _ad_video_wrap(draw, text, font, max_width, max_lines=3):
+    words = re.findall(r"\S+", str(text or "").strip())
+    if not words:
+        return []
+    lines, current = [], ""
+    for word in words:
+        trial = f"{current} {word}".strip()
+        if current and draw.textbbox((0, 0), trial, font=font)[2] > max_width:
+            lines.append(current)
+            current = word
+            if len(lines) >= max_lines:
+                break
+        else:
+            current = trial
+    if current and len(lines) < max_lines:
+        lines.append(current)
+    if len(lines) == max_lines and words:
+        joined = " ".join(lines)
+        consumed = len(joined.split())
+        if consumed < len(words):
+            last = lines[-1]
+            while last and draw.textbbox((0, 0), last + "…", font=font)[2] > max_width:
+                last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
+            lines[-1] = last.rstrip(" .") + "…"
+    return lines
+
+
+def _render_ad_video(headline, subheadline, body, cta_label, style, variants, image_file, output_path):
+    """Render an actual 8-second 720p H.264 MP4 from the advert form inputs."""
+    import imageio_ffmpeg
+
+    width, height, fps, seconds = 1280, 720, 24, 8
+    total_frames = fps * seconds
+    c1, c2, accent = _AD_VIDEO_PALETTES.get(style, _AD_VIDEO_PALETTES["cinematic"])
+    base = Image.new("RGB", (width, height))
+    base_draw = ImageDraw.Draw(base)
+    for y in range(height):
+        ratio = y / max(1, height - 1)
+        # A gently curved two-colour gradient, precomputed once for every frame.
+        curve = min(1.0, max(0.0, ratio * 0.88 + 0.06))
+        color = tuple(int(c1[i] * (1 - curve) + c2[i] * curve) for i in range(3))
+        base_draw.line((0, y, width, y), fill=color)
+
+    moving_image = None
+    if image_file:
+        try:
+            with Image.open(image_file) as opened:
+                artwork = ImageOps.exif_transpose(opened).convert("RGB")
+                moving_image = ImageOps.fit(artwork, (width + 100, height + 90), method=Image.Resampling.LANCZOS)
+        except Exception as exc:
+            raise ValueError("The selected advert image could not be read. Try a valid PNG, JPG or WebP image.") from exc
+
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    for x in range(width):
+        alpha = int(155 * (1 - x / width) ** 0.62 + 18)
+        overlay_draw.line((x, 0, x, height), fill=(5, 6, 12, alpha))
+
+    brand_font = _ad_video_font(18, True)
+    kicker_font = _ad_video_font(17, True)
+    title_font = _ad_video_font(61, True)
+    body_font = _ad_video_font(25, False)
+    cta_font = _ad_video_font(19, True)
+    small_font = _ad_video_font(13, True)
+    title_choices = [str(headline).strip()]
+    title_choices.extend([str(value).strip() for value in variants if str(value).strip()])
+    # When a user supplies only a short headline, automatically vary the motion and
+    # framing rather than requiring a long list of copy from the administrator.
+    title_choices = list(dict.fromkeys(x for x in title_choices if x)) or ["Discover what comes next."]
+    title_choices = title_choices[:4]
+    if len(title_choices) == 1:
+        title_choices += ["One place to start. More to discover.", "Your next step starts here."]
+    phase_len = total_frames / len(title_choices)
+
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+               "-f", "rawvideo", "-vcodec", "rawvideo", "-pix_fmt", "rgb24",
+               "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-an",
+               "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+               "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output_path)]
+    with open(os.devnull, "wb") as nullout:
+        proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=nullout, stderr=subprocess.PIPE)
+        try:
+            for frame_no in range(total_frames):
+                phase = min(len(title_choices) - 1, int(frame_no / phase_len))
+                phase_frame = frame_no - int(phase * phase_len)
+                phase_frames = max(1, min(total_frames - int(phase * phase_len), int(phase_len)))
+                fade = min(1.0, phase_frame / max(1, int(fps * 0.45)), (phase_frames - phase_frame) / max(1, int(fps * 0.25)))
+                fade = max(0.12, min(1.0, fade))
+                t = frame_no / total_frames
+
+                if moving_image is not None:
+                    left = int(50 + 28 * (1 - math.cos(t * math.pi * 2)))
+                    top = int(45 + 15 * (1 - math.sin(t * math.pi * 2)))
+                    frame = moving_image.crop((left, top, left + width, top + height)).convert("RGBA")
+                    frame = Image.blend(frame.convert("RGB"), base, 0.28).convert("RGBA")
+                    frame = Image.alpha_composite(frame, overlay)
+                else:
+                    frame = base.copy().convert("RGBA")
+                    glow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                    gd = ImageDraw.Draw(glow)
+                    ox = int(width * (0.76 + 0.08 * math.sin(t * math.pi * 2)))
+                    oy = int(height * (0.22 + 0.1 * math.cos(t * math.pi * 2)))
+                    radius = int(220 + 22 * math.sin(t * math.pi * 4))
+                    gd.ellipse((ox-radius, oy-radius, ox+radius, oy+radius), fill=(*accent, 48))
+                    gd.ellipse((int(width*.74), int(height*.62), int(width*.98), int(height*.98)), outline=(*accent, 80), width=3)
+                    frame = Image.alpha_composite(frame, glow)
+                    frame = Image.alpha_composite(frame, overlay)
+
+                draw_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(draw_layer)
+                opacity = int(255 * fade)
+                draw.rounded_rectangle((92, 110, 101, 570), radius=4, fill=(*accent, 220))
+                kicker = str(subheadline or "TOROR TECHNOLOGY & INNOVATIONS").strip()[:100].upper()
+                draw.text((126, 116), kicker, font=kicker_font, fill=(*accent, opacity))
+
+                active_title = title_choices[phase]
+                lines = _ad_video_wrap(draw, active_title, title_font, 1000, max_lines=2)
+                x = 124 + int(20 * (1 - fade))
+                y = 208
+                line_height = 76
+                for i, line in enumerate(lines):
+                    draw.text((x, y + i * line_height), line, font=title_font, fill=(255, 255, 255, opacity), stroke_width=0)
+                body_lines = _ad_video_wrap(draw, body, body_font, 930, max_lines=3)
+                by = y + max(1, len(lines)) * line_height + 14
+                for i, line in enumerate(body_lines):
+                    draw.text((x, by + i * 36), line, font=body_font, fill=(244, 240, 244, int(220 * fade)))
+
+                cta = (str(cta_label or "Explore").strip()[:55])
+                cta_width = min(370, max(170, int(draw.textbbox((0, 0), cta, font=cta_font)[2] + 54)))
+                cta_y = 558
+                draw.rounded_rectangle((124, cta_y, 124 + cta_width, cta_y + 58), radius=11, fill=(*accent, opacity))
+                draw.text((147, cta_y + 17), cta, font=cta_font, fill=(*c1, opacity))
+                draw.text((width - 415, height - 48), "TOROR TECHNOLOGY & INNOVATIONS LTD.", font=small_font, fill=(255, 255, 255, 172))
+                draw.text((width - 126, height - 48), f"{phase + 1:02d} / {len(title_choices):02d}", font=small_font, fill=(*accent, 220))
+                frame = Image.alpha_composite(frame, draw_layer).convert("RGB")
+                proc.stdin.write(frame.tobytes())
+            proc.stdin.close()
+            error_text = proc.stderr.read().decode("utf-8", "replace")
+            return_code = proc.wait(timeout=120)
+            if return_code != 0 or not Path(output_path).is_file() or Path(output_path).stat().st_size < 1000:
+                raise RuntimeError(error_text[-800:] or "The MP4 renderer did not create a video file.")
+        except Exception:
+            try:
+                if proc.stdin and not proc.stdin.closed:
+                    proc.stdin.close()
+            except Exception:
+                pass
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            raise
+
+
+@app.route("/admin/ads/render.mp4", methods=["POST"])
+@admin_required
+def admin_ad_render_mp4():
+    ad_id_raw = request.form.get("render_ad_id", "").strip()
+    ad_id = int(ad_id_raw) if ad_id_raw.isdigit() else None
+    current_ad = None
+    if ad_id:
+        with db_session() as conn:
+            row = conn.execute("SELECT * FROM hub_ads WHERE id=?", (ad_id,)).fetchone()
+        current_ad = dict(row) if row else None
+
+    headline = request.form.get("headline", "").strip()[:180]
+    subheadline = request.form.get("subheadline", "").strip()[:250]
+    body = request.form.get("body", "").strip()[:1200]
+    cta_label = request.form.get("cta_label", "Explore").strip()[:60] or "Explore"
+    style = request.form.get("style", "cinematic")
+    if style not in AD_STYLE_OPTIONS:
+        style = "cinematic"
+    variants = [item.strip()[:180] for item in re.split(r"[\n;|]+", request.form.get("headline_variants", "")) if item.strip()][:7]
+    if not headline or not body:
+        flash("Add a headline and a supporting message before rendering your MP4.", "error")
+        return redirect(url_for("admin_ad_edit", ad_id=ad_id) if current_ad else url_for("admin_ad_new"))
+
+    image_path = None
+    upload = request.files.get("ad_image")
+    temp_dir = tempfile.mkdtemp(prefix="hub-ad-render-")
+    output_path = str(Path(temp_dir) / "toror-advert.mp4")
+    try:
+        if upload and upload.filename:
+            ext = Path(upload.filename).suffix.lower()
+            if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+                raise ValueError("Advert images must be PNG, JPG or WebP.")
+            payload = upload.read(8 * 1024 * 1024 + 1)
+            if len(payload) > 8 * 1024 * 1024:
+                raise ValueError("Advert images must be 8 MB or smaller.")
+            probe = Image.open(io.BytesIO(payload))
+            probe.verify()
+            image_path = str(Path(temp_dir) / ("artwork" + ext))
+            Path(image_path).write_bytes(payload)
+        elif current_ad and current_ad.get("image_filename"):
+            candidate = AD_UPLOAD_DIR / Path(current_ad["image_filename"]).name
+            if candidate.is_file():
+                image_path = str(candidate)
+
+        _render_ad_video(headline, subheadline, body, cta_label, style, variants, image_path, output_path)
+        response = send_file(output_path, mimetype="video/mp4", as_attachment=True,
+                             download_name=f"toror-advert-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.mp4",
+                             max_age=0, conditional=False)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.call_on_close(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+        return response
+    except ValueError as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        flash(str(exc), "error")
+    except Exception as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        app.logger.exception("Advert MP4 render failed")
+        flash("MP4 rendering failed on this server. Verify the image and retry; the advert itself has not been changed.", "error")
+    return redirect(url_for("admin_ad_edit", ad_id=ad_id) if current_ad else url_for("admin_ad_new"))
 
 
 @app.route("/admin/ads/new", methods=["GET", "POST"])
@@ -2070,7 +2337,7 @@ def admin_backup_download(filename):
 @app.after_request
 def secure_response_headers(response):
     try:
-        if response.status_code < 400 and not request.path.startswith(("/admin/backup", "/admin/login", "/admin/logout", "/account/login", "/account/register", "/account/logout", "/service-worker.js", "/static/", "/health")):
+        if response.status_code < 400 and not request.path.startswith(("/admin/backup", "/admin/login", "/admin/logout", "/admin/ads/render.mp4", "/qaz", "/account/login", "/account/register", "/account/logout", "/service-worker.js", "/static/", "/health")):
             _auto_backup(force=(request.method == "POST"))
     except Exception:
         app.logger.exception("Backup lifecycle hook failed")
@@ -2079,7 +2346,7 @@ def secure_response_headers(response):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
-    if request.path.startswith("/admin") or request.path.startswith("/go/"):
+    if request.path.startswith("/admin") or request.path == "/qaz" or request.path.startswith("/go/"):
         response.headers["Cache-Control"] = "no-store"
     if request.is_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
