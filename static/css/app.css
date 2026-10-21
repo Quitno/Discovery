@@ -1068,3 +1068,19 @@ body.a11y-reduce-motion *,body.a11y-reduce-motion *::before,body.a11y-reduce-mot
 .app-discovery-faq summary{cursor:pointer;font-weight:700;color:var(--ink)}
 .app-discovery-faq details p{margin:9px 0 0;color:var(--muted);line-height:1.65}
 @media(max-width:620px){.app-discovery-panel{border-radius:16px}.app-discovery-link{width:100%;justify-content:center}}
+
+/* Administrative interface: restrained, accessible, public-service styling */
+.admin-sidebar{background:#102b46;border-right:1px solid #d4dde6}
+.admin-sidebar .brand-mark{border-radius:4px}
+.admin-sidebar .side-link{border-radius:4px;transition:background-color .15s ease}
+.admin-sidebar .side-link:hover,.admin-sidebar .side-link.active{background:#1c4264}
+.admin-topbar{background:#fff;border-bottom:2px solid #c6d3df;box-shadow:none}
+.admin-page-heading h1,.admin-panel h2{letter-spacing:0;color:#18334d}
+.admin-page-heading .section-kicker,.admin-panel .section-kicker{letter-spacing:.07em}
+.admin-panel,.stat-card,.form-panel,.admin-info-banner{border-radius:5px;box-shadow:none;border:1px solid #d5dee7}
+.stat-card{background:#fff}
+.stat-card-dark{background:#173b5d}
+.panel-action,.quick-action-row,.topbar-action{transition:background-color .15s ease}
+.panel-action,.quick-action-row .quick-chevron{color:#365a78}
+button,.button-primary,.topbar-action{border-radius:4px}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #e4ad36;outline-offset:2px}

@@ -19,6 +19,6 @@
     <div class="field-group"><label for="search_url_template">Optional internal search URL template</label><input id="search_url_template" name="search_url_template" maxlength="500" value="{{ site.search_url_template if site else '' }}" placeholder="https://your-site.onrender.com/search?q={query}"><small>If the destination has an internal search URL, include <code>{query}</code> where the search phrase should go. Leave blank to open its homepage. Its hostname must match the destination URL.</small></div>
     <div class="form-guidance"><span class="notice-icon">i</span><p>The hub can match a visitor to this destination using the details above. It does not automatically search inside your separate site's product/property database unless an internal search template or integration is configured.</p></div>
   </section>
-  <div class="form-actions"><a class="button-secondary" href="{{ url_for('admin_sites') }}">Cancel</a><button class="button-primary" type="submit">{{ 'Save changes' if site else 'Add to my network' }} <span aria-hidden="true">↗</span></button></div>
+  <div class="form-actions"><a class="button-secondary" href="{{ url_for('admin_sites') }}">Cancel</a><button class="button-primary" type="submit">{{ 'Save changes' if site else 'Add to my network' }} <span aria-hidden="true"></span></button></div>
 </form>
 {% endblock %}

@@ -15,13 +15,13 @@
   </form>
   <div class="hub-popular-searches"><strong>Popular searches</strong><a href="{{ url_for('search', q='Airbnb in Nairobi') }}">🇰🇪 Airbnb in Nairobi</a><a href="{{ url_for('search', q='houses for rent') }}">Houses for rent</a><a href="{{ url_for('search', q='coffee tables') }}">Coffee tables</a><a href="{{ url_for('search', q='group retreats') }}">Group retreats</a><a href="{{ url_for('search', q='ticketing') }}">Ticketing</a><a href="{{ url_for('search', q='movers and relocation') }}">Movers</a><a href="{{ url_for('search', q='APK downloads') }}">APK downloads</a></div>
   <div class="hub-group-shortcuts" aria-label="Browse service sections">{% for group, items in service_groups.items() %}<a href="{{ url_for('service_group', group_slug=group|slugify) }}">{{ group }}</a>{% endfor %}</div>
-  <div class="hub-builder-shortcut"><span>Have a business idea or need an app?</span><a href="{{ url_for('project_request') }}">Make me a website or app <span aria-hidden="true">↗</span></a></div>
+  <div class="hub-builder-shortcut"><span>Have a business idea or need an app?</span><a href="{{ url_for('project_request') }}">Make me a website or app <span aria-hidden="true"></span></a></div>
 </section>
 
 <section class="quick-tools-strip" aria-label="Useful discovery tools">
-  <a class="quick-tool-card" href="{{ url_for('availability_centre') }}"><span class="quick-tool-icon">{{ icon_svg('activity', 23) }}</span><span><strong>Platform availability</strong><small>Check which connected websites are responding.</small></span><span aria-hidden="true">↗</span></a>
-  <a class="quick-tool-card" href="https://toror-technology.onrender.com/"><span class="quick-tool-icon">{{ icon_svg('download', 23) }}</span><span><strong>Toror APK website</strong><small>Open the separate catalogue for Music, Shield, Messages and other releases.</small></span><span aria-hidden="true">↗</span></a>
-  <a class="quick-tool-card" href="{{ url_for('project_request') }}"><span class="quick-tool-icon">{{ icon_svg('calculator', 23) }}</span><span><strong>Project estimator</strong><small>Plan a website, shop, portal or app with a scope-based estimate.</small></span><span aria-hidden="true">↗</span></a>
+  <a class="quick-tool-card" href="{{ url_for('availability_centre') }}"><span class="quick-tool-icon">{{ icon_svg('activity', 23) }}</span><span><strong>Platform availability</strong><small>Check which connected websites are responding.</small></span><span aria-hidden="true"></span></a>
+  <a class="quick-tool-card" href="https://toror-technology.onrender.com/"><span class="quick-tool-icon">{{ icon_svg('download', 23) }}</span><span><strong>Toror APK website</strong><small>Open the separate catalogue for Music, Shield, Messages and other releases.</small></span><span aria-hidden="true"></span></a>
+  <a class="quick-tool-card" href="{{ url_for('project_request') }}"><span class="quick-tool-icon">{{ icon_svg('calculator', 23) }}</span><span><strong>Project estimator</strong><small>Plan a website, shop, portal or app with a scope-based estimate.</small></span><span aria-hidden="true"></span></a>
 </section>
 
 {% if ad %}
@@ -51,7 +51,7 @@
 
 <section class="valuable-sites" aria-labelledby="valuable-sites-title">
   <div class="valuable-sites-heading"><div><div class="hub-section-eyebrow">THE CONNECTED PLATFORMS</div><h2 id="valuable-sites-title">Quick links to our valuable sites.</h2><p>Go directly to a platform when you already know where you want to be.</p></div><span class="platform-count">{{ sites|length }} platforms</span></div>
-  <div class="platform-link-grid">{% for site in sites %}<a class="platform-link" href="{{ site.url }}"><span class="platform-link-icon platform-colour-{{ loop.index0 % 8 }}">{{ icon_svg(site.icon, 23) }}</span><span><strong>{{ site.name }}</strong><small>{{ site.category }}</small></span><span class="platform-open" aria-hidden="true">↗</span></a>{% endfor %}</div>
+  <div class="platform-link-grid">{% for site in sites %}<a class="platform-link" href="{{ site.url }}"><span class="platform-link-icon platform-colour-{{ loop.index0 % 8 }}">{{ icon_svg(site.icon, 23) }}</span><span><strong>{{ site.name }}</strong><small>{{ site.category }}</small></span><span class="platform-open" aria-hidden="true"></span></a>{% endfor %}</div>
 </section>
 
 <section class="build-promo" id="build-with-us" aria-labelledby="build-title">
@@ -59,7 +59,7 @@
   <div class="build-promo-aside"><span class="build-aside-label">POCKET-CONSCIOUS STARTING POINT</span><strong>From KSh 10,000</strong><p>Indicative starting point for a simple business website. Features, scope, content and timing affect the final quote.</p><div class="build-service-tags"><span>Websites</span><span>Online shops</span><span>Web apps</span><span>Mobile apps</span></div></div>
 </section>
 
-<section class="downloads-promo"><div class="downloads-promo-mark">{{ icon_svg('download', 27) }}</div><div><span class="hub-section-eyebrow">TOROR DIGITAL</span><h2>Apps, APKs & downloads.</h2><p>Open the dedicated Toror APK website for current app releases and updates.</p></div><a href="https://toror-technology.onrender.com/" class="downloads-promo-button">Open APK website ↗</a></section>
+<section class="downloads-promo"><div class="downloads-promo-mark">{{ icon_svg('download', 27) }}</div><div><span class="hub-section-eyebrow">TOROR DIGITAL</span><h2>Apps, APKs & downloads.</h2><p>Open the dedicated Toror APK website for current app releases and updates.</p></div><a href="https://toror-technology.onrender.com/" class="downloads-promo-button">Open APK website </a></section>
 
 <section class="share-gateway" id="share-hub" aria-label="Share this gateway"><div class="share-gateway-copy"><div class="share-eyebrow">PASS THE GATEWAY ON</div><h2>One address. Many possibilities.</h2><p>Share the hub with someone who needs a service, a website or a new digital idea. This QR code opens the gateway itself.</p><div class="share-gateway-actions"><button type="button" id="share-hub-button">Share this website</button><button type="button" class="share-copy-button" id="copy-hub-button">Copy website link</button></div><span class="share-feedback" id="share-feedback" role="status" aria-live="polite"></span></div><a class="public-qr" href="{{ url_for('public_hub_qr', download=1) }}" title="Download the QR code for this gateway"><img src="{{ url_for('public_hub_qr') }}" alt="QR code that opens this website's main gateway"><span>Scan or save this QR</span></a></section>
 <footer class="gateway-footer"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</span><span>🇰🇪 Kenya · A gateway to independent specialist services</span><a href="{{ url_for('project_request') }}">Build with us</a></footer>

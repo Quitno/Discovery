@@ -1,7 +1,7 @@
 {% extends 'admin_base.html' %}
 {% set s = site_settings %}
 {% block content %}
-<div class="admin-page-heading"><div><div class="section-kicker">BRAND STUDIO</div><h1>Appearance & branding</h1><p>Manage the public brand, seasonal styling and the WhatsApp contact shown on project enquiry pages.</p></div><a class="button-secondary" href="{{ url_for('home') }}" target="_blank" rel="noopener">Preview live hub ↗</a></div>
+<div class="admin-page-heading"><div><div class="section-kicker">BRAND STUDIO</div><h1>Appearance & branding</h1><p>Manage the public brand, seasonal styling and the WhatsApp contact shown on project enquiry pages.</p></div><a class="button-secondary" href="{{ url_for('home') }}" target="_blank" rel="noopener">Preview live hub </a></div>
 <form method="post" class="admin-form-layout appearance-form">{{ csrf_field() }}
   <section class="admin-panel form-panel"><div class="form-section-heading"><span class="form-section-number">01</span><div><h2>Your brand identity</h2><p>These details identify the gateway and its business owner.</p></div></div>
     <div class="form-grid"><div class="field-group"><label for="brand_name">Brand name <span>*</span></label><input id="brand_name" name="brand_name" required maxlength="60" value="{{ s.brand_name }}"><small>Change it any time without changing your domain.</small></div><div class="field-group"><label for="whatsapp_number">WhatsApp contact number</label><input id="whatsapp_number" name="whatsapp_number" type="tel" maxlength="40" value="{{ s.whatsapp_number }}" placeholder="e.g. 07XX XXX XXX or +254 7XX XXX XXX"><small>Optional. Saved enquiries remain in Project requests. Add this number to show direct WhatsApp links to visitors.</small></div><div class="field-group"><label for="tagline">Short tagline</label><input id="tagline" name="tagline" maxlength="120" value="{{ s.tagline }}"></div><div class="field-group field-full"><label for="footer_note">Footer note (admin reference)</label><input id="footer_note" name="footer_note" maxlength="160" value="{{ s.footer_note }}"></div></div>
@@ -12,6 +12,6 @@
     <div class="theme-preview-grid">{% for key, theme in themes.items() %}<div class="theme-preview-card"><div class="theme-preview-palette" style="background:{{ theme.bg }}"><span style="background:{{ theme.primary }}"></span><span style="background:{{ theme.accent }}"></span><span style="background:{{ theme.warm }}"></span></div><strong>{{ theme.label }}</strong><small>{{ 'Current fallback' if s.selected_theme == key else 'Available theme' }}</small></div>{% endfor %}</div>
   </section>
 
-  <div class="form-actions"><a class="button-secondary" href="{{ url_for('admin_dashboard') }}">Cancel</a><button class="button-primary" type="submit">Save branding & appearance <span aria-hidden="true">↗</span></button></div>
+  <div class="form-actions"><a class="button-secondary" href="{{ url_for('admin_dashboard') }}">Cancel</a><button class="button-primary" type="submit">Save branding & appearance <span aria-hidden="true"></span></button></div>
 </form>
 {% endblock %}
