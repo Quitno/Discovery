@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% set page_title = 'Toror Technology and Innovations Limited | Software, POS & APIs' %}
+{% set meta_description = 'Toror Technology and Innovations Limited is a Kenyan technology company focused on custom software, POS and inventory systems, web applications, barcode APIs and digital integrations.' %}
+{% block content %}
+<section class="company-page-intro">
+  <span class="home-eyebrow"><span class="eyebrow-dot"></span> COMPANY PROFILE</span>
+  <h1>Technology built for real work.</h1>
+  <p>{{ company_legal_name }} develops practical digital tools for businesses, retailers and software builders. The focus is clear: understand the need, build the system, put it to use and improve it.</p>
+  <div class="company-page-actions"><a class="button" href="{{ company_site_url }}/" target="_blank" rel="noopener noreferrer">Visit company website ↗</a><a class="button button-light" href="{{ url_for('index') }}">Explore Barcode Hub</a></div>
+</section>
+
+<section class="app-section company-services-section">
+  <div class="app-section-heading"><div><span class="section-kicker">WHAT WE BUILD</span><h2>Technology services and products</h2></div><p>Practical systems, explained in plain language.</p></div>
+  <div class="task-card-grid">
+    <article class="task-card"><div class="task-icon task-icon-blue">▤</div><h3>Custom business software</h3><p>Web applications, dashboards, portals and workflows organised around how a business operates.</p></article>
+    <article class="task-card"><div class="task-icon task-icon-green">▦</div><h3>POS and inventory systems</h3><p>Retail tools that can bring sales, stock records and barcode-driven product entry into one workflow.</p></article>
+    <article class="task-card"><div class="task-icon task-icon-purple">{ }</div><h3>APIs and integrations</h3><p>Connect software using structured data, web APIs and integrations between existing tools.</p></article>
+    <article class="task-card"><div class="task-icon task-icon-blue">↗</div><h3>Web platforms and deployment</h3><p>Responsive websites and application platforms designed to be clear, usable and maintainable.</p></article>
+  </div>
+</section>
+
+<section class="company-featured-product">
+  <div class="company-product-badge">FEATURED PRODUCT</div>
+  <div><h2>Kenya Barcode Hub</h2><p>A product-data catalogue and paid REST API for POS developers, barcode scanner workflows, supermarkets, shop software and inventory applications. Search online or connect an app with an API key.</p><div class="company-credit-links"><a class="task-link" href="{{ url_for('catalogue') }}">Search product catalogue →</a><a class="task-link" href="{{ url_for('docs') }}">Read developer API guide →</a><a class="task-link" href="{{ url_for('pricing') }}">Compare API plans →</a></div></div>
+</section>
+
+<section class="company-search-copy">
+  <h2>Software development for Kenyan businesses</h2>
+  <p>Businesses looking for a POS system, inventory software, custom web application, barcode lookup API or software integration can explore the products and services above. The right solution depends on the workflow, data and users it needs to support.</p>
+  <p>For more information about the company, projects and contact options, visit the official company website.</p>
+  <a class="button" href="{{ company_site_url }}/" target="_blank" rel="noopener noreferrer">Open Toror Technology website ↗</a>
+</section>
+{% endblock %}

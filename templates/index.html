@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% set page_title = 'Barcode Lookup & POS API in Kenya | Kenya Barcode Hub' %}
+{% set meta_description = 'Search Kenyan retail product barcodes or connect a POS, supermarket, shop or inventory app to the Kenya Barcode Hub paid REST API. A product by Toror Technology and Innovations Limited.' %}
+{% block content %}
+<section class="app-welcome">
+  <div class="app-welcome-copy">
+    <span class="home-eyebrow"><span class="eyebrow-dot"></span> KENYA BARCODE HUB</span>
+    <h1>{{ site_settings.hero_title }} <span>{{ site_settings.hero_highlight }}</span></h1>
+    <p>{{ site_settings.hero_subtitle }}</p>
+    <div class="welcome-tags"><span>For shops</span><span>For POS builders</span><span>For developers</span></div>
+  </div>
+  <aside class="start-here-card" aria-label="Start here">
+    <span class="mini-section-label">YOUR NEXT STEP</span>
+    <a class="start-step" href="#find-products"><span class="step-number">1</span><span><strong>Find a product</strong><small>Search a barcode or product name.</small></span><span class="step-arrow">→</span></a>
+    <a class="start-step" href="{{ url_for('docs') }}"><span class="step-number">2</span><span><strong>Connect your POS</strong><small>See how the API works.</small></span><span class="step-arrow">→</span></a>
+    <a class="start-step" href="{{ url_for('pricing') }}"><span class="step-number">3</span><span><strong>Choose a plan</strong><small>Pick the lookup limit you need.</small></span><span class="step-arrow">→</span></a>
+  </aside>
+</section>
+
+<section class="app-search-section" id="find-products" aria-labelledby="search-heading">
+  <div class="app-section-title"><span class="app-section-icon">⌕</span><div><h2 id="search-heading">Find a product</h2><p>Enter the barcode number, product name or brand.</p></div></div>
+  <form class="app-search-form" action="{{ url_for('index') }}" method="get" role="search">
+    <label class="visually-hidden" for="product-query">Barcode, product name or brand</label>
+    <input id="product-query" type="search" name="q" value="{{ q }}" placeholder="e.g. 6160000000000 or Blue Band" autocomplete="off" aria-label="Search products by barcode, product name or brand">
+    <button class="button" type="submit">Search products</button>
+  </form>
+  <p class="search-helper">Public search shows a limited number of results. For automated POS lookups, use the developer API.</p>
+</section>
+{% if site_settings.homepage_notice %}<div class="app-notice"><span aria-hidden="true">i</span><p>{{ site_settings.homepage_notice }}</p></div>{% endif %}
+
+{% if q %}
+<section class="section-block search-results" id="results" aria-live="polite">
+  <div class="section-heading"><div><span class="section-kicker">SEARCH RESULTS</span><h2>Results for “{{ q }}”</h2></div><span class="muted">Up to {{ search_limit }} results</span></div>
+  {% if results %}<div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Product</th><th>Brand</th><th>Pack size</th><th>Category</th><th>Price (KSh)</th><th>Record status</th></tr></thead><tbody>{% for p in results %}<tr><td><code>{{ p.barcode }}</code></td><td><strong>{{ p.name }}</strong></td><td>{{ p.brand or '—' }}</td><td>{{ p.pack_size or '—' }}</td><td>{{ p.category or '—' }}</td><td>{{ '{:,.2f}'.format(p.price_kes) if p.price_kes is not none else '—' }}</td><td>{% if p.verified %}<span class="status status-good">Verified record</span>{% else %}<span class="status status-muted">Check details</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty-state"><span class="empty-icon">⌕</span><h3>We don't have a match yet</h3><p>Check the number or try a shorter product name. The catalogue grows as new records are added.</p><a href="{{ url_for('docs') }}" class="text-link">For app integrations, see the API guide →</a></div>{% endif %}
+  <p class="small-note">Prices are indicative where present and may change by retailer or date. Confirm prices with the seller before using them in a sale.</p>
+</section>
+{% endif %}
+
+<section class="app-section" aria-labelledby="choose-task-heading">
+  <div class="app-section-heading"><div><span class="section-kicker">CHOOSE WHAT YOU NEED</span><h2 id="choose-task-heading">Everything has a clear place.</h2></div><p>Start with one task. You can return here whenever you need another tool.</p></div>
+  <div class="task-card-grid">
+    <article class="task-card" id="catalogue-card"><div class="task-icon task-icon-blue">▦</div><span class="task-label">PRODUCT SEARCH</span><h3>Browse the catalogue</h3><p>Look up available products by barcode, name, brand or category.</p><a href="{{ url_for('catalogue') }}" class="task-link">Open catalogue <span>→</span></a></article>
+    <article class="task-card" id="pos-api"><div class="task-icon task-icon-purple">{ }</div><span class="task-label">FOR POS & SCANNERS</span><h3>Connect the barcode API</h3><p>Let your POS, scanner workflow or inventory app request product data automatically.</p><a href="{{ url_for('docs') }}" class="task-link">Read the API guide <span>→</span></a></article>
+    <article class="task-card" id="api-plans"><div class="task-icon task-icon-green">KSh</div><span class="task-label">PAID ACCESS</span><h3>Choose an API plan</h3><p>Compare monthly lookup limits and select the plan that fits your workload.</p><a href="{{ url_for('pricing') }}" class="task-link">View plan prices <span>→</span></a></article>
+  </div>
+</section>
+
+<section class="api-path-panel">
+  <div><span class="section-kicker">HOW TO GET STARTED</span><h2>From barcode to working integration.</h2><p>Create an account, choose and activate a plan, then generate an API key and follow the connection guide.</p></div>
+  <div class="api-path-actions"><a href="{{ url_for('register') }}" class="button">Create an account</a><a href="{{ url_for('docs') }}" class="button button-light">View setup steps</a></div>
+</section>
+
+<section class="company-credit-panel" id="company">
+  <div class="company-credit-mark">T</div>
+  <div class="company-credit-copy"><span class="section-kicker">THE TEAM BEHIND THE PRODUCT</span><h2>{{ company_legal_name }}</h2><p>A Kenyan technology company developing custom software, POS and inventory systems, web applications and practical API integrations for business workflows.</p><div class="company-credit-links"><a href="{{ url_for('company') }}" class="task-link">Company and technology services <span>→</span></a><a href="{{ company_site_url }}/" target="_blank" rel="noopener noreferrer" class="task-link">Visit company website <span>↗</span></a></div></div>
+</section>
+
+{% if posts %}
+<section class="app-section resource-section"><div class="app-section-heading"><div><span class="section-kicker">GUIDES & UPDATES</span><h2>Helpful resources</h2></div><p>Practical instructions and updates from the team.</p></div>
+  <div class="resource-grid">{% for p in posts %}<article class="resource-card"><div class="resource-card-meta"><span class="resource-type">{{ p.kind|upper }}</span>{% if p.premium %}<span class="lock-label">MEMBERS</span>{% endif %}</div><h3>{{ p.title }}</h3><p>{{ p.summary or 'A resource shared by the site administrator.' }}</p>{% if p.premium and not user_has_access %}<a href="{{ url_for('pricing') }}" class="text-link">Unlock with a plan <span>→</span></a>{% else %}<a href="{{ url_for('resource_detail',post_id=p.id) }}" class="text-link">Open resource <span>→</span></a>{% endif %}</article>{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}
