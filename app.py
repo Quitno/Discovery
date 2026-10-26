@@ -144,7 +144,7 @@ DEFAULT_SETTINGS = {
     "boost_duration_days_vip": "7",
     "boost_duration_days_vvip": "14",
     "listing_expiry_days": "30",
-    "public_base_url": os.environ.get("PUBLIC_BASE_URL", "https://trororinovationstech.co.ke"),
+    "public_base_url": os.environ.get("PUBLIC_BASE_URL", "https://trorinovationstech.co.ke"),
     "terms_notice": "Never pay a deposit before independently confirming the property and the person receiving payment.",
 }
 
@@ -433,7 +433,7 @@ def init_db() -> None:
             # Stop displaying an old-branded uploaded logo but keep its file in storage for recovery.
             conn.execute("UPDATE settings SET value='' WHERE key='site_logo'")
         conn.execute("UPDATE settings SET value=? WHERE key='site_description' AND (value='' OR value LIKE '%Find verified homes, stays%')", (DEFAULT_SETTINGS['site_description'],))
-        conn.execute("UPDATE settings SET value='https://trororinovationstech.co.ke' WHERE key='public_base_url' AND (value='' OR lower(value) LIKE '%discovery%')")
+        conn.execute("UPDATE settings SET value='https://trorinovationstech.co.ke' WHERE key='public_base_url' AND (value='' OR lower(value) LIKE '%discovery%')")
         # Give every existing listing a one-month lifecycle without deleting user data.
         try:
             lifecycle_days = max(1, min(365, int(conn.execute("SELECT value FROM settings WHERE key='listing_expiry_days'").fetchone()[0])))
@@ -775,7 +775,7 @@ def is_competitor_property_portal_url(value: str) -> bool:
 def public_base() -> str:
     # Deployment environment is authoritative so canonical links stay on the desired domain,
     # even if an older database contains an obsolete public_base_url setting.
-    configured = safe_external_url(os.environ.get("PUBLIC_BASE_URL", "") or setting("public_base_url", "") or "https://trororinovationstech.co.ke")
+    configured = safe_external_url(os.environ.get("PUBLIC_BASE_URL", "") or setting("public_base_url", "") or "https://trorinovationstech.co.ke")
     return configured.rstrip("/") if configured else request.url_root.rstrip("/")
 
 

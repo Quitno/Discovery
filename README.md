@@ -1,6 +1,6 @@
 # PataMahali — Kenya property marketplace
 
-PataMahali is the main property-search application intended for `https://trororinovationstech.co.ke/`. The existing two-gate homepage and the current inside-site flows are retained; the update focuses on search visibility, listing expiry/renewal, account recovery, and data retention.
+PataMahali is the main property-search application intended for `https://trorinovationstech.co.ke/`. The existing two-gate homepage and the current inside-site flows are retained; the update focuses on search visibility, listing expiry/renewal, account recovery, and data retention.
 
 ## Search visibility
 
@@ -8,7 +8,7 @@ PataMahali is the main property-search application intended for `https://trorori
 - A branded 1200 × 630 share image and square PataMahali avatar are included for search/social previews and browser icons.
 - `robots.txt`, `sitemap.xml`, and `llms.txt` are available. Six category hubs cover homes for rent, short stays, commercial property, warehouses/godowns, land/plots for sale, and houses/property for sale.
 - Category pages can extend through county → constituency → ward/neighbourhood. Area/category combinations enter the sitemap when there is real approved, currently published inventory. Empty specific pages stay `noindex` so the domain does not fill its index with thin duplicates.
-- All public canonical URLs use `PUBLIC_BASE_URL=https://trororinovationstech.co.ke`.
+- All public canonical URLs use `PUBLIC_BASE_URL=https://trorinovationstech.co.ke`.
 
 ## Listing renewal and owner accounts
 
@@ -28,6 +28,6 @@ PataMahali is the main property-search application intended for `https://trorori
 
 1. Extract this project so `app.py`, `requirements.txt`, `render.yaml`, `templates/`, and `static/` are at the repository root—not nested under another `bow-main/` folder.
 2. Ensure the healthy Render web service serving the custom domain uses this PataMahali project, and keep its persistent data disk attached. A code upload does not automatically transfer a custom domain from another Render service.
-3. Keep `PUBLIC_BASE_URL` set to `https://trororinovationstech.co.ke`, verify the homepage returns HTTP 200, and then submit `https://trororinovationstech.co.ke/sitemap.xml` in Google Search Console and Bing Webmaster Tools.
+3. Keep `PUBLIC_BASE_URL` set to `https://trorinovationstech.co.ke`, verify the homepage returns HTTP 200, and then submit `https://trorinovationstech.co.ke/sitemap.xml` in Google Search Console and Bing Webmaster Tools.
 
 Search rankings are not guaranteed by metadata alone. Search engines need to crawl the live site, and detailed location queries are strongest when real property inventory exists for that location.
