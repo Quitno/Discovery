@@ -1,2 +1,3 @@
 {% extends 'base.html' %}
-{% block content %}<section class="error-page"><span class="error-code">{{ '%03d'|format(code) }}</span><h1>{{ title }}</h1><p>{{ error_message }}</p><a class="button-primary" href="{{ url_for('home') }}">Back to discovery <span aria-hidden="true"></span></a></section>{% endblock %}
+{% block title %}{{ code }} · {{ site_settings.get('site_name','PataMahali') }}{% endblock %}
+{% block content %}<section class="auth-single page-shell"><div class="form-card auth-card centered-card"><div class="error-code">{{ code }}</div><h1>Let's get you back.</h1><p>{{ message }}</p><div class="hero-actions center-actions"><a class="button button-primary" href="{{ url_for('index') }}">Go home</a><a class="button button-outline" href="{{ url_for('homes') }}">Find a place</a></div></div></section>{% endblock %}

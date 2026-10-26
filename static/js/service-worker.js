@@ -1,55 +1,42 @@
-'use strict';
-const CACHE_VERSION = 'discovery-hub-shell-v8';
-const APP_SHELL = [
-  '/',
-  '/offline',
-  '/static/css/app.css',
-  '/static/js/app.js',
-  '/static/icons/favicon.svg',
-  '/static/icons/icon-192.png',
-  '/static/icons/icon-512.png'
+const CACHE_NAME = 'patamahali-shell-v12';
+const SHELL_ASSETS = [
+  '/static/css/style.css?v=20261020h',
+  '/static/js/app.js?v=20261020h',
+  '/icon.svg',
+  '/static/img/property-scenes/neighbourhood-hero.webp',
+  '/static/img/property-scenes/modern-interior.webp',
+  '/static/img/property-scenes/apartment-building.webp',
+  '/static/img/property-scenes/residential-land.webp'
 ];
-
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()));
 });
-
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
 });
-
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/admin') || url.pathname === '/qaz' || url.pathname.startsWith('/account/') || url.pathname === '/my-projects' || url.pathname.startsWith('/go/') || url.pathname === '/search' || url.pathname === '/health' || url.pathname === '/service-worker.js' || url.pathname === '/build-a-website-or-app' || url.pathname.startsWith('/download-file/') || url.pathname.startsWith('/api/')) return;
-
-  if (url.pathname.startsWith('/static/')) {
-    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then(async (response) => {
-      if (response && response.ok) {
-        try {
-          const cache = await caches.open(CACHE_VERSION);
-          await cache.put(request, response.clone());
-        } catch (_) { /* The current page still works if storage is full or blocked. */ }
-      }
+  const path = url.pathname;
+  // Never cache account pages, admin paths, personal documents, payment actions, or APIs.
+  if (path.startsWith('/partner/') || path.startsWith('/manage-admin/') || path === '/promise212324' || path.startsWith('/api/') || path.startsWith('/login') || path.startsWith('/join') || path.startsWith('/logout')) return;
+  if (path.startsWith('/static/') || path === '/icon.svg' || path === '/manifest.webmanifest') {
+    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
       return response;
     })));
     return;
   }
-
-  if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).then(async (response) => {
-      if (response && response.ok && !url.search && (url.pathname === '/' || url.pathname.startsWith('/service/') || url.pathname.startsWith('/service-group/') || url.pathname === '/downloads' || url.pathname.startsWith('/downloads/'))) {
-        try {
-          const cache = await caches.open(CACHE_VERSION);
-          await cache.put(request, response.clone());
-        } catch (_) { /* Online browsing should not fail because a cache write failed. */ }
-      }
+  if (request.mode === 'navigate' && (path === '/' || path === '/homes' || path.startsWith('/listing/') || path === '/partners')) {
+    event.respondWith(fetch(request).then((response) => {
+      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
       return response;
-    }).catch(async () => (await caches.match(request)) || (await caches.match('/')) || (await caches.match('/offline'))));
+    }).catch(async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      return new Response('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title><body style="font:16px system-ui;max-width:36rem;margin:3rem auto;padding:1rem;color:#182235"><h1>You are offline</h1><p>Reconnect to view current listings and confirm availability. Saved page information may be out of date.</p><a href="/">Try the home page</a></body></html>', {headers: {'Content-Type': 'text/html; charset=utf-8'}});
+    }));
   }
 });

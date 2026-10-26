@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Recover your PataMahali account{% endblock %}
+{% block meta_description %}Recover access to your existing PataMahali property-owner account securely.{% endblock %}
+{% block content %}
+<section class="auth-single page-shell"><div class="form-card auth-card"><span class="eyebrow">Account recovery</span><h1>Get back into your account.</h1>
+{% if stage == 'reset' %}
+<p>Answer your private recovery question and create a new password. Your existing account and property history stay connected.</p>
+<form method="post" class="stack-form">{{ csrf_field() }}<input type="hidden" name="stage" value="reset"><input type="hidden" name="account_id" value="{{ account_id }}"><p class="notice-card"><strong>{{ recovery_question }}</strong></p><label>Recovery answer<input type="password" name="recovery_answer" required autocomplete="off"></label><label>New password<input type="password" name="new_password" required minlength="10" autocomplete="new-password"></label><button class="button button-primary button-wide" type="submit">Reset password</button></form>
+{% else %}
+<p>Enter the phone number or email used for your property-partner account.</p><form method="post" class="stack-form">{{ csrf_field() }}<input type="hidden" name="stage" value="lookup"><label>Registered phone or email<input name="identity" required value="{{ identity }}" autocomplete="username"></label><button class="button button-primary button-wide" type="submit">Continue to recovery question</button></form>
+{% endif %}
+<p class="form-switch"><a href="{{ url_for('partner_login') }}">Return to partner sign in</a></p></div></section>
+{% endblock %}

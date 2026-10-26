@@ -1,0 +1,63 @@
+{% extends 'admin_base.html' %}
+{% set page_title = 'Market discoveries' %}
+{% block admin_content %}
+<section class="admin-panel market-admin-intro">
+  <div class="admin-panel-head"><div><h2>Public discovery shelf</h2><p>Show a changing selection of publicly advertised properties while your own partner inventory grows.</p></div><span class="status-pill {% if shelf_enabled %}status-available{% else %}status-removed{% endif %}">{% if shelf_enabled %}Visible on site{% else %}Hidden from site{% endif %}</span></div>
+  <p class="market-admin-note">These are external source links, not verified PataMahali homes. Confirm availability before refreshing each source date. You can link directly to a public TikTok, Instagram, Facebook or property listing page; use only images you have permission to display.</p>
+  <form method="post" class="market-shelf-toggle">{{ csrf_field() }}<input type="hidden" name="action" value="toggle_shelf"><label class="checkbox-line"><input type="checkbox" name="enabled" value="1" {% if shelf_enabled %}checked{% endif %}> Show rotating discovery shelf to visitors</label><button class="button button-small button-outline" type="submit">Save visibility</button></form>
+</section>
+<section class="admin-panel market-admin-intro">
+  <div class="admin-panel-head"><div><h2>Add a source listing</h2><p>Use this to add another property or a direct social-media post to the rotation.</p></div></div>
+  <form method="post" class="market-admin-form">{{ csrf_field() }}
+    <div class="form-grid">
+      <label>Listing title<input name="title" required maxlength="180" placeholder="e.g. 2 bedroom near Thindigua"></label>
+      <label>Source name<input name="source_name" required maxlength="120" placeholder="TikTok, Instagram, Facebook or site name"></label>
+      <label>Category<select name="category">{% for key,meta in category_meta.items() %}<option value="{{ key }}">{{ meta['label'] }}</option>{% endfor %}</select></label>
+      <label>Property type<input name="property_type" maxlength="120" placeholder="Apartment, bedsitter, shop…"></label>
+      <label>Area / landmark<input name="location_name" maxlength="180" placeholder="Ruaka, near Quickmart"></label>
+      <label>Price (KES)<input type="number" name="price_amount" min="0" step="100" placeholder="Leave blank if not clear"></label>
+      <label>Price period<select name="price_period">{% for period in ['per month','per night','per day','per year','total price','per square foot'] %}<option value="{{ period }}">{{ period }}</option>{% endfor %}</select></label>
+      <label>Bedrooms<input type="number" name="bedrooms" min="0" placeholder="Optional"></label>
+      <label>Bathrooms<input type="number" name="bathrooms" min="0" placeholder="Optional"></label>
+      <label class="full-span">Original listing / post URL<input type="url" name="source_url" required placeholder="https://…"></label>
+      <label class="full-span">Public image URL<input type="url" name="image_url" placeholder="https://… .jpg / .webp"><small class="field-help">Image should be publicly accessible. Leave blank rather than copying a private or unlicensed image.</small></label>
+      <label class="full-span">Extra social/video link (optional)<input type="url" name="social_url" placeholder="https://www.tiktok.com/…"></label>
+      <label>Source last checked<input type="date" name="source_checked_at" value="{{ current_date }}"><small class="field-help">Update this when you actually check the source.</small></label>
+      <label>Display order<input type="number" name="display_order" value="10" min="0"></label>
+      <label class="full-span">Short details<textarea name="summary" rows="2" maxlength="900" placeholder="Only details you can attribute to the source. Avoid promises you cannot verify."></textarea></label>
+    </div>
+    <label class="checkbox-line market-enabled-check"><input type="checkbox" name="enabled" value="1" checked> Include in rotation</label>
+    <div class="admin-save-row"><span class="muted small">New items may appear in a different order for different visitors and change every six hours.</span><button class="button button-primary" type="submit">Add to rotation</button></div>
+  </form>
+</section>
+<section class="admin-panel market-admin-list">
+  <div class="admin-panel-head"><div><h2>Current source listings</h2><p>{{ items|length }} records · edits apply to the next page view</p></div></div>
+  {% for item in items %}
+  <details class="market-admin-item">
+    <summary><span class="market-admin-thumb">{% if item['image_url'] %}<img src="{{ item['image_url'] }}" alt="" loading="lazy">{% else %}<span>—</span>{% endif %}</span><span class="market-admin-record"><strong>{{ item['title'] }}</strong><small>{{ item['location_name'] }} · {{ item['source_name'] }} · {% if item['price_amount'] %}{{ money(item['price_amount']) }}{% else %}Price not listed{% endif %}</small></span><span class="status-pill {% if item['enabled'] %}status-available{% else %}status-removed{% endif %}">{% if item['enabled'] %}In rotation{% else %}Hidden{% endif %}</span><span class="market-admin-edit-label">Edit</span></summary>
+    <form method="post" class="market-admin-form market-admin-edit-form">{{ csrf_field() }}<input type="hidden" name="item_id" value="{{ item['id'] }}">
+      <div class="form-grid">
+        <label>Listing title<input name="title" value="{{ item['title'] }}" required maxlength="180"></label>
+        <label>Source name<input name="source_name" value="{{ item['source_name'] }}" required maxlength="120"></label>
+        <label>Category<select name="category">{% for key,meta in category_meta.items() %}<option value="{{ key }}" {% if item['category']==key %}selected{% endif %}>{{ meta['label'] }}</option>{% endfor %}</select></label>
+        <label>Property type<input name="property_type" value="{{ item['property_type'] }}" maxlength="120"></label>
+        <label>Area / landmark<input name="location_name" value="{{ item['location_name'] }}" maxlength="180"></label>
+        <label>Price (KES)<input type="number" name="price_amount" value="{{ item['price_amount'] if item['price_amount'] is not none else '' }}" min="0" step="100"></label>
+        <label>Price period<select name="price_period">{% for period in ['per month','per night','per day','per year','total price','per square foot'] %}<option value="{{ period }}" {% if item['price_period']==period %}selected{% endif %}>{{ period }}</option>{% endfor %}</select></label>
+        <label>Bedrooms<input type="number" name="bedrooms" value="{{ item['bedrooms'] if item['bedrooms'] is not none else '' }}" min="0"></label>
+        <label>Bathrooms<input type="number" name="bathrooms" value="{{ item['bathrooms'] if item['bathrooms'] is not none else '' }}" min="0"></label>
+        <label class="full-span">Original listing / post URL<input type="url" name="source_url" value="{{ item['source_url'] }}" required></label>
+        <label class="full-span">Public image URL<input type="url" name="image_url" value="{{ item['image_url'] }}"></label>
+        <label class="full-span">Extra social/video link<input type="url" name="social_url" value="{{ item['social_url'] }}"></label>
+        <label>Source last checked<input type="date" name="source_checked_at" value="{{ item['source_checked_at'] }}"></label>
+        <label>Display order<input type="number" name="display_order" value="{{ item['display_order'] }}" min="0"></label>
+        <label class="full-span">Short details<textarea name="summary" rows="2" maxlength="900">{{ item['summary'] }}</textarea></label>
+      </div>
+      <label class="checkbox-line market-enabled-check"><input type="checkbox" name="enabled" value="1" {% if item['enabled'] %}checked{% endif %}> Include in rotation</label>
+      <div class="admin-save-row"><span class="muted small">Source checked: {{ item['source_checked_at'] or 'not recorded' }}</span><button class="button button-primary" type="submit">Save changes</button></div>
+    </form>
+    <form method="post" action="{{ url_for('admin_market_discovery_delete', item_id=item['id']) }}" data-confirm="Remove this external listing from the site?" class="market-delete-form">{{ csrf_field() }}<button class="button button-small button-outline danger-outline" type="submit">Delete source listing</button><a href="{{ item['source_url'] }}" target="_blank" rel="noopener noreferrer">Open original source ↗</a></form>
+  </details>
+  {% else %}<div class="empty-state"><h3>No source listings yet</h3><p>Add a public source listing above or turn on the discovery shelf after adding records.</p></div>{% endfor %}
+</section>
+{% endblock %}

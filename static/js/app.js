@@ -1,281 +1,464 @@
 (() => {
-  const body = document.body;
-  const toggle = document.getElementById('menu-toggle');
-  const scrim = document.getElementById('sidebar-scrim');
-  const sidebar = document.getElementById('sidebar');
-
-  const closeSidebar = () => {
-    body.classList.remove('sidebar-open');
-    if (toggle) toggle.setAttribute('aria-expanded', 'false');
-  };
-  if (toggle && sidebar) {
-    toggle.addEventListener('click', () => {
-      const open = !body.classList.contains('sidebar-open');
-      body.classList.toggle('sidebar-open', open);
-      toggle.setAttribute('aria-expanded', String(open));
+  const menuButton = document.querySelector('[data-menu-toggle]');
+  const nav = document.querySelector('[data-nav]');
+  const homesSidebar = document.querySelector('[data-homes-sidebar]');
+  const sidebarBackdrop = document.querySelector('[data-sidebar-close]');
+  if (menuButton && homesSidebar) {
+    const setSidebarOpen = (opened) => {
+      homesSidebar.classList.toggle('is-open', opened);
+      if (sidebarBackdrop) sidebarBackdrop.hidden = !opened;
+      menuButton.setAttribute('aria-expanded', String(opened));
+      menuButton.setAttribute('aria-label', opened ? 'Close categories' : 'Open categories');
+    };
+    menuButton.addEventListener('click', () => {
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        setSidebarOpen(!homesSidebar.classList.contains('is-open'));
+      } else {
+        const layout = homesSidebar.closest('.browse-layout');
+        const collapsed = layout && layout.classList.toggle('sidebar-collapsed');
+        menuButton.setAttribute('aria-expanded', String(!collapsed));
+        menuButton.setAttribute('aria-label', collapsed ? 'Show categories' : 'Hide categories');
+      }
     });
-    if (scrim) scrim.addEventListener('click', closeSidebar);
-    sidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeSidebar));
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeSidebar();
+    if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
+    homesSidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => setSidebarOpen(false)));
+  } else if (menuButton && nav) {
+    menuButton.addEventListener('click', () => {
+      const opened = nav.classList.toggle('open');
+      menuButton.setAttribute('aria-expanded', String(opened));
+      menuButton.setAttribute('aria-label', opened ? 'Close menu' : 'Open menu');
     });
+    nav.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => {
+      nav.classList.remove('open'); menuButton.setAttribute('aria-expanded', 'false');
+    }));
   }
+
+  const moreMenuButton = document.querySelector('[data-more-toggle]');
+  const moreMenu = document.querySelector('[data-more-menu]');
+  if (moreMenuButton && moreMenu) {
+    const setMoreMenuOpen = (opened) => {
+      moreMenu.hidden = !opened;
+      moreMenuButton.setAttribute('aria-expanded', String(opened));
+    };
+    moreMenuButton.addEventListener('click', () => setMoreMenuOpen(moreMenu.hidden));
+    document.addEventListener('click', (event) => {
+      if (!moreMenu.hidden && !event.target.closest('.site-header-actions')) setMoreMenuOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setMoreMenuOpen(false);
+    });
+    moreMenu.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => setMoreMenuOpen(false)));
+  }
+
+  const offlineBanner = document.getElementById('offlineBanner');
+  const reflectConnection = () => { if (offlineBanner) offlineBanner.hidden = navigator.onLine; };
+  window.addEventListener('online', reflectConnection);
+  window.addEventListener('offline', reflectConnection);
+  reflectConnection();
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
+  }
+
+  let installPrompt = null;
+  const installButtons = document.querySelectorAll('[data-install-pwa]');
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault(); installPrompt = event;
+    installButtons.forEach((button) => { button.hidden = false; });
+  });
+  installButtons.forEach((button) => button.addEventListener('click', async () => {
+    if (!installPrompt) {
+      alert('On Android, open your browser menu and choose “Install app” or “Add to Home screen”.');
+      return;
+    }
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null;
+    installButtons.forEach((node) => { node.hidden = true; });
+  }));
 
   document.querySelectorAll('form[data-confirm]').forEach((form) => {
     form.addEventListener('submit', (event) => {
-      if (!window.confirm(form.dataset.confirm || 'Are you sure?')) event.preventDefault();
+      if (!window.confirm(form.dataset.confirm || 'Continue?')) event.preventDefault();
     });
   });
 
-  // Add-to-home-screen support. Do not show an install button unless the browser says
-  // installation is available; the browser remains responsible for the install flow.
-  let deferredInstallPrompt = null;
-  const topbarActions = document.querySelector('.topbar-actions');
-  let installButton = null;
-  const createInstallButton = () => {
-    if (!topbarActions || installButton) return;
-    installButton = document.createElement('button');
-    installButton.type = 'button';
-    installButton.className = 'topbar-link pwa-install-button';
-    installButton.textContent = 'Install app ↓';
-    installButton.setAttribute('aria-label', 'Install this discovery hub as an app');
-    installButton.addEventListener('click', async () => {
-      if (!deferredInstallPrompt) return;
-      deferredInstallPrompt.prompt();
-      try { await deferredInstallPrompt.userChoice; } catch (_) { /* Browser may dismiss the prompt. */ }
-      deferredInstallPrompt = null;
-      installButton.hidden = true;
+  const postLocation = async (latitude, longitude) => {
+    const response = await fetch('/api/location', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': window.APP_CSRF || ''},
+      body: JSON.stringify({latitude, longitude, consent: true})
     });
-    topbarActions.insertBefore(installButton, topbarActions.firstChild);
+    if (!response.ok) throw new Error('Location could not be saved. Refresh the page and try again.');
+    return response.json();
   };
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    deferredInstallPrompt = event;
-    createInstallButton();
-    if (installButton) installButton.hidden = false;
-  });
-  window.addEventListener('appinstalled', () => {
-    deferredInstallPrompt = null;
-    if (installButton) installButton.hidden = true;
-  });
 
-  // Keep public pages available as a light PWA shell. The service worker deliberately
-  // does not cache admin pages, searches, tracking redirects, or other sensitive/dynamic paths.
-  if ('serviceWorker' in navigator && window.isSecureContext) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => {
-        // The site remains usable if a browser or host disallows service workers.
-      });
-    });
-  }
-
-
-  // Public gateway sharing controls. Kept in the local script so the site's CSP can remain strict.
-  const shareFeedback = document.getElementById('share-feedback');
-  const shareHubButton = document.getElementById('share-hub-button');
-  const copyHubButton = document.getElementById('copy-hub-button');
-  const copyHubUrl = async () => {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(window.location.href);
-        if (shareFeedback) shareFeedback.textContent = 'Website link copied.';
-      } else if (shareFeedback) shareFeedback.textContent = window.location.href;
-    } catch (_) {
-      if (shareFeedback) shareFeedback.textContent = window.location.href;
-    }
-  };
-  if (shareHubButton) {
-    shareHubButton.addEventListener('click', async () => {
-      const data = { title: document.title, text: 'Explore this gateway to connected websites and digital services.', url: window.location.href };
-      try {
-        if (navigator.share) await navigator.share(data);
-        else await copyHubUrl();
-      } catch (error) {
-        if (error && error.name !== 'AbortError' && shareFeedback) shareFeedback.textContent = 'Copy the website link to share this gateway.';
-      }
-    });
-  }
-  if (copyHubButton) copyHubButton.addEventListener('click', copyHubUrl);
-
-  // Transparent, indicative project estimate; the server recalculates the same range on submission.
-  const projectForm = document.getElementById('project-form');
-  const estimateAmount = document.getElementById('estimate-amount');
-  if (projectForm && estimateAmount) {
-    const base = {
-      'business-website': [10000, 20000], 'online-store': [25000, 60000], 'web-app': [50000, 120000],
-      'mobile-app': [60000, 150000], 'redesign': [8000, 22000], 'automation': [15000, 45000],
-      'seo': [5000, 20000], 'other': [12000, 45000]
-    };
-    const pages = { '1-5': [0, 0], '6-10': [5000, 9000], '11-20': [12000, 22000], '21+': [25000, 50000] };
-    const features = { simple: [0, 0], standard: [5000, 15000], advanced: [15000, 40000] };
-    const content = { ready: [0, 0], 'need-help': [3000, 10000], 'full-service': [6000, 18000] };
-    const timing = { flexible: [1, 1], month: [1, 1.08], 'two-weeks': [1.08, 1.15], 'one-week': [1.18, 1.30] };
-    const money = (n) => 'KSh ' + Math.round(n).toLocaleString('en-KE');
-    const updateEstimate = () => {
-      const data = new FormData(projectForm);
-      let lowHigh = base[data.get('project_type')] || base.other;
-      let add = pages[data.get('pages_count')] || pages['1-5']; lowHigh = [lowHigh[0] + add[0], lowHigh[1] + add[1]];
-      add = features[data.get('feature_level')] || features.standard; lowHigh = [lowHigh[0] + add[0], lowHigh[1] + add[1]];
-      add = content[data.get('content_status')] || content['need-help']; lowHigh = [lowHigh[0] + add[0], lowHigh[1] + add[1]];
-      const factors = timing[data.get('timeline')] || timing.flexible;
-      const round500 = (n) => Math.round(n / 500) * 500;
-      estimateAmount.textContent = money(round500(lowHigh[0] * factors[0])) + ' – ' + money(round500(lowHigh[1] * factors[1]));
-      const caption = document.getElementById('estimate-caption');
-      if (caption) caption.textContent = data.get('timeline') === 'one-week'
-        ? 'This range includes a planning allowance for the urgent timeline.'
-        : 'Indicative estimate updated from the selected project type, scale, features and content support.';
-    };
-    projectForm.addEventListener('change', updateEstimate);
-    updateEstimate();
-  }
-  // Practical accessibility controls. Preferences stay on the visitor's own device only.
-  const accessibilityToggle = document.getElementById('accessibility-toggle');
-  const accessibilityPanel = document.getElementById('accessibility-panel');
-  const accessibilityClose = document.getElementById('accessibility-close');
-  const a11yKeys = ['contrast', 'underline', 'motion', 'textSize'];
-  const a11yDefaults = { contrast: false, underline: false, motion: false, textSize: 0 };
-  let a11y = { ...a11yDefaults };
-  try {
-    const saved = JSON.parse(window.localStorage.getItem('toror-display-preferences') || '{}');
-    a11y = { ...a11y, ...saved };
-  } catch (_) { /* Storage may be unavailable in private browsing. */ }
-  a11y.textSize = Math.max(0, Math.min(2, Number(a11y.textSize) || 0));
-  const applyA11y = () => {
-    document.documentElement.classList.toggle('a11y-text-large', a11y.textSize === 1);
-    document.documentElement.classList.toggle('a11y-text-xlarge', a11y.textSize >= 2);
-    body.classList.toggle('a11y-high-contrast', Boolean(a11y.contrast));
-    body.classList.toggle('a11y-underline-links', Boolean(a11y.underline));
-    body.classList.toggle('a11y-reduce-motion', Boolean(a11y.motion));
-    document.querySelectorAll('[data-a11y-action="contrast"]').forEach((button) => button.setAttribute('aria-pressed', String(Boolean(a11y.contrast))));
-    document.querySelectorAll('[data-a11y-action="underline"]').forEach((button) => button.setAttribute('aria-pressed', String(Boolean(a11y.underline))));
-    document.querySelectorAll('[data-a11y-action="motion"]').forEach((button) => button.setAttribute('aria-pressed', String(Boolean(a11y.motion))));
-    const smallerTextButton = document.querySelector('[data-a11y-action="text-down"]');
-    const largerTextButton = document.querySelector('[data-a11y-action="text-up"]');
-    if (smallerTextButton) smallerTextButton.disabled = a11y.textSize <= 0;
-    if (largerTextButton) largerTextButton.disabled = a11y.textSize >= 2;
-    try { window.localStorage.setItem('toror-display-preferences', JSON.stringify(a11y)); } catch (_) {}
-  };
-  applyA11y();
-  const closeAccessibility = () => {
-    if (accessibilityPanel) accessibilityPanel.hidden = true;
-    if (accessibilityToggle) accessibilityToggle.setAttribute('aria-expanded', 'false');
-  };
-  if (accessibilityToggle && accessibilityPanel) {
-    accessibilityToggle.addEventListener('click', () => {
-      const open = accessibilityPanel.hidden;
-      accessibilityPanel.hidden = !open;
-      accessibilityToggle.setAttribute('aria-expanded', String(open));
-      if (open) {
-        const firstControl = accessibilityPanel.querySelector('button');
-        if (firstControl) firstControl.focus();
-      }
-    });
-    if (accessibilityClose) accessibilityClose.addEventListener('click', () => { closeAccessibility(); accessibilityToggle.focus(); });
-    accessibilityPanel.querySelectorAll('[data-a11y-action]').forEach((button) => button.addEventListener('click', () => {
-      switch (button.dataset.a11yAction) {
-        case 'text-up': a11y.textSize = Math.min(2, a11y.textSize + 1); break;
-        case 'text-down': a11y.textSize = Math.max(-1, a11y.textSize - 1); break;
-        case 'contrast': a11y.contrast = !a11y.contrast; break;
-        case 'underline': a11y.underline = !a11y.underline; break;
-        case 'motion': a11y.motion = !a11y.motion; break;
-        case 'reset': a11y = { ...a11yDefaults }; break;
-        default: return;
-      }
-      applyA11y();
-    }));
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !accessibilityPanel.hidden) { closeAccessibility(); accessibilityToggle.focus(); } });
-  }
-
-  // Live platform checker: statuses come from a fixed allowlist on the Flask server.
-  // A timeout is described as "Could not verify", never falsely reported as offline.
-  const availabilityGrid = document.getElementById('availability-grid');
-  const availabilityRefresh = document.getElementById('availability-refresh');
-  const availabilitySummary = document.getElementById('availability-summary');
-  const availabilityLastChecked = document.getElementById('availability-last-checked');
-  const renderAvailability = (data) => {
-    if (!availabilityGrid) return;
-    availabilityGrid.replaceChildren();
-    const results = Array.isArray(data.results) ? data.results : [];
-    const onlineCount = results.filter((item) => item.status === 'online').length;
-    const issueCount = results.filter((item) => item.status === 'issue').length;
-    const unknownCount = results.length - onlineCount - issueCount;
-    if (availabilitySummary) availabilitySummary.textContent = `${onlineCount} responding · ${issueCount} server issues · ${unknownCount} not verified`;
-    const checkedTime = data.checked_at ? new Date(data.checked_at) : new Date();
-    if (availabilityLastChecked) availabilityLastChecked.textContent = `Checked ${checkedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    if (!results.length) {
-      const empty = document.createElement('p'); empty.className = 'availability-loading';
-      empty.textContent = 'No results arrived. Try checking again.'; availabilityGrid.appendChild(empty); return;
-    }
-    results.forEach((item) => {
-      const card = document.createElement('article'); card.className = 'availability-card'; card.dataset.status = item.status || 'unknown';
-      const top = document.createElement('div'); top.className = 'availability-card-top';
-      const heading = document.createElement('h3'); heading.textContent = item.name || 'Connected platform'; top.appendChild(heading);
-      const state = document.createElement('span'); state.className = 'availability-state';
-      const dot = document.createElement('span'); dot.className = 'status-dot ' + (item.status === 'online' ? 'status-dot-online' : item.status === 'issue' ? 'status-dot-issue' : 'status-dot-unknown');
-      dot.setAttribute('aria-hidden', 'true'); state.append(dot, document.createTextNode(item.label || 'Could not verify')); top.appendChild(state);
-      const purpose = document.createElement('p'); purpose.textContent = item.purpose || '';
-      const detail = document.createElement('p'); detail.className = 'availability-card-detail'; const latency = Number.isFinite(item.duration_ms) ? ` · ${item.duration_ms} ms` : '';
-      detail.textContent = (item.detail || '') + latency;
-      const link = document.createElement('a'); link.className = 'availability-card-link'; link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-      link.append(document.createTextNode('Open platform'), document.createTextNode(' ↗'));
-      card.append(top, purpose, detail, link); availabilityGrid.appendChild(card);
-    });
-  };
-  const checkAvailability = async (force = false) => {
-    if (!availabilityGrid) return;
-    if (availabilityRefresh) { availabilityRefresh.disabled = true; availabilityRefresh.textContent = 'Checking…'; }
-    if (availabilitySummary) availabilitySummary.textContent = 'Checking connected platforms…';
-    try {
-      const response = await fetch('/api/availability' + (force ? '?refresh=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store' });
-      if (!response.ok) throw new Error('Availability endpoint returned ' + response.status);
-      renderAvailability(await response.json());
-    } catch (_) {
-      if (availabilitySummary) availabilitySummary.textContent = 'The checker could not be reached. The platforms may still be available.';
-      availabilityGrid.replaceChildren();
-      const msg = document.createElement('p'); msg.className = 'availability-loading'; msg.textContent = 'Unable to load checks just now. Please try again.'; availabilityGrid.appendChild(msg);
-    } finally {
-      if (availabilityRefresh) { availabilityRefresh.disabled = false; availabilityRefresh.textContent = 'Check again'; }
-    }
-  };
-  if (availabilityGrid) {
-    checkAvailability(false);
-    if (availabilityRefresh) availabilityRefresh.addEventListener('click', () => checkAvailability(true));
-  }
-
-  // Optional, visitor-initiated ambient sound for the motion advert. Audio never autoplays.
-  document.querySelectorAll('[data-ambient-toggle]').forEach((button) => {
-    let audioContext = null;
-    let master = null;
-    let oscillators = [];
-    let running = false;
-    const start = () => {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return false;
-      audioContext = audioContext || new Ctx();
-      if (audioContext.state === 'suspended') audioContext.resume();
-      master = audioContext.createGain();
-      master.gain.value = 0.018;
-      master.connect(audioContext.destination);
-      [130.81, 164.81, 196.00].forEach((frequency, index) => {
-        const oscillator = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-        oscillator.type = 'sine';
-        oscillator.frequency.value = frequency;
-        gain.gain.value = index === 0 ? 0.50 : 0.24;
-        oscillator.connect(gain); gain.connect(master); oscillator.start(); oscillators.push(oscillator);
-      });
-      running = true; button.setAttribute('aria-pressed', 'true'); button.innerHTML = '<span aria-hidden="true">♫</span> Soft sound on';
-      return true;
-    };
-    const stop = () => {
-      if (master && audioContext) { try { master.gain.setTargetAtTime(0, audioContext.currentTime, 0.15); } catch (_) {} }
-      oscillators.forEach((oscillator) => { try { oscillator.stop(audioContext.currentTime + 0.4); } catch (_) {} });
-      oscillators = []; master = null; running = false; button.setAttribute('aria-pressed', 'false'); button.innerHTML = '<span aria-hidden="true">♫</span> Soft sound off';
-    };
+  document.querySelectorAll('[data-location-search]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (running) stop(); else if (!start()) { button.textContent = 'Sound unavailable'; }
+      const status = document.querySelector('[data-location-status]');
+      if (!navigator.geolocation) { if (status) status.textContent = 'This browser does not support device location. Search by area instead.'; return; }
+      button.disabled = true; button.textContent = 'Finding location…';
+      if (status) status.textContent = 'Your browser will ask permission to use your location.';
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+          // The visitor has explicitly pressed “Use my location”. Browser permission is the consent gate.
+          // Save only the approximate rounded location for the admin's consent-based analytics.
+          await postLocation(position.coords.latitude, position.coords.longitude).catch(() => {});
+          const url = new URL(window.location.href);
+          url.pathname = '/homes';
+          url.searchParams.set('lat', position.coords.latitude.toFixed(6));
+          url.searchParams.set('lon', position.coords.longitude.toFixed(6));
+          if (status) status.textContent = 'Location found. Showing nearby places first…';
+          window.location.href = url.toString();
+        } catch (error) {
+          if (status) status.textContent = error.message || 'Could not use this location. Search by area instead.';
+          button.disabled = false; button.textContent = 'Use my location';
+        }
+      }, (error) => {
+        const messages = {1: 'Location permission was denied. Search by area instead.', 2: 'Your location is unavailable. Try again or search by area.', 3: 'Location request timed out. Try again.'};
+        if (status) status.textContent = messages[error.code] || 'Location could not be read.';
+        button.disabled = false; button.textContent = 'Use my location';
+      }, {enableHighAccuracy: false, timeout: 20000, maximumAge: 120000});
     });
-    window.addEventListener('pagehide', () => { if (audioContext) audioContext.close().catch(() => {}); });
   });
+
+  document.querySelectorAll('[data-share-visitor-location]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const status = button.parentElement && button.parentElement.querySelector('[data-location-status]');
+      if (!navigator.geolocation) { if (status) status.textContent = 'This browser does not support device location.'; return; }
+      const accepted = window.confirm('Share your approximate location for site analytics? The site stores a rounded area for this visit that authorized administrators can see. Your choice is optional.');
+      if (!accepted) { if (status) status.textContent = 'No location shared.'; return; }
+      button.disabled = true; button.textContent = 'Finding location…';
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+          await postLocation(position.coords.latitude, position.coords.longitude);
+          if (status) status.textContent = 'Approximate area shared. You can continue using the site.';
+          button.textContent = 'Location shared';
+        } catch (error) {
+          if (status) status.textContent = error.message || 'Could not save location.';
+          button.disabled = false; button.textContent = 'Share my approximate location';
+        }
+      }, (error) => {
+        if (status) status.textContent = error.code === 1 ? 'Permission denied. No location was shared.' : 'Could not read location. Try again later.';
+        button.disabled = false; button.textContent = 'Share my approximate location';
+      }, {enableHighAccuracy: false, timeout: 12000, maximumAge: 60000});
+    });
+  });
+
+  document.querySelectorAll('[data-directions-panel]').forEach((panel) => {
+    const mode = panel.querySelector('[data-route-origin-mode]');
+    const originInput = panel.querySelector('[data-route-origin-place]');
+    const goButton = panel.querySelector('[data-route-go]');
+    const status = panel.querySelector('[data-route-status]');
+    const destination = panel.dataset.destination;
+    const preview = panel.querySelector('[data-route-map-preview]');
+    const frame = panel.querySelector('[data-route-map-frame]');
+    const openLink = panel.querySelector('[data-route-open]');
+    const syncMode = () => { if (originInput) originInput.hidden = !mode || mode.value !== 'place'; };
+    if (mode) { mode.addEventListener('change', syncMode); syncMode(); }
+    if (!goButton || !destination) return;
+
+    const showRoute = (origin, originLabel) => {
+      const embed = 'https://maps.google.com/maps?saddr=' + encodeURIComponent(origin) + '&daddr=' + encodeURIComponent(destination) + '&output=embed';
+      const route = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination) + '&travelmode=driving';
+      if (frame) frame.src = embed;
+      if (preview) preview.hidden = false;
+      if (openLink) openLink.href = route;
+      if (status) status.textContent = 'Route from ' + originLabel + ' to this property. Use the full directions link for turn-by-turn navigation.';
+      goButton.disabled = false;
+      goButton.textContent = 'Update route';
+    };
+
+    goButton.addEventListener('click', () => {
+      if (mode && mode.value === 'place') {
+        const origin = (originInput && originInput.value || '').trim();
+        if (!origin) { if (status) status.textContent = 'Enter a starting place, estate or landmark.'; originInput && originInput.focus(); return; }
+        showRoute(origin, origin);
+        return;
+      }
+      if (!navigator.geolocation) { if (status) status.textContent = 'This browser does not support device location. Choose a starting place instead.'; return; }
+      goButton.disabled = true; goButton.textContent = 'Finding your location…';
+      if (status) status.textContent = 'Allow location access in your browser to draw the route from here.';
+      navigator.geolocation.getCurrentPosition((position) => {
+        const origin = position.coords.latitude.toFixed(6) + ',' + position.coords.longitude.toFixed(6);
+        showRoute(origin, 'your current location');
+      }, (error) => {
+        if (status) status.textContent = error.code === 1 ? 'Location permission denied. Choose a starting place instead.' : 'Could not read location. Choose a starting place instead.';
+        goButton.disabled = false; goButton.textContent = 'Draw route to this place';
+      }, {enableHighAccuracy: false, timeout: 20000, maximumAge: 120000});
+    });
+  });
+
+  document.querySelectorAll('[data-copy-url]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const value = button.getAttribute('data-copy-url') || window.location.origin + '/';
+      const initialText = button.textContent;
+      try {
+        await navigator.clipboard.writeText(value);
+        button.textContent = 'Link copied';
+        button.setAttribute('aria-live', 'polite');
+        window.setTimeout(() => { button.textContent = initialText; }, 1800);
+      } catch (_) {
+        window.prompt('Copy this invite link:', value);
+      }
+    });
+  });
+
+  const propertyLocationButton = document.querySelector('[data-property-location]');
+  if (propertyLocationButton) {
+    propertyLocationButton.addEventListener('click', () => {
+      const status = document.querySelector('[data-property-location-status]');
+      if (!navigator.geolocation) { if (status) status.textContent = 'This browser does not support device location.'; return; }
+      if (status) status.textContent = 'Use only when physically at the property or setting its known pin. Waiting for permission…';
+      propertyLocationButton.disabled = true;
+      navigator.geolocation.getCurrentPosition((position) => {
+        const lat = document.getElementById('latitudeInput');
+        const lon = document.getElementById('longitudeInput');
+        if (lat) lat.value = position.coords.latitude.toFixed(6);
+        if (lon) lon.value = position.coords.longitude.toFixed(6);
+        if (status) status.textContent = 'Coordinates filled. Confirm they point to the actual property before saving.';
+        propertyLocationButton.disabled = false;
+      }, (error) => {
+        if (status) status.textContent = error.code === 1 ? 'Permission denied. You can type known coordinates manually.' : 'Could not read location. Type known coordinates manually.';
+        propertyLocationButton.disabled = false;
+      }, {enableHighAccuracy: true, timeout: 12000, maximumAge: 10000});
+    });
+  }
+
+
+  // On the finder, open a property in an in-page sheet. Only same-origin listing
+  // pages are fetched; external property portals are never followed from a card.
+  const propertyResults = document.querySelector('.finder-results');
+  if (propertyResults) {
+    const previewDialog = document.createElement('dialog');
+    previewDialog.className = 'property-preview-dialog';
+    previewDialog.setAttribute('aria-label', 'Property details');
+    previewDialog.innerHTML = `
+      <div class="property-preview-frame">
+        <div class="property-preview-top"><span class="property-preview-kicker">PROPERTY DETAILS</span><button type="button" class="property-preview-close" aria-label="Close property details" data-preview-close>×</button></div>
+        <div class="property-preview-content" data-preview-content><p>Loading property details…</p></div>
+      </div>`;
+    document.body.appendChild(previewDialog);
+    const content = previewDialog.querySelector('[data-preview-content]');
+    previewDialog.querySelector('[data-preview-close]').addEventListener('click', () => previewDialog.close());
+    previewDialog.addEventListener('click', (event) => {
+      if (event.target === previewDialog) previewDialog.close();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && previewDialog.open) previewDialog.close();
+    });
+
+    const safeLocalImage = (source) => {
+      try {
+        const parsed = new URL(source, window.location.origin);
+        return parsed.origin === window.location.origin ? parsed.href : '';
+      } catch (_) { return ''; }
+    };
+
+    const plainTextSection = (title, value) => {
+      if (!value) return null;
+      const section = document.createElement('section');
+      section.className = 'property-preview-section';
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      const paragraph = document.createElement('p');
+      paragraph.textContent = value;
+      section.append(heading, paragraph);
+      return section;
+    };
+
+    const buildPreview = (sourceDoc) => {
+      content.replaceChildren();
+      const gallery = document.createElement('div');
+      gallery.className = 'property-preview-gallery';
+      const mainFigure = document.createElement('div');
+      mainFigure.className = 'property-preview-main-image';
+      const mainImage = sourceDoc.querySelector('.gallery-main img');
+      const thumbnails = [...sourceDoc.querySelectorAll('.gallery-thumbs img')];
+      const imageSources = [mainImage, ...thumbnails].filter(Boolean)
+        .map((image) => safeLocalImage(image.getAttribute('src'))).filter(Boolean)
+        .filter((source, index, all) => all.indexOf(source) === index);
+      if (imageSources.length) {
+        const hero = document.createElement('img');
+        hero.src = imageSources[0];
+        hero.alt = 'Property photograph';
+        hero.loading = 'eager';
+        mainFigure.appendChild(hero);
+        gallery.appendChild(mainFigure);
+        if (imageSources.length > 1) {
+          const rail = document.createElement('div');
+          rail.className = 'property-preview-thumbnails';
+          imageSources.forEach((source, index) => {
+            const thumb = document.createElement('button');
+            thumb.type = 'button';
+            thumb.className = 'property-preview-thumb' + (index === 0 ? ' is-active' : '');
+            thumb.setAttribute('aria-label', `View property photo ${index + 1}`);
+            const image = document.createElement('img');
+            image.src = source; image.alt = ''; image.loading = 'lazy';
+            thumb.appendChild(image);
+            thumb.addEventListener('click', () => {
+              hero.src = source;
+              rail.querySelectorAll('button').forEach((button) => button.classList.remove('is-active'));
+              thumb.classList.add('is-active');
+            });
+            rail.appendChild(thumb);
+          });
+          gallery.appendChild(rail);
+        }
+      } else {
+        const noPhoto = document.createElement('div');
+        noPhoto.className = 'property-preview-no-photo';
+        noPhoto.textContent = 'No property photographs available';
+        gallery.appendChild(noPhoto);
+      }
+      content.appendChild(gallery);
+
+      const detailHeading = sourceDoc.querySelector('.detail-heading');
+      if (detailHeading) {
+        const titleLine = document.createElement('div');
+        titleLine.className = 'property-preview-title-line';
+        const title = document.createElement('h2');
+        title.textContent = detailHeading.querySelector('h1')?.textContent.trim() || 'Property';
+        const price = detailHeading.querySelector('.detail-price');
+        titleLine.appendChild(title);
+        if (price) {
+          const priceNode = document.createElement('div');
+          priceNode.className = 'property-preview-price';
+          priceNode.textContent = price.innerText.replace(/\s+/g, ' ').trim();
+          titleLine.appendChild(priceNode);
+        }
+        content.appendChild(titleLine);
+        const location = detailHeading.querySelector('.detail-location');
+        if (location && location.textContent.trim()) {
+          const area = document.createElement('p');
+          area.className = 'property-preview-location';
+          area.textContent = location.textContent.replace(/\s+/g, ' ').trim();
+          content.appendChild(area);
+        }
+      }
+
+      const facts = sourceDoc.querySelector('.facts-grid');
+      if (facts) {
+        const clone = facts.cloneNode(true);
+        clone.classList.add('property-preview-facts');
+        content.appendChild(clone);
+      }
+
+      const allowedSections = new Set(['About this place', 'Condition', 'Water supply', 'Amenities and other details']);
+      sourceDoc.querySelectorAll('.detail-section').forEach((section) => {
+        const label = section.querySelector('h2')?.textContent.trim() || '';
+        if (!allowedSections.has(label)) return;
+        const paragraph = section.querySelector('p');
+        const built = plainTextSection(label, paragraph?.textContent.trim() || '');
+        if (built) content.appendChild(built);
+      });
+
+      const partnerPhone = sourceDoc.querySelector('.property-contact-number a[href^="tel:"]');
+      if (partnerPhone) {
+        const contact = document.createElement('section');
+        contact.className = 'property-preview-contact';
+        const title = document.createElement('h3'); title.textContent = 'Contact owner or agent';
+        const number = document.createElement('a');
+        number.href = partnerPhone.getAttribute('href');
+        number.textContent = partnerPhone.textContent.trim();
+        number.className = 'property-preview-phone';
+        contact.append(title, number);
+        content.appendChild(contact);
+      }
+    };
+
+    let previewRequest = 0;
+    const openPropertyPreview = async (href) => {
+      const target = new URL(href, window.location.origin);
+      if (target.origin !== window.location.origin || !target.pathname.startsWith('/listing/')) return;
+      const requestId = ++previewRequest;
+      content.innerHTML = '<p class="property-preview-loading">Loading property details…</p>';
+      if (typeof previewDialog.showModal === 'function' && !previewDialog.open) previewDialog.showModal();
+      else if (!previewDialog.open) { window.location.href = target.href; return; }
+      try {
+        const response = await fetch(target.href, {credentials: 'same-origin', cache: 'no-store', headers: {'X-PataMahali-Preview': '1'}});
+        if (!response.ok) throw new Error('Could not load property details.');
+        const html = await response.text();
+        if (requestId !== previewRequest || !previewDialog.open) return;
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        if (!parsed.querySelector('.detail-layout')) throw new Error('Property page was not available.');
+        buildPreview(parsed);
+      } catch (_) {
+        if (previewDialog.open && requestId === previewRequest) {
+          content.replaceChildren();
+          const error = document.createElement('p');
+          error.className = 'property-preview-loading';
+          error.textContent = 'Details could not be loaded.';
+          const retryLink = document.createElement('a');
+          retryLink.href = target.pathname + target.search;
+          retryLink.textContent = ' Open property details on this site.';
+          error.appendChild(retryLink);
+          content.appendChild(error);
+        }
+      }
+    };
+
+    propertyResults.addEventListener('click', (event) => {
+      const link = event.target.closest('a[data-property-preview]');
+      if (!link || !propertyResults.contains(link)) return;
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = new URL(link.href, window.location.origin);
+      if (target.origin !== window.location.origin || !target.pathname.startsWith('/listing/')) return;
+      event.preventDefault();
+      openPropertyPreview(target.href);
+    });
+  }
+
+
+
+  // Filter the full county directory by counties, constituencies, wards and common local names.
+  const countyFilter = document.querySelector('[data-county-filter]');
+  const countyCards = Array.from(document.querySelectorAll('[data-county-card]'));
+  const countyCount = document.querySelector('[data-county-result-count]');
+  const countyEmpty = document.querySelector('[data-county-empty]');
+  if (countyFilter && countyCards.length) {
+    const applyCountyFilter = () => {
+      const query = (countyFilter.value || '').trim().toLocaleLowerCase();
+      let visible = 0;
+      countyCards.forEach((card) => {
+        const haystack = (card.getAttribute('data-search-text') || card.textContent || '').toLocaleLowerCase();
+        const show = !query || haystack.includes(query);
+        card.hidden = !show;
+        if (show) visible += 1;
+      });
+      if (countyCount) countyCount.textContent = query ? `${visible} matching county${visible === 1 ? '' : 'ies'}` : `${countyCards.length} counties`;
+      if (countyEmpty) countyEmpty.hidden = visible > 0;
+    };
+    countyFilter.addEventListener('input', applyCountyFilter);
+    applyCountyFilter();
+  }
+
+
+
+  // Narrow each county/constituency page without forcing visitors through a long list.
+  const placeFilter = document.querySelector('[data-place-filter]');
+  const placeCards = Array.from(document.querySelectorAll('[data-place-card]'));
+  const placeResultCount = document.querySelector('[data-place-result-count]');
+  if (placeFilter && placeCards.length) {
+    const applyPlaceFilter = () => {
+      const query = (placeFilter.value || '').trim().toLocaleLowerCase();
+      let visible = 0;
+      placeCards.forEach((card) => {
+        const haystack = (card.getAttribute('data-search-text') || card.textContent || '').toLocaleLowerCase();
+        const show = !query || haystack.includes(query);
+        card.hidden = !show;
+        if (show) visible += 1;
+      });
+      document.querySelectorAll('[data-place-group]').forEach((group) => {
+        group.hidden = !group.querySelector('[data-place-card]:not([hidden])');
+      });
+      document.querySelectorAll('[data-place-section]').forEach((section) => {
+        section.hidden = !section.querySelector('[data-place-card]:not([hidden])');
+      });
+      if (placeResultCount) placeResultCount.textContent = `${visible} matching option${visible === 1 ? '' : 's'}`;
+    };
+    placeFilter.addEventListener('input', applyPlaceFilter);
+    applyPlaceFilter();
+  }
 
 })();

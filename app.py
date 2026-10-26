@@ -1,2933 +1,3067 @@
 from __future__ import annotations
 
-import hmac
-import hashlib
+import json
+import math
 import os
-import csv
-import io
-import re
 import secrets
 import shutil
 import sqlite3
 import tempfile
 import zipfile
-import mimetypes
-import subprocess
-import math
-import time
-import concurrent.futures
-import threading
-import urllib.error
-import urllib.request
-import xml.sax.saxutils as xml_escape
-from contextlib import contextmanager
-from datetime import datetime, timedelta, date, timezone
+import uuid
+import hmac
+import hashlib
+import re
+from difflib import SequenceMatcher
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse
-from zoneinfo import ZoneInfo
+from urllib.parse import urlparse, quote_plus
 
 import qrcode
+from PIL import Image, ImageOps, UnidentifiedImageError
 from flask import (
-    Flask, abort, flash, g, redirect, render_template, request, send_file,
-    url_for, session, make_response, send_from_directory
+    Flask, abort, flash, g, jsonify, redirect, render_template, request,
+    send_file, send_from_directory, session, url_for
 )
 from markupsafe import Markup
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+from places import (
+    COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
+    county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
+    slugify, ward_map
+)
 from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.security import generate_password_hash, check_password_hash
-from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 BASE_DIR = Path(__file__).resolve().parent
-INSTANCE_DIR = BASE_DIR / "instance"
-INSTANCE_DIR.mkdir(exist_ok=True)
-# Render persistent disks are commonly mounted at /var/data. If that mount exists,
-# keep the SQLite database there; otherwise use the bundled instance directory.
-PERSISTENT_MOUNT = Path("/var/data")
-if PERSISTENT_MOUNT.is_dir() and os.access(PERSISTENT_MOUNT, os.W_OK):
-    DB_PATH = PERSISTENT_MOUNT / "discovery_hub.sqlite3"
-    BACKUP_DIR = PERSISTENT_MOUNT / "hub_backups"
-else:
-    DB_PATH = INSTANCE_DIR / "discovery_hub.sqlite3"
-    BACKUP_DIR = INSTANCE_DIR / "backups"
-BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-UPLOAD_ROOT = (PERSISTENT_MOUNT / "hub_uploads") if PERSISTENT_MOUNT.is_dir() and os.access(PERSISTENT_MOUNT, os.W_OK) else (INSTANCE_DIR / "uploads")
-AD_UPLOAD_DIR = UPLOAD_ROOT / "ads"
-DOWNLOAD_UPLOAD_DIR = UPLOAD_ROOT / "downloads"
-AD_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-DOWNLOAD_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+configured_data_dir = Path(os.environ.get("DATA_DIR", "/var/data" if (os.environ.get("RENDER_SERVICE_ID") or os.environ.get("RENDER")) else str(BASE_DIR / "instance")))
+try:
+    configured_data_dir.mkdir(parents=True, exist_ok=True)
+    DATA_DIR = configured_data_dir
+except OSError as exc:
+    # Avoid failing the whole web service if a Render disk path is configured before
+    # a disk is mounted. This fallback is ephemeral; see README for production setup.
+    DATA_DIR = BASE_DIR / "instance"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"WARNING: Could not use DATA_DIR={configured_data_dir}: {exc}. Using {DATA_DIR}; add a persistent Render disk.")
 
-app = Flask(__name__, instance_path=str(INSTANCE_DIR))
-# Respect Render's forwarded HTTPS/host headers for absolute URLs, QR codes, and sitemap.
+DB_PATH = DATA_DIR / "patamahali.sqlite3"
+BACKUP_DIR = DATA_DIR / "backups"
+LISTING_UPLOAD_DIR = DATA_DIR / "uploads" / "listings"
+PRIVATE_DOC_DIR = DATA_DIR / "private_documents"
+BRANDING_DIR = DATA_DIR / "uploads" / "branding"
+PROMO_DIR = DATA_DIR / "uploads" / "promotions"
+for directory in (BACKUP_DIR, LISTING_UPLOAD_DIR, PRIVATE_DOC_DIR, BRANDING_DIR, PROMO_DIR):
+    directory.mkdir(parents=True, exist_ok=True)
+
+ADMIN_PATH = "promise212324"  # Fixed private admin entry; do not configure through Render variables.
+ADMIN_ROOT = "/" + ADMIN_PATH
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
+MAX_FILE_BYTES = int(os.environ.get("MAX_FILE_BYTES", str(12 * 1024 * 1024)))
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_DOC_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
+
+app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-def normalise_public_site_url(value):
-    """Return an origin-only public URL for canonical tags and crawler feeds."""
-    fallback = "https://trorinovationstech.co.ke"
-    parsed = urlparse(str(value or "").strip())
-    if parsed.scheme not in ("https", "http") or not parsed.netloc or parsed.username or parsed.password:
-        return fallback
-    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-
-
-PUBLIC_SITE_URL = normalise_public_site_url(os.environ.get("PUBLIC_SITE_URL", "https://trorinovationstech.co.ke"))
-
-
-def canonical_url(path="/"):
-    """Build a canonical URL on the configured public origin; query strings are excluded."""
-    raw = str(path or "/")
-    parsed = urlparse(raw)
-    local_path = parsed.path or "/"
-    if not local_path.startswith("/") or local_path.startswith("//"):
-        local_path = "/"
-    return PUBLIC_SITE_URL + local_path
-
-
-app.jinja_env.globals["canonical_url"] = canonical_url
-
-
 app.config.update(
+    MAX_CONTENT_LENGTH=MAX_UPLOAD_BYTES,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
-    MAX_CONTENT_LENGTH=320 * 1024 * 1024,
+    SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER_SERVICE_ID") or os.environ.get("RENDER")),
+    PERMANENT_SESSION_LIFETIME=timedelta(days=14),
 )
 
-THEMES = {
-    "evergreen": {
-        "label": "White Professional", "bg": "#ffffff", "surface": "#ffffff",
-        "ink": "#17212f", "muted": "#586779", "primary": "#214f83",
-        "primary_ink": "#ffffff", "accent": "#dce9f8", "accent_ink": "#1b426e",
-        "line": "#e1e7ef", "soft": "#f4f7fb", "hero": "#f7f9fc", "warm": "#2d73b9"
-    },
-    "christmas": {
-        "label": "Christmas", "bg": "#f8f7f1", "surface": "#ffffff",
-        "ink": "#19372b", "muted": "#68786c", "primary": "#15563b",
-        "primary_ink": "#ffffff", "accent": "#e5c56b", "accent_ink": "#282d20",
-        "line": "#e4e8dc", "soft": "#f7ebdf", "hero": "#e6f0e5", "warm": "#c9454d"
-    },
-    "valentines": {
-        "label": "Valentine's", "bg": "#fbf6f7", "surface": "#ffffff",
-        "ink": "#39212d", "muted": "#806874", "primary": "#813b5a",
-        "primary_ink": "#ffffff", "accent": "#f7a6c1", "accent_ink": "#432134",
-        "line": "#efdee5", "soft": "#f9e9ef", "hero": "#f6e6ec", "warm": "#ea765e"
-    },
-    "easter": {
-        "label": "Easter", "bg": "#faf8f5", "surface": "#ffffff",
-        "ink": "#302b3b", "muted": "#777184", "primary": "#66508a",
-        "primary_ink": "#ffffff", "accent": "#f3c6a4", "accent_ink": "#3e2b28",
-        "line": "#e9e2ed", "soft": "#f1edf9", "hero": "#f0ebf8", "warm": "#df8b6d"
-    },
-    "summer": {
-        "label": "Bright Season", "bg": "#f8f8f3", "surface": "#ffffff",
-        "ink": "#193633", "muted": "#647874", "primary": "#08786d",
-        "primary_ink": "#ffffff", "accent": "#ffd17f", "accent_ink": "#363021",
-        "line": "#e0e9e4", "soft": "#e7f5ef", "hero": "#e3f3ec", "warm": "#ff8a5d"
-    },
-    "blackfriday": {
-        "label": "Black Friday", "bg": "#f5f5f2", "surface": "#ffffff",
-        "ink": "#202220", "muted": "#686d68", "primary": "#242824",
-        "primary_ink": "#ffffff", "accent": "#ffb56b", "accent_ink": "#2b251e",
-        "line": "#e3e5df", "soft": "#eeeeea", "hero": "#e9eae4", "warm": "#f06d43"
-    },
-    "newyear": {
-        "label": "New Year", "bg": "#f7f8f4", "surface": "#ffffff",
-        "ink": "#1c3034", "muted": "#68777b", "primary": "#225968",
-        "primary_ink": "#ffffff", "accent": "#e6c66f", "accent_ink": "#302c21",
-        "line": "#e2e8e8", "soft": "#edf3f4", "hero": "#e5eef0", "warm": "#ed876c"
-    },
-}
 
-CATEGORIES = [
-    "Property & Land", "Hotels & Stays", "Travel", "Events & Tickets",
-    "Furniture & Interiors", "Building & Construction", "More Services"
-]
-ICONS = ["home", "bed", "plane", "ticket", "chair", "bricks", "compass", "shopping", "building", "map", "sparkles", "users", "receipt", "calendar", "shirt", "gem", "table", "sofa", "archive", "panels-top-left", "lamp", "flower-2", "briefcase-business", "door-open", "grid-2x2", "sun", "plus-square", "map-pin", "warehouse", "store", "bike", "car-front", "truck", "package", "code-2", "download", "app-window", "shield-check", "message", "bed-double"]
+def load_secret_key() -> str:
+    env_key = os.environ.get("SECRET_KEY")
+    if env_key:
+        return env_key
+    key_file = DATA_DIR / ".secret_key"
+    if key_file.exists():
+        return key_file.read_text(encoding="utf-8").strip()
+    value = secrets.token_urlsafe(48)
+    key_file.write_text(value, encoding="utf-8")
+    try:
+        key_file.chmod(0o600)
+    except OSError:
+        pass
+    return value
+
+
+app.secret_key = load_secret_key()
 
 DEFAULT_SETTINGS = {
-    "brand_name": "The Discovery Hub",
-    "tagline": "Good things are closer than you think.",
-    "hero_title": "A gateway to more.",
-    "hero_description": "The Discovery Hub by Toror Technology & Innovations Ltd. helps people in Kenya find property, short stays, travel, event tickets, furniture, fashion, transport, downloads and web or app development.",
-    "theme_mode": "auto",
-    "selected_theme": "evergreen",
-    "show_search_suggestions": "1",
-    "show_featured_strip": "1",
-    "footer_note": "A connected gateway to specialist websites and digital services.",
-    "whatsapp_number": "",
+    "site_name": "PataMahali",
+    "tagline": "Find the right place.",
+    "site_description": "House hunting in Kenya made clearer: find houses for rent, apartments, homes for sale, land and plots, shops, offices, warehouses and short stays across all 47 counties. Search by county, constituency, ward and neighbourhood on PataMahali.",
+    "brand_primary": "#102641",
+    "brand_accent": "#C8A45D",
+    "site_logo": "",
+    "show_landing_qr_enabled": "1",
+    "show_visitor_counter_enabled": "1",
+    "show_partner_directory_enabled": "1",
+    "category_enabled_residential": "1",
+    "category_enabled_short_stay": "1",
+    "category_enabled_commercial": "1",
+    "category_enabled_industrial": "1",
+    "category_enabled_land_sale": "1",
+    "category_enabled_property_sale": "1",
+    "market_discoveries_enabled": "0",
+    "promo_enabled": "0",
+    "promo_title": "",
+    "promo_text": "",
+    "promo_link": "",
+    "promo_link_label": "Learn more",
+    "promo_video_url": "",
+    "promo_image": "",
+    "header_links_enabled": "0",
+    "header_links": "",
+    "management_url": "",
+    "support_phone": "",
+    "support_email": "",
+    "social_instagram_enabled": "0", "social_instagram_url": "",
+    "social_facebook_enabled": "0", "social_facebook_url": "",
+    "social_tiktok_enabled": "0", "social_tiktok_url": "",
+    "social_youtube_enabled": "0", "social_youtube_url": "",
+    "social_linkedin_enabled": "0", "social_linkedin_url": "",
+    "social_x_enabled": "0", "social_x_url": "",
+    "payment_method": "M-Pesa",
+    "payment_paybill": "",
+    "payment_account": "",
+    "payment_phone": "",
+    "payment_instructions": "Pay the listing fee using the verified details below, then enter your payment reference. Your listing stays private until the payment and property checks are approved.",
+    "fee_residential": "500",
+    "fee_short_stay": "700",
+    "fee_commercial": "1000",
+    "fee_industrial": "1500",
+    "fee_land_sale": "1000",
+    "fee_property_sale": "1000",
+    "fee_featured": "300",
+    "boost_fee_vip": "1000",
+    "boost_fee_vvip": "2500",
+    "boost_duration_days_vip": "7",
+    "boost_duration_days_vvip": "14",
+    "listing_expiry_days": "30",
+    "public_base_url": os.environ.get("PUBLIC_BASE_URL", "https://trororinovationstech.co.ke"),
+    "terms_notice": "Never pay a deposit before independently confirming the property and the person receiving payment.",
 }
 
-
-
-def slugify(value: str) -> str:
-    """Create a stable, URL-safe slug; defined before the startup catalog is built."""
-    value = (value or "").strip().lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    return value.strip("-") or "category"
-
-
-TOROR_APK_SITE_URL = "https://toror-technology.onrender.com/"
-
-SERVICE_SEEDS = []
-def _service_seed(name, slug, group_name, description, keywords, icon="compass", parent="", target="", featured=0, order=100):
-    SERVICE_SEEDS.append({"name": name, "slug": slug, "group_name": group_name, "description": description,
-                          "keywords": keywords, "icon": icon, "parent": parent, "target": target,
-                          "featured": int(featured), "sort_order": int(order)})
-
-# Each record is an independently discoverable doorway. Where a destination has
-# no verified public URL yet, Admin can connect it without changing its SEO URL.
-for _i, _row in enumerate([
-    ("Tour & travel booking", "otravel-tours-travel-booking", "Travel & experiences", "Explore trips, tours and travel booking through OTravel.", "OTravel, tours, travel booking, holidays, trips, Kenya", "plane", "OTravel", "", 1),
-    ("Group retreats & fun travel", "otravel-group-retreats", "Travel & experiences", "Find group escapes, retreats and fun travel experiences.", "group retreats, fun travel, team retreats, holiday groups, OTravel", "users", "OTravel", "", 1),
-    ("Ticketing & event passes", "otravel-ticketing", "Travel & experiences", "A separate doorway for ticketing, event tickets and passes.", "tickets, ticketing, event passes, booking tickets, OTravel", "ticket", "OTravel", "", 1),
-    ("Invoices & receipts", "otravel-invoices-receipts", "Travel & experiences", "A dedicated entry for invoice and receipt services associated with OTravel.", "invoices, receipts, billing, records, OTravel", "receipt", "OTravel", "", 0),
-    ("Private events", "otravel-private-events", "Travel & experiences", "Explore planning and coordination for private events and experiences.", "private events, event planning, celebrations, OTravel", "calendar", "OTravel", "", 0),
-    ("Fashion & modelling", "luxhari-fashion-modelling", "Fashion & lifestyle", "Explore Luxhari's fashion, modelling and style destination.", "Luxhari, modelling, modeling, fashion, style, clothing", "sparkles", "Luxhari", "", 1),
-    ("Fabrics & clothing materials", "luxhari-fabrics-materials", "Fashion & lifestyle", "A focused doorway for fabrics, cloth and clothing-material enquiries.", "fabric, fabrics, cloth, clothing materials, textile, Luxhari", "shirt", "Luxhari", "", 1),
-    ("Accessories & jewellery", "luxhari-accessories-jewellery", "Fashion & lifestyle", "Discover accessories and jewellery through the Luxhari network.", "accessories, jewellery, jewelry, earrings, necklaces, Luxhari", "gem", "Luxhari", "", 0),
-    ("Bags & handbags", "luxhari-bags-handbags", "Fashion & lifestyle", "A direct catalogue entry for bags, handbags and carry accessories.", "bags, handbags, backpacks, purses, Luxhari", "shopping", "Luxhari", "", 0),
-    ("TRT furniture & lighting", "trt-furniture-lighting", "Furniture, building & interiors", "Open TRT's furniture, lighting and interior-products destination.", "TRT, furniture, lighting, interiors, home furnishings", "chair", "TRT", "", 1),
-    ("Sofas & living room", "trt-sofas-living", "Furniture, building & interiors", "Furniture and styling for living rooms, lounges and sofa spaces.", "sofas, couches, living room, lounge, furniture, TRT", "sofa", "TRT", "", 1),
-    ("Coffee tables", "trt-coffee-tables", "Furniture, building & interiors", "Find coffee tables and matching living-room pieces.", "coffee tables, centre tables, center tables, TRT", "table", "TRT", "", 1),
-    ("Dining furniture", "trt-dining-furniture", "Furniture, building & interiors", "Dining tables, dining chairs and furniture for shared meals.", "dining table, dining chairs, dining set, dining furniture, TRT", "table", "TRT", "", 0),
-    ("Bedroom furniture", "trt-bedroom-furniture", "Furniture, building & interiors", "Explore furniture ideas and products for the bedroom.", "bedroom, beds, bedside tables, bedroom furniture, TRT", "bed", "TRT", "", 0),
-    ("Wardrobes & storage", "trt-wardrobes-storage", "Furniture, building & interiors", "Wardrobes and storage solutions for homes and workspaces.", "wardrobes, storage, cabinets, drawers, TRT", "archive", "TRT", "", 0),
-    ("Mirrors & console tables", "trt-mirrors-console", "Furniture, building & interiors", "Discover mirrors, console tables and statement interior pieces.", "mirrors, console tables, hallway furniture, TRT", "panels-top-left", "TRT", "", 0),
-    ("Lighting", "trt-lighting", "Furniture, building & interiors", "A dedicated entry for lighting solutions and decorative lights.", "lighting, lamps, pendant lights, chandeliers, TRT", "lamp", "TRT", "", 0),
-    ("Home decor", "trt-home-decor", "Furniture, building & interiors", "Decorative details and accents for residential spaces.", "home decor, décor, interior decor, ornaments, TRT", "flower-2", "TRT", "", 0),
-    ("Office furniture", "trt-office-furniture", "Furniture, building & interiors", "Furniture for offices, workrooms and professional spaces.", "office furniture, desk, office chair, meeting table, TRT", "briefcase-business", "TRT", "", 0),
-    ("Doors & glass", "trt-doors-glass", "Furniture, building & interiors", "A dedicated doorway for doors, glazing and glass-work enquiries.", "doors, glass, glazing, window glass, TRT", "door-open", "TRT", "", 0),
-    ("Tiles & surfaces", "trt-tiles-surfaces", "Furniture, building & interiors", "Explore tiles and surface finishes for building projects.", "tiles, flooring, surfaces, wall tiles, countertops, TRT", "grid-2x2", "TRT", "", 0),
-    ("Outdoor living", "trt-outdoor-living", "Furniture, building & interiors", "Furniture and style ideas for gardens, patios and outdoor areas.", "outdoor furniture, patio, garden furniture, TRT", "sun", "TRT", "", 0),
-    ("Pata Mahali — property discovery", "pata-mahali-property-discovery", "Property & places", "A central doorway for finding or listing homes, short stays, commercial spaces, land and properties to buy.", "Pata Mahali, find property, list property, rentals, property for sale, Airbnbs, Kenya", "map-pin", "", "/service-group/property-places", 1),
-    ("List your property", "pata-mahali-list-property", "Property & places", "A dedicated doorway for owners and agents who want to list a property.", "Pata Mahali, list property, advertise property, property agents, Kenya", "plus-square", "House Hunter", "", 1),
-    ("Find a place", "pata-mahali-find-a-place", "Property & places", "Start searching for a place to rent, buy, stay or use for business.", "Pata Mahali, find a place, house, apartment, land, property search, Kenya", "map-pin", "House Hunter", "", 1),
-    ("Airbnb & holiday stays in Kenya", "pata-mahali-short-stays-kenya", "Property & places", "Explore short stays and holiday accommodation across Kenya.", "Pata Mahali, Airbnb, holiday stay, short stay, accommodation, Kenya", "bed-double", "House Hunter", "", 1),
-    ("Houses & apartments for rent", "pata-mahali-rentals-houses-apartments", "Property & places", "Search for rental houses, apartments and homes around Kenya.", "rentals, houses for rent, apartments, flats, bedsitters, Kenya", "building", "House Hunter", "", 1),
-    ("Shops & offices", "pata-mahali-shops-offices", "Property & places", "Find or list commercial space including shops and offices.", "shops to rent, offices to rent, commercial property, Kenya", "store", "House Hunter", "", 0),
-    ("Hotels & guest stays", "pata-mahali-hotels-guest-stays", "Property & places", "A dedicated entry for hotels, guesthouses and overnight stays.", "hotels, guest houses, lodges, stays, accommodation, Kenya", "bed", "House Hunter", "", 0),
-    ("Warehouses & industrial space", "pata-mahali-warehouses", "Property & places", "Find warehouse and industrial spaces for rent or purchase.", "warehouse, industrial space, storage property, Kenya", "warehouse", "House Hunter", "", 0),
-    ("Land & plots for sale", "pata-mahali-land-plots", "Property & places", "A focused doorway for land, plots and development sites.", "land for sale, plots, plot, land, acreage, Kenya", "map", "House Hunter", "", 1),
-    ("Property for sale", "pata-mahali-property-for-sale", "Property & places", "Explore homes, commercial buildings and other properties for sale.", "property for sale, houses for sale, real estate, homes, Kenya", "home", "House Hunter", "", 1),
-    ("O Ride — rides & transport", "oride-rides-transport", "Mobility & logistics", "Start here to choose a motorcycle ride, a car ride, moving support or local delivery and errands.", "O Ride, rides, transport, motorcycle, biker, boda boda, car ride, taxi, O Movers, delivery, errands, Kenya", "bike", "", "/service-group/mobility-logistics", 1),
-    ("Book a motorcycle ride", "oride-motorcycle-rides", "Mobility & logistics", "A direct discovery page for motorcycle and biker ride requests.", "O Ride, boda boda, motorcycle, biker, ride, transport, Kenya", "bike", "", "", 1),
-    ("Book a car ride", "oride-car-rides", "Mobility & logistics", "A separate doorway for booking a car ride.", "O Ride, car ride, taxi, driver, transport, Kenya", "car-front", "", "", 1),
-    ("O Movers — moving & relocation", "omovers-moving-relocation", "Mobility & logistics", "A dedicated entry for home, office and furniture moving services.", "O Movers, movers, relocation, house moving, office moving, Kenya", "truck", "", "", 1),
-    ("Delivery & errands", "oride-delivery-errands", "Mobility & logistics", "A separate discovery page for delivery and local errand services.", "delivery, errands, courier, send a parcel, Kenya", "package", "", "", 0),
-    ("Denmart online shopping", "denmart-online-shopping", "Shopping & digital tools", "Shop online and explore available products and ordering at Denmart.", "Denmart, supermarket, shopping, online order, groceries, Kenya", "shopping", "Denmart", "", 1),
-    ("Oedge digital services", "oedge-digital-services", "Shopping & digital tools", "Explore Oedge's digital services and connected online tools.", "Oedge, online services, digital services, tools, Kenya", "compass", "Oedge", "", 0),
-    ("Build a website or app", "hub-build-website-app", "Shopping & digital tools", "Brief your website, online store, web app or mobile app and get a scope-based estimate.", "web developer, web development, website, websites, mobile app, app developer, Kenya", "code-2", "", "/build-a-website-or-app", 1),
-    ("Toror APK & Android downloads", "toror-apk-android-downloads", "Shopping & digital tools", "Browse Android APK releases and digital downloads published through Toror Technology & Innovations Ltd. Check app details, compatibility, permissions and release notes before installing.", "Toror APK downloads, Android APK, Android apps, APK download Kenya, Android app downloads, install APK on Android, app version, software downloads", "download", "", TOROR_APK_SITE_URL, 1),
-    ("Toror websites & digital products", "toror-websites-digital-products", "Shopping & digital tools", "Discover websites, tools and software products from the Toror network.", "Toror, websites, digital products, apps, web applications", "app-window", "", "/downloads", 0),
-]):
-    _service_seed(_row[0], _row[1], _row[2], _row[3], _row[4], _row[5], _row[6], _row[7], _row[8], 10 + _i * 10)
-
-_AIRBNB_LOCATIONS = ["Nairobi", "Mombasa", "Kisumu", "Eldoret", "Nakuru", "Naivasha", "Kitale", "Bungoma", "Thika", "Nyeri", "Embu", "Machakos", "Kitengela", "Mlolongo", "Syokimau", "Taita Taveta", "Lamu", "Turkana"]
-for _j, _city in enumerate(_AIRBNB_LOCATIONS):
-    _slug_city = slugify(_city)
-    _service_seed(f"Airbnb stays in {_city}", f"airbnb-stays-{_slug_city}", "Property & places",
-                  f"A dedicated search doorway for Airbnb-style short stays and holiday accommodation in {_city}, Kenya.",
-                  f"Airbnb {_city}, short stays in {_city}, holiday rentals {_city}, accommodation {_city}, serviced apartments {_city}, Kenya", "bed", "House Hunter", "", 0, 400 + _j)
-
-# Dedicated searchable doors for Toror-made Android apps. These route into the
-# filtered public downloads library; a release appears when Admin publishes it.
-_service_seed("Tomorrow Music for Android", "toror-tomorrow-music-apk", "Toror apps & downloads",
-              "Find the Tomorrow Music Android release, version information and installation guidance through the Toror APK portal. Review the current release notes and compatibility details before installing.",
-              "Toror, Tomorrow Music APK, Tomorrow Music for Android, Android music player, music player APK, local music player, audio player for Android, playlists, music app download", "app-window", "", TOROR_APK_SITE_URL, 1, 610)
-_service_seed("Tomorrow Messages for Android", "toror-tomorrow-messages-apk", "Toror apps & downloads",
-              "Find the Tomorrow Messages Android release, installation guidance and supported-device details through the Toror APK portal. Review permissions and release notes before using an SMS application.",
-              "Toror, Tomorrow Messages APK, Tomorrow Messages for Android, Android SMS app, texting app APK, messaging app Android, SMS application, text messages", "message", "", TOROR_APK_SITE_URL, 0, 620)
-_service_seed("AdShield for Android", "toror-adshield-apk", "Toror apps & downloads",
-              "Find the published AdShield Android release and review its version information, permissions and documented protection features before installing.",
-              "Toror, AdShield APK, AdShield for Android, Android privacy utility, ad protection app, Android utility APK, app permissions", "shield-check", "", TOROR_APK_SITE_URL, 0, 630)
-
-# Verified external destinations for services advertised by the Discovery Hub.
-# Deep links are only used when they are present in the connected platform's source
-# or were explicitly supplied by the owner; otherwise open the owning live platform.
-SERVICE_DIRECT_DESTINATIONS = {
-    # OTravel / Open Road Adventures
-    "otravel-tours-travel-booking": "https://otravel-bleg.onrender.com/",
-    "otravel-group-retreats": "https://otravel-bleg.onrender.com/group-retreats",
-    "otravel-ticketing": "https://otravel-bleg.onrender.com/register?next=/ticketing",
-    "otravel-invoices-receipts": "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
-    "otravel-private-events": "https://otravel-bleg.onrender.com/services#events",
-    # Fashion, fabrics and accessories all open the live Luxhari commerce platform.
-    "luxhari-fashion-modelling": "https://luxhari.onrender.com/?category=Clothing",
-    "luxhari-fabrics-materials": "https://luxhari.onrender.com/?category=Materials",
-    "luxhari-accessories-jewellery": "https://luxhari.onrender.com/?category=Accessories",
-    "luxhari-bags-handbags": "https://luxhari.onrender.com/?category=Accessories",
-    # TRT product doors open its real furniture/interior platform rather than empty Hub pages.
-    "trt-furniture-lighting": "https://trt-isfa.onrender.com/",
-    "trt-sofas-living": "https://trt-isfa.onrender.com/",
-    "trt-coffee-tables": "https://trt-isfa.onrender.com/",
-    "trt-dining-furniture": "https://trt-isfa.onrender.com/",
-    "trt-bedroom-furniture": "https://trt-isfa.onrender.com/",
-    "trt-wardrobes-storage": "https://trt-isfa.onrender.com/",
-    "trt-mirrors-console": "https://trt-isfa.onrender.com/",
-    "trt-lighting": "https://trt-isfa.onrender.com/",
-    "trt-home-decor": "https://trt-isfa.onrender.com/",
-    "trt-office-furniture": "https://trt-isfa.onrender.com/",
-    "trt-doors-glass": "https://trt-isfa.onrender.com/",
-    "trt-tiles-surfaces": "https://trt-isfa.onrender.com/",
-    "trt-outdoor-living": "https://trt-isfa.onrender.com/",
-    # Property and short-stay discovery doors open House Hunter.
-    "pata-mahali-property-discovery": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-list-property": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-find-a-place": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-short-stays-kenya": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-rentals-houses-apartments": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-shops-offices": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-hotels-guest-stays": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-warehouses": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-land-plots": "https://house-hunter-ba7e.onrender.com/",
-    "pata-mahali-property-for-sale": "https://house-hunter-ba7e.onrender.com/",
-    # Oedge provides the transport booking interface for O-Ride, O-Drive and O-Movers.
-    "oride-rides-transport": "https://oedge.onrender.com/services",
-    "oride-motorcycle-rides": "https://oedge.onrender.com/services",
-    "oride-car-rides": "https://oedge.onrender.com/services",
-    "omovers-moving-relocation": "https://oedge.onrender.com/services",
-    "oride-delivery-errands": "https://oedge.onrender.com/services",
-    "oedge-digital-services": "https://oedge.onrender.com/services",
-    "denmart-online-shopping": "https://denmart.co.ke/",
+CATEGORY_META = {
+    "residential": {"label": "Homes & rentals", "short": "Homes", "description": "Bedsitters, studios, apartments and family homes.", "fee": "fee_residential", "types": ["Bedsitter", "Studio", "1-bedroom apartment", "2-bedroom apartment", "3+ bedroom house", "Maisonette", "Townhouse", "Furnished apartment", "Other home"]},
+    "short_stay": {"label": "Hotels & short stays", "short": "Stays", "description": "Hotels, BnBs, guest houses and furnished stays.", "fee": "fee_short_stay", "types": ["Hotel room", "BnB", "Guest house", "Holiday home", "Serviced apartment", "Other stay"]},
+    "commercial": {"label": "Shops & business premises", "short": "Shops & offices", "description": "Shops, stalls, offices and business premises.", "fee": "fee_commercial", "types": ["Shop", "Stall", "Office", "Showroom", "Restaurant space", "Workshop", "Other commercial space"]},
+    "industrial": {"label": "Warehouses & industrial", "short": "Warehouses", "description": "Godowns, warehouses, yards and logistics space.", "fee": "fee_industrial", "types": ["Warehouse / godown", "Storage unit", "Industrial yard", "Workshop", "Logistics facility", "Other industrial space"]},
+    "land_sale": {"label": "Land & plots", "short": "Land", "description": "Plots and land listings with location and terms.", "fee": "fee_land_sale", "types": ["Residential plot", "Agricultural land", "Commercial plot", "Industrial land", "Other land"]},
+    "property_sale": {"label": "Property for sale", "short": "For sale", "description": "Homes, buildings and investment property for sale.", "fee": "fee_property_sale", "types": ["House for sale", "Apartment for sale", "Commercial building", "Apartment block", "Mixed-use property", "Other property"]},
 }
+PRICE_PERIODS = ["per month", "per night", "per day", "per year", "total price", "per square foot"]
 
-# Special service destinations include internal workflows and independent owned portals.
-SPECIAL_SERVICE_DESTINATIONS = {
-    "hub-build-website-app": "/build-a-website-or-app",
-    # APK releases are managed on their independent site, not duplicated in this hub.
-    "toror-apk-android-downloads": TOROR_APK_SITE_URL,
-    "toror-websites-digital-products": "/build-a-website-or-app",
+# Human-readable search intent hubs. Each page combines a real category with the
+# existing Kenya location hierarchy; pages without live matches are kept out of
+# the index until there is useful inventory, rather than manufacturing fake listings.
+SEO_CATEGORY_PAGES = {
+    "homes-for-rent": {"category": "residential", "label": "Houses and Homes for Rent", "short": "Rentals", "description": "Start house hunting in Kenya: search houses to rent, rooms to let, bedsitters, studio flats, apartments, furnished rentals and family homes. Narrow by county, constituency, ward, estate and neighbourhood, then compare real listing details and asking prices."},
+    "hotels-and-short-stays": {"category": "short_stay", "label": "Hotels, BnBs and Short Stays", "short": "Hotels & stays", "description": "Find hotel rooms, guest houses, holiday homes, BnBs and serviced apartments across Kenya. Explore locations and review real listing details before contacting a host."},
+    "shops-and-commercial-property": {"category": "commercial", "label": "Shops, Offices and Commercial Property", "short": "Commercial space", "description": "Search shops, stalls, offices, showrooms, restaurants and other business premises across Kenya. Refine by county, constituency and exact local area."},
+    "warehouses-and-godowns": {"category": "industrial", "label": "Warehouses, Godowns and Industrial Space", "short": "Industrial space", "description": "Explore warehouses, godowns, storage units, industrial yards, workshops and logistics facilities in Kenya. Compare location, floor area, access and asking price."},
+    "land-and-plots-for-sale": {"category": "land_sale", "label": "Land and Plots for Sale", "short": "Land & plots", "description": "Find land for sale in Kenya, buy a plot, or compare residential plots, agricultural or farm land, commercial plots and industrial land. Narrow by county, constituency, ward, estate or neighbourhood, and check location and ownership information before paying."},
+    "houses-and-property-for-sale": {"category": "property_sale", "label": "Houses, Apartments and Property for Sale", "short": "Property for sale", "description": "Find a house to buy in Kenya, compare homes for sale, flats, apartments, apartment blocks, commercial buildings and investment property. Search by county, constituency, ward and neighbourhood, and compare the details supplied by each advertiser."},
 }
-APP_DOWNLOAD_SLUGS = {
-    "toror-tomorrow-music-apk",
-    "toror-tomorrow-messages-apk",
-    "toror-adshield-apk",
-}
-APP_DISCOVERY_SLUGS = APP_DOWNLOAD_SLUGS | {"toror-apk-android-downloads"}
+RECOVERY_QUESTIONS = (
+    "What was the name of your first school?",
+    "What town or village did you grow up in?",
+    "What was the name of your first employer?",
+    "What is your private recovery phrase?",
+)
 
-# Purpose-built, original content for the APK discovery pages. The Toror APK portal remains
-# the source of current files and versions; these landing pages must not imply that a file is
-# available when the portal has not published it.
-APP_DISCOVERY_CONTENT = {
-    "toror-apk-android-downloads": {
-        "page_title": "Android APK Downloads in Kenya",
-        "meta_description": "Browse Android APK releases and digital downloads published by Toror Technology & Innovations Ltd. Review versions, compatibility, permissions and installation notes before installing.",
-        "eyebrow": "TOROR ANDROID APP DIRECTORY",
-        "heading": "Find Android apps and APK releases",
-        "intro": "This page is the Discovery Hub entry point for Android applications published through the Toror APK portal. Open the portal for the current catalogue and the release details actually available.",
-        "checks": ["Confirm the publisher and application name.", "Review the version, Android compatibility and requested permissions.", "Use the release page's installation instructions and support information."],
-        "faq": [
-            ("Where are the APK files hosted?", "The linked Toror APK portal is the release destination. Availability and version details are controlled there."),
-            ("Are all APK files independently security-audited?", "No. This Hub does not claim to independently audit an uploaded file. Check publisher details and scan files using trusted security tools."),
-        ],
-        "link_label": "Browse current APK releases",
-        "application_category": "",
-    },
-    "toror-tomorrow-music-apk": {
-        "page_title": "Tomorrow Music APK for Android",
-        "meta_description": "Find the Tomorrow Music Android app release from Toror Technology & Innovations Ltd. Check the current version, compatibility, permissions and installation guidance on the Toror APK portal.",
-        "eyebrow": "TOMORROW MUSIC · ANDROID",
-        "heading": "Tomorrow Music for Android",
-        "intro": "Use the official Toror APK portal link below to check whether a Tomorrow Music release is currently published and to review its version notes before installing. Feature availability can vary by release and Android version.",
-        "checks": ["Confirm the app title and publisher before installing.", "Check Android version requirements and the current release notes.", "Review requested permissions and use authorized sources for any music or media downloads."],
-        "faq": [
-            ("Where can I find the current Tomorrow Music APK?", "Open the Toror APK portal and check its current release listing. This Discovery Hub page does not host a separate copy of the installer."),
-            ("What should I check before installing a music player?", "Check compatibility, permissions, publisher identity and release notes. Use media sources and download methods you are authorized to use."),
-        ],
-        "link_label": "Check Tomorrow Music release",
-        "application_category": "MultimediaApplication",
-    },
-    "toror-tomorrow-messages-apk": {
-        "page_title": "Tomorrow Messages APK for Android",
-        "meta_description": "Find the Tomorrow Messages Android app release from Toror Technology & Innovations Ltd. Check its current version, compatibility, permissions and installation guidance.",
-        "eyebrow": "TOMORROW MESSAGES · ANDROID",
-        "heading": "Tomorrow Messages for Android",
-        "intro": "Use the Toror APK portal to check for a published Tomorrow Messages release and review its version notes. SMS functionality, permissions and default-message-app support depend on the installed version and Android system requirements.",
-        "checks": ["Confirm the publisher and release version.", "Review SMS, contacts and notification permissions carefully.", "Check Android compatibility and carrier-related limitations before switching your default messaging app."],
-        "faq": [
-            ("Where is the current Tomorrow Messages APK?", "The Toror APK portal is the destination for published release files and version notes."),
-            ("Will it work on every Android phone?", "Compatibility depends on the release, Android version, manufacturer restrictions and any required SMS permissions. Review the published requirements."),
-        ],
-        "link_label": "Check Tomorrow Messages release",
-        "application_category": "CommunicationApplication",
-    },
-    "toror-adshield-apk": {
-        "page_title": "AdShield APK for Android",
-        "meta_description": "Find the published AdShield Android utility release from Toror Technology & Innovations Ltd. Review its documented features, version, permissions and compatibility before installing.",
-        "eyebrow": "ADSHIELD · ANDROID UTILITY",
-        "heading": "AdShield for Android",
-        "intro": "Visit the Toror APK portal to check whether an AdShield release is published and read its current description. Use only the capabilities documented for that release; this page does not independently validate app behavior.",
-        "checks": ["Review the current version and release notes.", "Check requested permissions and how the app handles network or device data.", "Do not assume every advertised protection feature is available without confirming the published details."],
-        "faq": [
-            ("Where can I check the AdShield APK?", "Open the Toror APK portal for current release availability and version details."),
-            ("Does this page guarantee every protection feature?", "No. Confirm the release description, permissions and actual behavior rather than relying on the product name alone."),
-        ],
-        "link_label": "Check AdShield release",
-        "application_category": "SecurityApplication",
-    },
-}
-SERVICE_GROUP_DESTINATIONS = {
-    "Travel & experiences": "https://otravel-bleg.onrender.com/",
-    "Fashion & lifestyle": "https://luxhari.onrender.com/",
-    "Furniture, building & interiors": "https://trt-isfa.onrender.com/",
-    "Property & places": "https://house-hunter-ba7e.onrender.com/",
-    "Mobility & logistics": "https://oedge.onrender.com/services",
-    "Toror apps & downloads": "/downloads",
-}
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role TEXT NOT NULL DEFAULT 'seeker',
+    account_type TEXT NOT NULL DEFAULT 'seeker',
+    full_name TEXT NOT NULL,
+    business_name TEXT NOT NULL DEFAULT '',
+    email TEXT UNIQUE,
+    phone TEXT NOT NULL DEFAULT '',
+    contact_preference TEXT NOT NULL DEFAULT 'whatsapp',
+    website_url TEXT NOT NULL DEFAULT '',
+    social_url TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    identity_type TEXT NOT NULL DEFAULT 'national_id',
+    identity_front TEXT NOT NULL DEFAULT '',
+    identity_back TEXT NOT NULL DEFAULT '',
+    verified INTEGER NOT NULL DEFAULT 0,
+    suspended INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    last_login TEXT NOT NULL DEFAULT '',
+    recovery_question TEXT NOT NULL DEFAULT '',
+    recovery_answer_hash TEXT NOT NULL DEFAULT '',
+    recovery_updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    property_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    price_amount REAL NOT NULL DEFAULT 0,
+    price_period TEXT NOT NULL DEFAULT 'per month',
+    deposit_amount REAL,
+    bedrooms INTEGER,
+    bathrooms INTEGER,
+    floor_area TEXT NOT NULL DEFAULT '',
+    amenities TEXT NOT NULL DEFAULT '',
+    water_quality TEXT NOT NULL DEFAULT '',
+    location_name TEXT NOT NULL,
+    county TEXT NOT NULL DEFAULT '',
+    constituency TEXT NOT NULL DEFAULT '',
+    ward TEXT NOT NULL DEFAULT '',
+    local_area TEXT NOT NULL DEFAULT '',
+    external_url TEXT NOT NULL DEFAULT '',
+    boost_tier TEXT NOT NULL DEFAULT '',
+    landmarks TEXT NOT NULL DEFAULT '',
+    latitude REAL,
+    longitude REAL,
+    property_condition TEXT NOT NULL DEFAULT '',
+    images TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending',
+    approval_status TEXT NOT NULL DEFAULT 'pending',
+    payment_status TEXT NOT NULL DEFAULT 'pending',
+    payment_reference TEXT NOT NULL DEFAULT '',
+    fee_amount REAL NOT NULL DEFAULT 0,
+    property_verified INTEGER NOT NULL DEFAULT 0,
+    featured_until TEXT NOT NULL DEFAULT '',
+    posted_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_confirmed_at TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL DEFAULT '',
+    renewal_payment_status TEXT NOT NULL DEFAULT 'none',
+    renewal_payment_reference TEXT NOT NULL DEFAULT '',
+    renewal_submitted_at TEXT NOT NULL DEFAULT '',
+    renewal_count INTEGER NOT NULL DEFAULT 0,
+    archived_at TEXT NOT NULL DEFAULT '',
+    views INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(owner_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS interests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    seeker_id INTEGER,
+    full_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    email TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(listing_id) REFERENCES listings(id)
+);
+CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    reporter_id INTEGER,
+    reporter_name TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL,
+    resolved_at TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY(listing_id) REFERENCES listings(id)
+);
+CREATE TABLE IF NOT EXISTS visitor_sessions (
+    visitor_key TEXT PRIMARY KEY,
+    user_id INTEGER,
+    role TEXT NOT NULL DEFAULT 'visitor',
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    last_path TEXT NOT NULL DEFAULT '/',
+    referrer TEXT NOT NULL DEFAULT '',
+    device TEXT NOT NULL DEFAULT 'Unknown',
+    page_views INTEGER NOT NULL DEFAULT 0,
+    visit_count INTEGER NOT NULL DEFAULT 1,
+    last_visit_at TEXT NOT NULL DEFAULT '',
+    contact_name TEXT NOT NULL DEFAULT '',
+    contact_phone TEXT NOT NULL DEFAULT '',
+    latitude_approx REAL,
+    longitude_approx REAL,
+    location_shared INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS visitor_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    visitor_key TEXT NOT NULL,
+    user_id INTEGER,
+    event_type TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    reviewer_id INTEGER NOT NULL,
+    stars INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 5),
+    review TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE(listing_id, reviewer_id),
+    FOREIGN KEY(listing_id) REFERENCES listings(id),
+    FOREIGN KEY(reviewer_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id INTEGER,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL DEFAULT '',
+    target_id TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS auth_attempts (
+    identity_key TEXT PRIMARY KEY,
+    window_started TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS boost_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    owner_id INTEGER NOT NULL,
+    tier TEXT NOT NULL CHECK(tier IN ('vip','vvip')),
+    fee_amount REAL NOT NULL DEFAULT 0,
+    payment_reference TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    admin_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(listing_id) REFERENCES listings(id),
+    FOREIGN KEY(owner_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_boost_requests_status ON boost_requests(status, created_at);
+CREATE TABLE IF NOT EXISTS market_discoveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'residential',
+    property_type TEXT NOT NULL DEFAULT 'Apartment',
+    price_amount REAL,
+    price_period TEXT NOT NULL DEFAULT 'per month',
+    location_name TEXT NOT NULL DEFAULT '',
+    bedrooms INTEGER,
+    bathrooms INTEGER,
+    summary TEXT NOT NULL DEFAULT '',
+    source_name TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
+    social_url TEXT NOT NULL DEFAULT '',
+    source_checked_at TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_listings_public ON listings(status, approval_status, payment_status, category);
+CREATE INDEX IF NOT EXISTS idx_listings_owner ON listings(owner_id, posted_at);
+CREATE INDEX IF NOT EXISTS idx_interests_listing ON interests(listing_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_events_time ON visitor_events(created_at);
+"""
 
-AD_STYLE_OPTIONS = {
-    "cinematic": "Cinematic dusk", "champagne": "Champagne editorial", "electric": "Electric colour",
-    "sunset": "Sunset gradient", "minimal": "Minimal monochrome", "orchid": "Orchid glow"
-}
-DOWNLOAD_EXTENSIONS = {".apk", ".zip", ".pdf", ".aab", ".png", ".jpg", ".jpeg", ".webp"}
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def optional_target_url(value):
-    value = (value or "").strip()
-    if not value:
-        return ""
-    if value.startswith("/") and not value.startswith("//") and ".." not in value.split("/"):
-        return value
-    return normalise_http_url(value)
-
-
-def seed_service_catalog(conn, now):
-    # Always attempt INSERT OR IGNORE: existing records are left untouched, while
-    # newly introduced catalog items appear on upgrades without resetting admin edits.
-    for seed in SERVICE_SEEDS:
-        parent_id = None
-        if seed["parent"]:
-            parent = conn.execute("SELECT id FROM sites WHERE lower(name)=lower(?) ORDER BY id LIMIT 1", (seed["parent"],)).fetchone()
-            parent_id = parent["id"] if parent else None
-        target = seed["target"] or ""
-        if not target and parent_id:
-            # A connected website is the safe fallback until Admin sets a feature-level URL.
-            target = ""
-        conn.execute("""INSERT OR IGNORE INTO hub_services
-            (name,slug,group_name,description,keywords,icon,parent_site_id,target_url,visible,featured,sort_order,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?)""",
-            (seed["name"], seed["slug"], seed["group_name"], seed["description"], seed["keywords"], seed["icon"],
-             parent_id, target, seed["featured"], seed["sort_order"], now, now))
-    conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('seed_services_v1_done','1')")
-
-
-def seed_default_ad(conn, now):
-    done = conn.execute("SELECT value FROM settings WHERE key='seed_ads_v1_done'").fetchone()
-    if done:
-        return
-    conn.execute("""INSERT INTO hub_ads
-        (name,headline,subheadline,body,cta_label,target_url,style,headline_variants,music_enabled,active,sort_order,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,1,1,10,?,?)""",
-        ("Gateway launch advert", "Kenya has more to discover.", "One gateway. Many useful destinations.",
-         "Explore places to live, trips to take, spaces to furnish, fashion to find and digital ideas to build.",
-         "Explore the network", "/#service-directory", "cinematic",
-         "Your next big thing starts here.\\nFind your next move.\\nThe network is bigger than one website.", now, now))
-    conn.execute("INSERT INTO settings(key,value) VALUES('seed_ads_v1_done','1')")
-
-def db_connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), timeout=20)
+def connect_db(path: Path = DB_PATH) -> sqlite3.Connection:
+    conn = sqlite3.connect(str(path), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 20000")
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 
-@contextmanager
-def db_session():
-    """Open and reliably close a short-lived SQLite connection."""
-    conn = db_connect()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-def utc_now():
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-
-
-app.jinja_env.filters["slugify"] = slugify
-
-
-@app.template_filter("wa_digits")
-def wa_digits(value):
-    digits = re.sub(r"\D", "", str(value or ""))
-    if digits.startswith("00"):
-        digits = digits[2:]
-    elif len(digits) == 10 and digits.startswith(("07", "01")):
-        digits = "254" + digits[1:]
-    return digits if len(digits) >= 10 else ""
-
-
-def site_categories(site):
-    primary = str(site.get("category", "More Services") or "More Services").strip()
-    values = [primary]
-    for extra in re.split(r"[,\n;]", str(site.get("extra_categories", "") or "")):
-        extra = extra.strip()[:80]
-        if extra and extra.casefold() not in {x.casefold() for x in values}:
-            values.append(extra)
-    return values
-
-
-@app.template_filter("site_categories")
-def jinja_site_categories(site):
-    return site_categories(site)
-
-
-def initialise_database():
-    with db_session() as conn:
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS sites (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                slug TEXT NOT NULL,
-                url TEXT NOT NULL,
-                description TEXT NOT NULL DEFAULT '',
-                category TEXT NOT NULL DEFAULT 'More Services',
-                extra_categories TEXT NOT NULL DEFAULT '',
-                icon TEXT NOT NULL DEFAULT 'compass',
-                keywords TEXT NOT NULL DEFAULT '',
-                search_url_template TEXT NOT NULL DEFAULT '',
-                cta TEXT NOT NULL DEFAULT 'Explore now',
-                visible INTEGER NOT NULL DEFAULT 1,
-                featured INTEGER NOT NULL DEFAULT 0,
-                sort_order INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL CHECK(event_type IN ('click','search')),
-                site_id INTEGER NULL,
-                query TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(site_id) REFERENCES sites(id) ON DELETE SET NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_events_type_date ON events(event_type, created_at);
-            CREATE INDEX IF NOT EXISTS idx_events_site_date ON events(site_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_sites_visible_order ON sites(visible, sort_order);
-            CREATE TABLE IF NOT EXISTS customer_accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                full_name TEXT NOT NULL,
-                email TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS project_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NULL,
-                admin_feedback TEXT NOT NULL DEFAULT '', 
-                name TEXT NOT NULL,
-                phone TEXT NOT NULL,
-                email TEXT NOT NULL DEFAULT '',
-                business_name TEXT NOT NULL DEFAULT '',
-                location TEXT NOT NULL DEFAULT '',
-                project_type TEXT NOT NULL,
-                project_name TEXT NOT NULL DEFAULT '',
-                project_summary TEXT NOT NULL,
-                target_audience TEXT NOT NULL DEFAULT '',
-                pages_count TEXT NOT NULL DEFAULT '1-5',
-                feature_level TEXT NOT NULL DEFAULT 'standard',
-                key_features TEXT NOT NULL DEFAULT '',
-                brand_assets TEXT NOT NULL DEFAULT '',
-                content_status TEXT NOT NULL DEFAULT 'need-help',
-                domain_hosting TEXT NOT NULL DEFAULT 'not-sure',
-                integrations TEXT NOT NULL DEFAULT '',
-                target_launch TEXT NOT NULL DEFAULT '',
-                timeline TEXT NOT NULL DEFAULT 'flexible',
-                budget TEXT NOT NULL DEFAULT 'not-sure',
-                maintenance TEXT NOT NULL DEFAULT 'not-sure',
-                additional_notes TEXT NOT NULL DEFAULT '',
-                estimate_min INTEGER NOT NULL DEFAULT 0,
-                estimate_max INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'New',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_project_requests_created ON project_requests(created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_project_requests_status ON project_requests(status, created_at DESC);
-            CREATE TABLE IF NOT EXISTS hub_services (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
-                group_name TEXT NOT NULL DEFAULT 'More services', description TEXT NOT NULL DEFAULT '',
-                keywords TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT 'compass', parent_site_id INTEGER NULL,
-                target_url TEXT NOT NULL DEFAULT '', visible INTEGER NOT NULL DEFAULT 1, featured INTEGER NOT NULL DEFAULT 0,
-                sort_order INTEGER NOT NULL DEFAULT 100, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                FOREIGN KEY(parent_site_id) REFERENCES sites(id) ON DELETE SET NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_hub_services_visible_order ON hub_services(visible, group_name, sort_order);
-            CREATE TABLE IF NOT EXISTS hub_ads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, headline TEXT NOT NULL,
-                subheadline TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', cta_label TEXT NOT NULL DEFAULT 'Explore',
-                target_url TEXT NOT NULL DEFAULT '/', style TEXT NOT NULL DEFAULT 'cinematic',
-                headline_variants TEXT NOT NULL DEFAULT '', image_filename TEXT NOT NULL DEFAULT '',
-                music_enabled INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 0,
-                sort_order INTEGER NOT NULL DEFAULT 100, start_at TEXT NOT NULL DEFAULT '', end_at TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_hub_ads_active_order ON hub_ads(active, sort_order);
-            CREATE TABLE IF NOT EXISTS hub_downloads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
-                description TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT 'Android', version TEXT NOT NULL DEFAULT '',
-                keywords TEXT NOT NULL DEFAULT '', stored_filename TEXT NOT NULL DEFAULT '', original_filename TEXT NOT NULL DEFAULT '',
-                external_url TEXT NOT NULL DEFAULT '', visible INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 100,
-                downloads_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-            );
-        """)
-        request_columns = {row["name"] for row in conn.execute("PRAGMA table_info(project_requests)").fetchall()}
-        if "user_id" not in request_columns:
-            conn.execute("ALTER TABLE project_requests ADD COLUMN user_id INTEGER NULL")
-        if "admin_feedback" not in request_columns:
-            conn.execute("ALTER TABLE project_requests ADD COLUMN admin_feedback TEXT NOT NULL DEFAULT ''")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_project_requests_user ON project_requests(user_id, created_at DESC)")
-        site_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sites)").fetchall()}
-        if "extra_categories" not in site_columns:
-            conn.execute("ALTER TABLE sites ADD COLUMN extra_categories TEXT NOT NULL DEFAULT ''")
-        # Remove the retired school portal from existing persistent databases as well as fresh installs.
-        # Its analytics events are retained with site_id set to NULL by the foreign-key rule.
-        conn.execute("""DELETE FROM sites
-            WHERE lower(trim(name)) LIKE '%school portal%'
-               OR lower(trim(slug)) = 'prime-school-portal'
-               OR lower(url) LIKE '%prime-1-rd0g.onrender.com%'""")
-
-        # Standardise any previous Luxari/Luxhari entry to the live Luxhari destination,
-        # without allowing duplicate entries to accumulate on repeated deploys.
-        now = utc_now()
-        lux_rows = conn.execute("""SELECT id FROM sites
-            WHERE lower(trim(name)) IN ('luxhari','luxari')
-               OR lower(url) LIKE '%luxhari.onrender.com%'
-            ORDER BY id ASC""").fetchall()
-        if lux_rows:
-            keep_id = lux_rows[0]["id"]
-            conn.execute("""UPDATE sites SET name=?, slug=?, url=?, description=?, category=?, extra_categories=?,
-                icon=?, keywords=?, search_url_template='', cta=?, visible=1, featured=1, sort_order=60, updated_at=?
-                WHERE id=?""",
-                ("Luxhari", "luxhari", "https://luxhari.onrender.com",
-                 "Discover fashion, accessories, materials, styling inspiration and Home & Living.",
-                 "Fashion & Living", "", "sparkles",
-                 "luxhari, fashion, clothes, clothing, dresses, accessories, jewellery, jewelry, style, materials, fabrics, home living, interior, inspiration, Kenya",
-                 "Explore styles", now, keep_id))
-            for duplicate in lux_rows[1:]:
-                conn.execute("DELETE FROM sites WHERE id=?", (duplicate["id"],))
-
-        # Seed defaults without overwriting settings an administrator has already changed.
+def init_db() -> None:
+    with connect_db() as conn:
+        conn.executescript(SCHEMA)
+        # Forward-only, additive schema migrations keep existing Render SQLite databases usable.
+        migrations = {
+            "users": {
+                "contact_preference": "TEXT NOT NULL DEFAULT 'whatsapp'",
+                "website_url": "TEXT NOT NULL DEFAULT ''",
+                "social_url": "TEXT NOT NULL DEFAULT ''",
+                "recovery_question": "TEXT NOT NULL DEFAULT ''",
+                "recovery_answer_hash": "TEXT NOT NULL DEFAULT ''",
+                "recovery_updated_at": "TEXT NOT NULL DEFAULT ''",
+            },
+            "listings": {
+                "water_quality": "TEXT NOT NULL DEFAULT ''",
+                "county": "TEXT NOT NULL DEFAULT ''",
+                "constituency": "TEXT NOT NULL DEFAULT ''",
+                "ward": "TEXT NOT NULL DEFAULT ''",
+                "local_area": "TEXT NOT NULL DEFAULT ''",
+                "external_url": "TEXT NOT NULL DEFAULT ''",
+                "boost_tier": "TEXT NOT NULL DEFAULT ''",
+                "expires_at": "TEXT NOT NULL DEFAULT ''",
+                "renewal_payment_status": "TEXT NOT NULL DEFAULT 'none'",
+                "renewal_payment_reference": "TEXT NOT NULL DEFAULT ''",
+                "renewal_submitted_at": "TEXT NOT NULL DEFAULT ''",
+                "renewal_count": "INTEGER NOT NULL DEFAULT 0",
+                "archived_at": "TEXT NOT NULL DEFAULT ''",
+            },
+            "visitor_sessions": {
+                "visit_count": "INTEGER NOT NULL DEFAULT 1",
+                "last_visit_at": "TEXT NOT NULL DEFAULT ''",
+                "contact_name": "TEXT NOT NULL DEFAULT ''",
+                "contact_phone": "TEXT NOT NULL DEFAULT ''",
+            },
+        }
+        for table, columns in migrations.items():
+            present = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for column, declaration in columns.items():
+                if column not in present:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
         for key, value in DEFAULT_SETTINGS.items():
-            conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key, value))
-        # Refresh only the untouched factory description so existing installations gain
-        # the improved SEO summary without overwriting copy the owner customised.
-        old_factory_description = "Discover connected websites for property, travel, furniture, business services and website or app projects."
-        conn.execute("UPDATE settings SET value=? WHERE key='hero_description' AND value=?",
-                     (DEFAULT_SETTINGS["hero_description"], old_factory_description))
-        conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('app_secret',?)", (secrets.token_urlsafe(48),))
-        count = conn.execute("SELECT COUNT(*) AS n FROM sites").fetchone()["n"]
-        if count == 0:
-            now = utc_now()
-            seed = [
-                ("House Hunter", "house-hunter-ba7e.onrender.com", "https://house-hunter-ba7e.onrender.com", "Explore houses, apartments, land and property opportunities.", "Property & Land", "home", "house, houses, home, homes, apartments, apartment, rent, rental, bedsitter, land, property, real estate, Nairobi, Kenya", "", "Find a home", 1, 1, 10),
-                ("OTravel", "otravel-bleg.onrender.com", "https://otravel-bleg.onrender.com", "Explore travel services, stays and booking opportunities.", "Hotels & Stays", "bed", "travel, trips, hotels, hotel, accommodation, stays, airbnb, holiday, holidays, tour, tours, booking, reservations, flights, Kenya", "", "Explore travel", 1, 1, 20),
-                ("TRT", "trt-isfa.onrender.com", "https://trt-isfa.onrender.com", "Discover furniture, interior styling and home products.", "Furniture & Interiors", "chair", "furniture, table, coffee table, chairs, wardrobe, mirrors, lighting, decor, interior, home, products, Kenya", "", "Shop furniture", 1, 1, 30),
-                ("Oedge", "oedge.onrender.com", "https://oedge.onrender.com", "Explore the services and opportunities available through Oedge.", "More Services", "compass", "oedge, services, discover, online services, Kenya", "", "Explore Oedge", 1, 0, 40),
-            ]
-            for name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order in seed:
-                conn.execute("""INSERT INTO sites(name,slug,url,description,category,icon,keywords,search_url_template,cta,visible,featured,sort_order,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
-            # OTravel legitimately covers both stays and travel; it is shown in both departments.
-            conn.execute("UPDATE sites SET extra_categories='Travel' WHERE name='OTravel'")
-
-        # Curated destinations the owner has previously identified as live. Add them
-        # to existing installations too, but never overwrite or unhide admin-edited rows.
-        # This intentionally only adds missing entries; all current site settings remain intact.
-        now = utc_now()
-        supplemental_sites = [
-            ("Denmart", "denmart", "https://denmart.co.ke",
-             "Online shopping and services from Denmart.", "Shopping & Services", "shopping",
-             "denmart, shopping, supermarket, groceries, products, online shopping, online ordering, Kenya",
-             "", "Shop online", 1, 0, 50),
-            ("Luxhari", "luxhari", "https://luxhari.onrender.com",
-             "Discover fashion, accessories, materials, styling inspiration and Home & Living.", "Fashion & Living", "sparkles",
-             "luxhari, fashion, clothes, clothing, dresses, accessories, jewellery, jewelry, style, materials, fabrics, home living, interior, inspiration, Kenya",
-             "", "Explore styles", 1, 1, 60),
-        ]
-        for name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order in supplemental_sites:
-            exists = conn.execute(
-                "SELECT 1 FROM sites WHERE lower(url)=lower(?) OR lower(name)=lower(?) LIMIT 1",
-                (url, name),
-            ).fetchone()
-            if not exists:
-                conn.execute("""INSERT INTO sites(name,slug,url,description,category,icon,keywords,search_url_template,cta,visible,featured,sort_order,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (name, slug, url, desc, category, icon, keywords, search_t, cta, visible, featured, order, now, now))
-        seed_service_catalog(conn, now)
-        apk_copy_migration = conn.execute("SELECT value FROM settings WHERE key='apk_discovery_copy_v2_done'").fetchone()
-        if not apk_copy_migration:
-            apk_copy_updates = {
-                "toror-apk-android-downloads": (
-                    ["Find Android APKs and other downloadable digital tools published through the hub.",
-                     "Browse Android APK releases and digital downloads published through Toror Technology & Innovations Ltd. Check app details, compatibility, permissions and release notes before installing."],
-                    "Browse Android APK releases and digital tools through the Toror APK catalogue. Review each app's published version, compatibility and installation details before installing.",
-                    "Toror APK downloads, Android APK, Android apps, APK download Kenya, Android app downloads, install APK on Android, app version, software downloads"),
-                "toror-tomorrow-music-apk": (
-                    ["Find Android releases and update files for Tomorrow Music when they are published.",
-                     APP_DISCOVERY_CONTENT["toror-tomorrow-music-apk"]["intro"]],
-                    "Find the current Tomorrow Music Android release and installation guidance through Toror's app catalogue. Check release notes and compatibility before installing.",
-                    "Toror, Tomorrow Music APK, Tomorrow Music for Android, Android music player, music player APK, local music player, audio player for Android, playlists, music app download"),
-                "toror-tomorrow-messages-apk": (
-                    ["Find Android releases and update files for Tomorrow Messages when they are published.",
-                     APP_DISCOVERY_CONTENT["toror-tomorrow-messages-apk"]["intro"]],
-                    "Find the current Tomorrow Messages Android release and setup guidance through Toror's app catalogue. Check Android compatibility and permission requirements before installing.",
-                    "Toror, Tomorrow Messages APK, Tomorrow Messages for Android, Android SMS app, texting app APK, messaging app Android, SMS application, text messages"),
-                "toror-adshield-apk": (
-                    ["Find published AdShield Android releases and version notes when available.",
-                     APP_DISCOVERY_CONTENT["toror-adshield-apk"]["intro"]],
-                    "Find published AdShield Android releases through Toror's app catalogue. Review documented features, permissions and version notes before installing.",
-                    "Toror, AdShield APK, AdShield for Android, Android privacy utility, ad protection app, Android utility APK, app permissions"),
-            }
-            for service_slug, (old_descriptions, new_description, new_keywords) in apk_copy_updates.items():
-                placeholders = ",".join("?" for _ in old_descriptions)
-                conn.execute(f"UPDATE hub_services SET description=?, keywords=?, updated_at=? WHERE slug=? AND description IN ({placeholders})",
-                             (new_description, new_keywords, now, service_slug, *old_descriptions))
-            conn.execute("INSERT INTO settings(key,value) VALUES('apk_discovery_copy_v2_done','1')")
-        # Comprehensive one-time repair: every visitor-facing service card must resolve
-        # to its connected platform or to a real first-party workflow. This upgrades
-        # persistent databases as well as fresh installations, without changing links again
-        # after an administrator has subsequently edited them.
-        destination_migration = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v3_done'").fetchone()
-        if not destination_migration:
-            for service_slug, destination in SERVICE_DIRECT_DESTINATIONS.items():
-                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                             (destination, now, service_slug))
-            # City-specific short-stay entries all belong to the live House Hunter property platform.
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'airbnb-stays-%'",
-                         ("https://house-hunter-ba7e.onrender.com/", now))
-            # Future sub-category rows should still leave the Hub for their owner platform.
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'trt-%'",
-                         ("https://trt-isfa.onrender.com/", now))
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'luxhari-%'",
-                         ("https://luxhari.onrender.com/", now))
-            # These special service doors may use a Toror workflow or a dedicated portal.
-            for service_slug, destination in SPECIAL_SERVICE_DESTINATIONS.items():
-                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                             (destination, now, service_slug))
-            for service_slug in ("toror-tomorrow-music-apk", "toror-tomorrow-messages-apk", "toror-adshield-apk", "toror-apk-android-downloads"):
-                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                             (TOROR_APK_SITE_URL, now, service_slug))
-            # Use the connected transport service screen for the quick Oedge platform link too.
-            conn.execute("UPDATE sites SET url=?, updated_at=? WHERE lower(name)='oedge' AND lower(url)='https://oedge.onrender.com'",
-                         ("https://oedge.onrender.com/services", now))
-            # Keep the actual car-ride service name accurate.
-            conn.execute("UPDATE hub_services SET name='O-Drive — car rides', description='Open Oedge O-Drive to request a car ride, set pickup and destination, and continue your trip.', keywords='O-Drive, O Drive, car ride, taxi, driver, transport, car booking, Oedge, Kenya', updated_at=? WHERE slug='oride-car-rides'", (now,))
-            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v3_done','1')")
-        # Final link audit migration. Older deployments may already have the v3 marker,
-        # so this separately repairs all known routes once, including platform cards.
-        # It deliberately runs only once; later admin changes remain authoritative.
-        direct_destinations_v4 = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v4_done'").fetchone()
-        if not direct_destinations_v4:
-            for service_slug, destination in SERVICE_DIRECT_DESTINATIONS.items():
-                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                             (destination, now, service_slug))
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug LIKE 'airbnb-stays-%'",
-                         ("https://house-hunter-ba7e.onrender.com/", now))
-            # Normalize every platform card to the owning live domain/feature screen.
-            platform_targets = {
-                "house hunter": "https://house-hunter-ba7e.onrender.com/",
-                "otravel": "https://otravel-bleg.onrender.com/",
-                "trt": "https://trt-isfa.onrender.com/",
-                "luxhari": "https://luxhari.onrender.com/",
-                "oedge": "https://oedge.onrender.com/services",
-                "denmart": "https://denmart.co.ke/",
-            }
-            for platform_name, platform_url in platform_targets.items():
-                conn.execute("UPDATE sites SET url=?, updated_at=? WHERE lower(trim(name))=?",
-                             (platform_url, now, platform_name))
-            # OTravel section anchors are confirmed in its supplied template/source.
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='otravel-private-events'",
-                         ("https://otravel-bleg.onrender.com/services#events", now))
-            conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug='otravel-group-retreats'",
-                         ("https://otravel-bleg.onrender.com/services#groups", now))
-            # Luxhari exposes real category query routes, so category doors land on the
-            # correct collection instead of its generic front page.
-            luxhari_categories = {
-                "luxhari-fashion-modelling": "https://luxhari.onrender.com/?category=Clothing",
-                "luxhari-fabrics-materials": "https://luxhari.onrender.com/?category=Materials",
-                "luxhari-accessories-jewellery": "https://luxhari.onrender.com/?category=Accessories",
-                "luxhari-bags-handbags": "https://luxhari.onrender.com/?category=Accessories",
-            }
-            for service_slug, destination in luxhari_categories.items():
-                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                             (destination, now, service_slug))
-            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v4_done','1')")
-        # Exact-route refinement for the two OTravel doors verified against the live app.
-        # This also upgrades an installation that already ran the v4 migration, while only
-        # replacing known previous Hub defaults (not a custom destination edited by Admin).
-        direct_destinations_v5 = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v5_done'").fetchone()
-        if not direct_destinations_v5:
-            known_route_upgrades = {
-                "otravel-group-retreats": (
-                    "https://otravel-bleg.onrender.com/group-retreats",
-                    {"", "/service-group/travel-experiences", "https://otravel-bleg.onrender.com/", "https://otravel-bleg.onrender.com/services#groups"},
-                ),
-                "otravel-invoices-receipts": (
-                    "https://otravel-bleg.onrender.com/login?next=/invoices-receipts",
-                    {"", "/service-group/travel-experiences", "https://otravel-bleg.onrender.com/", "https://otravel-bleg.onrender.com/account"},
-                ),
-            }
-            for service_slug, (destination, old_targets) in known_route_upgrades.items():
-                row = conn.execute("SELECT target_url FROM hub_services WHERE slug=?", (service_slug,)).fetchone()
-                if row and str(row["target_url"] or "").strip() in old_targets:
-                    conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                                 (destination, now, service_slug))
-            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v5_done','1')")
-        # APK portal migration: make the administrator-visible database target match the
-        # single independent APK site. This intentionally replaces old internal /downloads
-        # filters for these four known app-door slugs; the routing code also enforces it.
-        direct_destinations_v6 = conn.execute("SELECT value FROM settings WHERE key='direct_destinations_v6_done'").fetchone()
-        if not direct_destinations_v6:
-            for service_slug in ("toror-apk-android-downloads", "toror-tomorrow-music-apk", "toror-tomorrow-messages-apk", "toror-adshield-apk"):
-                conn.execute("UPDATE hub_services SET target_url=?, updated_at=? WHERE slug=?",
-                             (TOROR_APK_SITE_URL, now, service_slug))
-            conn.execute("INSERT INTO settings(key,value) VALUES('direct_destinations_v6_done','1')")
-        seed_default_ad(conn, now)
-        conn.commit()
+            conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key, str(value)))
+        # The prior default was 14 days; switch that default to the requested one-month term.
+        conn.execute("UPDATE settings SET value='30' WHERE key='listing_expiry_days' AND value='14'")
+        # If this database ever held the old Discovery brand, rename only that legacy value.
+        previous_brand = conn.execute("SELECT value FROM settings WHERE key='site_name'").fetchone()
+        if previous_brand and "discovery" in str(previous_brand[0]).casefold():
+            conn.execute("UPDATE settings SET value='PataMahali' WHERE key='site_name'")
+            conn.execute("UPDATE settings SET value='Find the right place.' WHERE key='tagline'")
+            # Stop displaying an old-branded uploaded logo but keep its file in storage for recovery.
+            conn.execute("UPDATE settings SET value='' WHERE key='site_logo'")
+        conn.execute("UPDATE settings SET value=? WHERE key='site_description' AND (value='' OR value LIKE '%Find verified homes, stays%')", (DEFAULT_SETTINGS['site_description'],))
+        conn.execute("UPDATE settings SET value='https://trororinovationstech.co.ke' WHERE key='public_base_url' AND (value='' OR lower(value) LIKE '%discovery%')")
+        # Give every existing listing a one-month lifecycle without deleting user data.
+        try:
+            lifecycle_days = max(1, min(365, int(conn.execute("SELECT value FROM settings WHERE key='listing_expiry_days'").fetchone()[0])))
+        except (TypeError, ValueError, IndexError):
+            lifecycle_days = 30
+        lifecycle_rows = conn.execute("SELECT id,status,posted_at,last_confirmed_at,expires_at FROM listings WHERE expires_at IS NULL OR expires_at='' ").fetchall()
+        migration_now = datetime.now(timezone.utc).replace(microsecond=0)
+        for listing_row in lifecycle_rows:
+            anchor_text = (listing_row["last_confirmed_at"] or listing_row["posted_at"] or "").strip()
+            try:
+                anchor = datetime.fromisoformat(anchor_text)
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                anchor = migration_now
+            expiry = (anchor + timedelta(days=lifecycle_days)).astimezone(timezone.utc).replace(microsecond=0).isoformat()
+            state = "expired" if listing_row["status"] == "available" and expiry <= migration_now.isoformat() else listing_row["status"]
+            conn.execute("UPDATE listings SET expires_at=?,status=?,updated_at=CASE WHEN ?='expired' THEN ? ELSE updated_at END WHERE id=?",
+                         (expiry, state, state, migration_now.isoformat(), listing_row["id"]))
+        # Turn off the old external property feed without deleting its historical records.
+        # These records remain private to the admin and can be recovered from backups, but
+        # are not shown to visitors or added to the public search index.
+        conn.execute("UPDATE settings SET value='0' WHERE key='market_discoveries_enabled'")
+        old_brand = conn.execute("SELECT value FROM settings WHERE key='brand_primary'").fetchone()
+        if old_brand and old_brand[0].strip().lower() in {"#176b4d", "#223a63", "#283a62", "#303030"}:
+            conn.execute("UPDATE settings SET value='#102641' WHERE key='brand_primary'")
+        old_accent = conn.execute("SELECT value FROM settings WHERE key='brand_accent'").fetchone()
+        if old_accent and old_accent[0].strip().lower() in {"#d9a441", "#c88a62", "#c5a044"}:
+            conn.execute("UPDATE settings SET value='#C8A45D' WHERE key='brand_accent'")
+        admin = conn.execute("SELECT id FROM users WHERE role='admin' LIMIT 1").fetchone()
+        if not admin:
+            username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
+            email = os.environ.get("ADMIN_EMAIL", "").strip() or None
+            password = os.environ.get("ADMIN_PASSWORD")
+            generated = False
+            if not password:
+                password = secrets.token_urlsafe(15)
+                generated = True
+            conn.execute(
+                "INSERT INTO users(role,account_type,full_name,email,phone,password_hash,verified,created_at) VALUES('admin','admin',?,?,?,?,1,?)",
+                (username, email, "", generate_password_hash(password), now_iso()),
+            )
+            if generated:
+                print("\n=== INITIAL ADMIN LOGIN ===")
+                print(f"Admin path: {ADMIN_ROOT}")
+                print(f"Username: {username}")
+                print(f"Password (copy now; stored as a hash): {password}")
+                print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
+        conn.execute("PRAGMA journal_mode = WAL")
 
 
-initialise_database()
-with db_session() as _conn:
-    app.secret_key = _conn.execute("SELECT value FROM settings WHERE key='app_secret'").fetchone()["value"]
+init_db()
 
 
-def get_setting(key, default=""):
-    with db_session() as conn:
-        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+def create_db_snapshot(destination: Path) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source = connect_db()
+    try:
+        target = sqlite3.connect(str(destination))
+        try:
+            source.backup(target)
+            target.commit()
+        finally:
+            target.close()
+    finally:
+        source.close()
+    return destination
+
+
+def create_full_backup_archive(destination: Path) -> Path:
+    """Create a portable ZIP of the database and uploaded property/account media."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = destination.with_name(f".snapshot-{uuid.uuid4().hex}.sqlite3")
+    try:
+        create_db_snapshot(snapshot)
+        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            archive.write(snapshot, "database/patamahali.sqlite3")
+            for folder in (LISTING_UPLOAD_DIR, PRIVATE_DOC_DIR, BRANDING_DIR, PROMO_DIR):
+                if not folder.exists():
+                    continue
+                for file_path in folder.rglob("*"):
+                    if file_path.is_file():
+                        archive.write(file_path, file_path.relative_to(DATA_DIR).as_posix())
+            manifest = (
+                "PataMahali full recovery archive\n"
+                f"Created: {now_iso()}\n"
+                "Contents: database/patamahali.sqlite3 plus uploads/listings, uploads/branding, "
+                "uploads/promotions, and private_documents.\n"
+                "Security note: this archive may contain personal data, identity documents, and account records. "
+                "Keep it in a private, encrypted location.\n"
+                "Restore note: first make a fresh backup of the destination. Move database/patamahali.sqlite3 to "
+                "DATA_DIR/patamahali.sqlite3, then restore uploads/listings, uploads/branding, uploads/promotions, "
+                "and private_documents to the same relative paths under DATA_DIR. Run application migrations after restoring.\n"
+            )
+            archive.writestr("RECOVERY-README.txt", manifest)
+        return destination
+    finally:
+        snapshot.unlink(missing_ok=True)
+
+
+def maybe_daily_backup() -> None:
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    existing = list(BACKUP_DIR.glob(f"auto-{stamp}-*.sqlite3"))
+    if not existing and DB_PATH.exists() and DB_PATH.stat().st_size > 0:
+        target = BACKUP_DIR / f"auto-{stamp}-{datetime.now().strftime('%H%M%S')}.sqlite3"
+        try:
+            create_db_snapshot(target)
+            backups = sorted(BACKUP_DIR.glob("auto-*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for old in backups[14:]:
+                old.unlink(missing_ok=True)
+        except Exception as exc:
+            print(f"WARNING: automatic SQLite backup failed: {exc}")
+
+
+maybe_daily_backup()
+
+
+def get_db() -> sqlite3.Connection:
+    if "db" not in g:
+        g.db = connect_db()
+    return g.db
+
+
+@app.teardown_appcontext
+def close_db(_error=None):
+    db = g.pop("db", None)
+    if db is not None:
+        try:
+            if _error is None:
+                db.commit()
+            else:
+                db.rollback()
+        finally:
+            db.close()
+
+
+def setting(key: str, default: str = "") -> str:
+    row = get_db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return row["value"] if row else default
 
 
-def set_setting(key, value):
-    with db_session() as conn:
-        conn.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
-        conn.commit()
+def visible_categories() -> dict[str, dict]:
+    """Categories currently enabled for public discovery by the administrator."""
+    return {key: meta for key, meta in CATEGORY_META.items()
+            if setting(f"category_enabled_{key}", "1") == "1"}
 
 
-def settings_dict():
-    with db_session() as conn:
-        rows = conn.execute("SELECT key,value FROM settings").fetchall()
-    result = {row["key"]: row["value"] for row in rows}
-    return {**DEFAULT_SETTINGS, **result}
+def set_setting(key: str, value: str) -> None:
+    get_db().execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
 
 
-def easter_sunday(year: int) -> date:
-    # Gregorian computus (Meeus/Jones/Butcher), good for seasonal styling only.
-    a = year % 19
-    b, c = divmod(year, 100)
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
+def all_settings() -> dict[str, str]:
+    return {row["key"]: row["value"] for row in get_db().execute("SELECT key,value FROM settings")}
 
 
-def current_theme_key():
-    settings = settings_dict()
-    mode = settings.get("theme_mode", "auto")
-    selected = settings.get("selected_theme", "evergreen")
-    if mode != "auto":
-        return selected if selected in THEMES else "evergreen"
-    try:
-        today = datetime.now(ZoneInfo("Africa/Nairobi")).date()
-    except Exception:
-        today = date.today()
-    if (today.month == 12 and today.day >= 1) or (today.month == 1 and today.day <= 7):
-        return "christmas" if today.month == 12 else "newyear"
-    if today.month == 2 and 1 <= today.day <= 14:
-        return "valentines"
-    easter = easter_sunday(today.year)
-    if easter - timedelta(days=3) <= today <= easter + timedelta(days=1):
-        return "easter"
-    # Black Friday: the final Friday of November, with a 7-day promotional window.
-    if today.month == 11:
-        fridays = [date(today.year, 11, day) for day in range(1, 31) if date(today.year, 11, day).weekday() == 4]
-        if fridays and fridays[-1] - timedelta(days=6) <= today <= fridays[-1]:
-            return "blackfriday"
-    if today.month in (6, 7, 8):
-        return "summer"
-    return selected if selected in THEMES else "evergreen"
+def get_current_user():
+    if not getattr(g, "_current_user_loaded", False):
+        uid = session.get("user_id")
+        g.current_user = get_db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone() if uid else None
+        g._current_user_loaded = True
+    return g.current_user
 
 
-def get_theme():
-    key = current_theme_key()
-    return key, THEMES.get(key, THEMES["evergreen"])
+def refresh_current_user_cache():
+    g._current_user_loaded = False
+    g.current_user = None
 
 
-@app.context_processor
-def inject_globals():
-    brand = get_setting("brand_name", DEFAULT_SETTINGS["brand_name"])
-    _, theme = get_theme()
-    sidebar_categories = []
-    seen_categories = set()
-    # Guide visitors by service family, not only by the handful of parent websites.
-    # Every family opens a crawlable page listing its individually discoverable services.
-    for service in get_services(visible_only=True):
-        category = service.get("group_name", "More services").strip() or "More services"
-        key = category.casefold()
-        if key not in seen_categories:
-            seen_categories.add(key)
-            sidebar_categories.append({"name": category, "slug": slugify(category), "icon": service.get("icon", "compass")})
-    settings = settings_dict()
-    whatsapp_digits = re.sub(r"\D", "", settings.get("whatsapp_number", ""))
-    if whatsapp_digits.startswith("00"):
-        whatsapp_digits = whatsapp_digits[2:]
-    elif len(whatsapp_digits) == 10 and whatsapp_digits.startswith(("07", "01")):
-        whatsapp_digits = "254" + whatsapp_digits[1:]
-    whatsapp_url = ("https://wa.me/" + whatsapp_digits + "?text=" + quote_plus(
-        f"Hello, I found {brand} and would like to discuss a website or app project."
-    )) if len(whatsapp_digits) >= 10 else ""
-    return {
-        "brand_name": brand,
-        "site_settings": settings,
-        "active_theme": theme,
-        "active_theme_key": get_theme()[0],
-        "csrf_field": csrf_field,
-        "icon_svg": icon_svg,
-        "categories": [item["name"] for item in sidebar_categories],
-        "sidebar_categories": sidebar_categories,
-        "whatsapp_url": whatsapp_url,
-        "whatsapp_digits": whatsapp_digits,
-        "current_year": datetime.utcnow().year,
-        "customer_logged_in": bool(session.get("customer_id")),
-        "customer_name": session.get("customer_name", ""),
-        "ad_styles": AD_STYLE_OPTIONS,
-        "app_download_slugs": APP_DISCOVERY_SLUGS,
-    }
-
-
-def csrf_field():
-    token = session.get("csrf_token")
-    if not token:
-        token = secrets.token_urlsafe(32)
-        session["csrf_token"] = token
+def csrf_field() -> Markup:
+    token = session.get("csrf_token", "")
     return Markup(f'<input type="hidden" name="csrf_token" value="{token}">')
 
 
+def current_visitor_key() -> str:
+    return getattr(g, "visitor_key", None) or session.get("visitor_key", "")
+
+
+def normalize_visitor_phone(value: str) -> str:
+    """Normalize a voluntarily supplied phone number for duplicate-count reduction."""
+    digits = re.sub(r"\D", "", value or "")
+    if len(digits) == 10 and digits.startswith("0"):
+        digits = "254" + digits[1:]
+    return digits[:20]
+
+
 @app.before_request
-def enforce_csrf():
-    # Every POST route is either an administrator action or a searchless site utility.
+def prepare_request():
+    if not session.get("csrf_token"):
+        session["csrf_token"] = secrets.token_urlsafe(24)
+    # A first-party cookie keeps the same anonymous browser identifier across
+    # ordinary closes/reopens. It does not reveal a phone number or a real identity.
+    stable_key = request.cookies.get("pm_visitor", "").strip()
+    if not stable_key or len(stable_key) > 100:
+        stable_key = session.get("visitor_key") or secrets.token_urlsafe(24)
+    g.visitor_key = stable_key
+    session["visitor_key"] = stable_key
     if request.method == "POST":
-        supplied = request.form.get("csrf_token", "")
         expected = session.get("csrf_token", "")
-        if not supplied or not expected or not hmac.compare_digest(supplied, expected):
-            abort(400, description="Your form expired. Refresh the page and try again.")
+        supplied = request.form.get("csrf_token", "") or request.headers.get("X-CSRFToken", "")
+        if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+            abort(400, description="Your form session expired. Refresh the page and try again.")
+    if request.endpoint not in {"static", "manifest", "service_worker", "icon_svg", "robots_txt", "sitemap_xml", "qr_platform", "promo_media"}:
+        try:
+            maybe_daily_backup()
+        except Exception:
+            pass
+        try:
+            expire_due_listings()
+        except Exception as exc:
+            print(f"WARNING: listing expiry sweep failed: {exc}")
 
 
-def credential_fingerprint():
-    material = os.environ.get("USER_NAME", "") + "\0" + os.environ.get("USER_PASSWORD", "")
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+def audit(action: str, target_type: str = "", target_id: str | int = "", details: str = "") -> None:
+    user = get_current_user()
+    get_db().execute(
+        "INSERT INTO audit_log(actor_id,action,target_type,target_id,details,created_at) VALUES(?,?,?,?,?,?)",
+        (user["id"] if user else None, action, target_type, str(target_id), details[:2000], now_iso()),
+    )
+
+
+def _auth_attempt_key(scope: str) -> str:
+    # Store a short-lived keyed fingerprint, never the raw network address.
+    address = request.remote_addr or "unknown"
+    value = f"{scope}:{address}".encode("utf-8", "ignore")
+    return hmac.new(app.secret_key.encode("utf-8"), value, hashlib.sha256).hexdigest()
+
+
+def auth_is_limited(scope: str) -> bool:
+    key = _auth_attempt_key(scope)
+    row = get_db().execute("SELECT window_started,attempts FROM auth_attempts WHERE identity_key=?", (key,)).fetchone()
+    if not row:
+        return False
+    try:
+        started = datetime.fromisoformat(row["window_started"])
+    except ValueError:
+        return False
+    if datetime.now(timezone.utc) - started > timedelta(minutes=15):
+        get_db().execute("DELETE FROM auth_attempts WHERE identity_key=?", (key,))
+        return False
+    return row["attempts"] >= 8
+
+
+def auth_failed(scope: str) -> None:
+    key = _auth_attempt_key(scope)
+    row = get_db().execute("SELECT window_started,attempts FROM auth_attempts WHERE identity_key=?", (key,)).fetchone()
+    expired = False
+    if row:
+        try:
+            expired = datetime.now(timezone.utc) - datetime.fromisoformat(row["window_started"]) > timedelta(minutes=15)
+        except ValueError:
+            expired = True
+    if not row or expired:
+        get_db().execute("INSERT INTO auth_attempts(identity_key,window_started,attempts) VALUES(?,?,1) ON CONFLICT(identity_key) DO UPDATE SET window_started=excluded.window_started,attempts=1", (key, now_iso()))
+    else:
+        get_db().execute("UPDATE auth_attempts SET attempts=attempts+1 WHERE identity_key=?", (key,))
+
+
+def auth_succeeded(scope: str) -> None:
+    get_db().execute("DELETE FROM auth_attempts WHERE identity_key=?", (_auth_attempt_key(scope),))
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not get_current_user():
+            flash("Please sign in to continue.", "info")
+            return redirect(url_for("login", next=request.path))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def partner_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            flash("Sign in to manage your properties.", "info")
+            return redirect(url_for("partner_login", next=request.path))
+        if user["role"] not in {"owner", "agent", "host", "business"}:
+            flash("This page is for property partners.", "warning")
+            return redirect(url_for("index"))
+        if user["suspended"]:
+            abort(403, description="This partner account is temporarily suspended. Contact support.")
+        return view(*args, **kwargs)
+    return wrapped
 
 
 def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        valid_session = session.get("admin_logged_in") and hmac.compare_digest(
-            str(session.get("credential_fingerprint", "")), credential_fingerprint()
-        ) and bool(os.environ.get("USER_NAME")) and bool(os.environ.get("USER_PASSWORD"))
-        if not valid_session:
-            session.clear()
-            if request.path.startswith("/admin") and request.endpoint != "admin_login":
-                return redirect("/qaz?next=" + quote_plus(request.path))
-            return redirect("/qaz")
+        user = get_current_user()
+        if not user or user["role"] != "admin":
+            flash("Administrator sign-in is required.", "warning")
+            return redirect(ADMIN_ROOT)
         return view(*args, **kwargs)
     return wrapped
 
 
-def get_sites(visible_only=False, order=True):
-    query = "SELECT * FROM sites"
-    if visible_only:
-        query += " WHERE visible=1"
-    query += " ORDER BY " + ("featured DESC, sort_order ASC, name COLLATE NOCASE ASC" if order else "id DESC")
-    with db_session() as conn:
-        return [dict(row) for row in conn.execute(query).fetchall()]
+def money(value) -> str:
+    try:
+        return f"KES {float(value):,.0f}"
+    except (TypeError, ValueError):
+        return "Price on request"
 
 
-def get_site(site_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM sites WHERE id=?", (site_id,)).fetchone()
-    return dict(row) if row else None
-
-
-def get_services(visible_only=False):
-    query = "SELECT s.*, p.name AS parent_name, p.url AS parent_url, p.visible AS parent_visible FROM hub_services s LEFT JOIN sites p ON p.id=s.parent_site_id"
-    if visible_only:
-        query += " WHERE s.visible=1"
-    query += " ORDER BY s.group_name COLLATE NOCASE, s.featured DESC, s.sort_order ASC, s.name COLLATE NOCASE"
-    with db_session() as conn:
-        items = [dict(row) for row in conn.execute(query).fetchall()]
-    # Resolve final destinations for each crawlable service detail page. Directory cards
-    # link to the Hub's own searchable detail page; its primary CTA opens this destination.
-    for item in items:
-        item["resolved_target"] = service_target(item)
-    return items
-
-
-def get_service_by_slug(slug, visible_only=True):
-    query = "SELECT s.*, p.name AS parent_name, p.url AS parent_url, p.visible AS parent_visible FROM hub_services s LEFT JOIN sites p ON p.id=s.parent_site_id WHERE s.slug=?"
-    if visible_only:
-        query += " AND s.visible=1"
-    with db_session() as conn:
-        row = conn.execute(query, (slug,)).fetchone()
-    item = dict(row) if row else None
-    if item:
-        item["resolved_target"] = service_target(item)
-    return item
-
-
-# Destination routing. External URLs are returned as the destination CTA on a crawlable
-# Hub detail page. Directory cards link to the first-party detail page so search engines
-# and visitors can discover individual services through descriptive internal links.
-def service_target(service):
-    slug = str(service.get("slug") or "").strip().lower()
-    target = str(service.get("target_url") or "").strip()
-
-    # These app doorways always open the independent Toror APK site. The APK site owns
-    # its release listings and versions; do not bypass it with a stale file or local copy.
-    if slug in APP_DOWNLOAD_SLUGS or slug == "toror-apk-android-downloads":
-        return TOROR_APK_SITE_URL
-
-    # A valid administrator-provided external URL is authoritative for other services.
-    if target.lower().startswith(("https://", "http://")):
-        return target
-
-    # First-party requests and other genuine Hub workflows stay on this app.
-    if slug in SPECIAL_SERVICE_DESTINATIONS:
-        return target if target.startswith("/") and not target.startswith("//") else SPECIAL_SERVICE_DESTINATIONS[slug]
-
-    # Known external service doors take precedence over stale legacy internal targets such
-    # as /service-group/... that previously caused visitors to loop around the Hub.
-    if slug in SERVICE_DIRECT_DESTINATIONS:
-        return SERVICE_DIRECT_DESTINATIONS[slug]
-
-    # Route every city-specific Airbnb/short-stay entry to the actual property platform.
-    if slug.startswith("airbnb-stays-"):
-        return "https://house-hunter-ba7e.onrender.com/"
-
-    # A leftover internal link for an externally provided service must never become a dead end.
-    if target.startswith("/") and not target.startswith("//"):
-        # Honor recognised first-party routes only; otherwise fall through to the owning platform.
-        if slug == "hub-build-website-app":
-            return "/build-a-website-or-app"
-        if slug == "toror-apk-android-downloads":
-            return "/downloads"
-        if slug == "toror-websites-digital-products":
-            return "/build-a-website-or-app"
-
-    parent_url = str(service.get("parent_url") or "").strip()
-    if parent_url.lower().startswith(("https://", "http://")):
-        return parent_url
-
-    group = str(service.get("group_name") or "").strip()
-    if group in SERVICE_GROUP_DESTINATIONS:
-        return SERVICE_GROUP_DESTINATIONS[group]
-    # Fail useful rather than pointing at a service-detail page with no destination.
-    return "/build-a-website-or-app"
-
-SEARCH_TOKEN_ALIASES = {
-    # Everyday language and common alternative names used in Kenya's search queries.
-    "flat": ("flats", "apartment", "apartments", "rental"),
-    "flats": ("flat", "apartment", "apartments", "rental"),
-    "bedsitter": ("bedsitters", "studio", "studio apartment", "rental"),
-    "bedsitters": ("bedsitter", "studio", "studio apartment", "rental"),
-    "plot": ("plots", "land", "property"),
-    "plots": ("plot", "land", "property"),
-    "home": ("house", "houses", "property", "real estate"),
-    "homes": ("house", "houses", "property", "real estate"),
-    "couch": ("sofa", "sofas", "couches", "living room"),
-    "couches": ("sofa", "sofas", "couch", "living room"),
-    "sofa": ("sofas", "couch", "couches", "living room"),
-    "centre": ("center", "coffee table", "coffee tables"),
-    "center": ("centre", "coffee table", "coffee tables"),
-    "bike": ("motorbike", "motorcycle", "boda boda", "o ride"),
-    "motorbike": ("bike", "motorcycle", "boda boda", "o ride"),
-    "boda": ("boda boda", "bike", "motorcycle", "o ride"),
-    "taxi": ("car ride", "driver", "o drive", "transport"),
-    "uber": ("taxi", "car ride", "driver", "o drive"),
-    "mover": ("movers", "moving", "relocation", "house moving"),
-    "movers": ("mover", "moving", "relocation", "house moving"),
-    "relocate": ("relocation", "movers", "moving"),
-    "ticket": ("tickets", "ticketing", "event pass", "qr ticket"),
-    "tickets": ("ticket", "ticketing", "event pass", "qr ticket"),
-    "retreat": ("retreats", "group travel", "team day", "fun travel"),
-    "retreats": ("retreat", "group travel", "team day", "fun travel"),
-    "holiday": ("holidays", "travel", "short stay", "accommodation"),
-    "holidays": ("holiday", "travel", "short stay", "accommodation"),
-    "lodging": ("accommodation", "hotel", "guest stay", "short stay"),
-    "clothes": ("clothing", "fashion", "apparel", "wear"),
-    "apparel": ("clothing", "fashion", "clothes"),
-    "fabric": ("fabrics", "textile", "textiles", "materials"),
-    "textile": ("textiles", "fabric", "fabrics", "materials"),
-    "bag": ("bags", "handbag", "handbags", "accessories"),
-    "handbag": ("handbags", "bags", "accessories"),
-    "apk": ("apks", "android", "android app", "app download"),
-    "apks": ("apk", "android", "android app", "app download"),
-    "application": ("app", "mobile app", "android app", "software"),
-    "applications": ("apps", "mobile apps", "android apps", "software"),
-    "invoice": ("invoices", "receipt", "receipts", "billing"),
-    "receipt": ("receipts", "invoice", "invoices", "billing"),
-    "warehouse": ("warehouses", "industrial space", "storage property"),
-    "furniture": ("sofa", "couch", "coffee table", "dining table", "wardrobe", "office chair", "home decor"),
-    "table": ("coffee table", "centre table", "center table", "dining table", "furniture"),
-    "wardrobe": ("wardrobes", "closet", "storage", "bedroom furniture"),
-    "cabinet": ("cabinets", "storage", "wardrobe", "furniture"),
-    "lamp": ("lighting", "lights", "pendant light", "chandelier", "TRT"),
-    "light": ("lighting", "lamp", "lights", "pendant light", "TRT"),
-    "rent": ("rental", "rentals", "house for rent", "apartment", "bedsitter"),
-    "rental": ("rentals", "rent", "house for rent", "apartment", "bedsitter"),
-    "house": ("houses", "home", "homes", "property", "real estate", "rental"),
-    "apartment": ("apartments", "flat", "flats", "bedsitter", "rental"),
-    "land": ("plot", "plots", "acreage", "property for sale"),
-    "accommodation": ("hotel", "hotels", "guest house", "short stay", "holiday rental"),
-    "hotel": ("hotels", "guest house", "lodge", "accommodation", "short stay"),
-    "wedding": ("weddings", "private events", "event planning", "ticketing"),
-    "event": ("events", "ticketing", "tickets", "event pass", "private events"),
-    "celebration": ("celebrations", "birthday", "wedding", "private event"),
-    "roadtrip": ("road trip", "road trips", "travel", "tour", "group retreat"),
-    "trip": ("trips", "travel", "tour", "holiday", "retreat"),
-    "jewelry": ("jewellery", "accessories", "necklace", "earrings", "bags"),
-    "jewellery": ("jewelry", "accessories", "necklace", "earrings", "bags"),
-    "dress": ("dresses", "clothing", "fashion", "apparel"),
-    "clothing": ("clothes", "fashion", "apparel", "fabric"),
-    "shop": ("shopping", "online shopping", "store", "groceries", "Denmart"),
-    "groceries": ("shopping", "supermarket", "online shopping", "Denmart"),
-    "courier": ("delivery", "errands", "parcel", "Oedge"),
-    "parcel": ("delivery", "courier", "errands", "Oedge"),
-    "developer": ("website developer", "web development", "app developer", "software", "Toror"),
-    "website": ("websites", "web development", "website design", "app development"),
-    "software": ("apps", "digital products", "APK", "Android", "web app"),
-}
-
-
-def service_matches(service, query):
-    q = query.casefold().strip()
-    fields = [service.get("name", ""), service.get("slug", ""), service.get("group_name", ""),
-              service.get("parent_name", ""), service.get("description", ""), service.get("keywords", "")]
-    hay = " ".join(str(x or "") for x in fields).casefold()
-    tokens = [t for t in re.findall(r"[a-z0-9]+", q) if len(t) > 1]
-    expanded_tokens = list(tokens)
-    # Expand a query into common synonymous terms so visitors do not need the exact
-    # catalogue wording to find the right connected service.
-    for token in tokens:
-        for alias in SEARCH_TOKEN_ALIASES.get(token, ()):
-            for alias_token in re.findall(r"[a-z0-9]+", alias.casefold()):
-                if len(alias_token) > 1 and alias_token not in expanded_tokens:
-                    expanded_tokens.append(alias_token)
-    score = 0
-    name = str(service.get("name", "")).casefold()
-    if q == name: score += 15
-    elif q in name: score += 10
-    if q in str(service.get("keywords", "")).casefold(): score += 6
-    if q in str(service.get("group_name", "")).casefold(): score += 4
-    matched = set()
-    for token in expanded_tokens:
-        if token in hay and token not in matched:
-            matched.add(token)
-            score += 2 if token in tokens else 1
-    return score
-
-
-def get_active_ad():
-    now = utc_now()
-    with db_session() as conn:
-        rows = conn.execute("SELECT * FROM hub_ads WHERE active=1 AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY sort_order ASC,id ASC", (now, now)).fetchall()
-    ads = [dict(row) for row in rows]
-    if not ads:
-        return None
-    seed = session.get("ad_rotation_seed")
-    if not seed:
-        seed = secrets.token_hex(8)
-        session["ad_rotation_seed"] = seed
-    visit = int(session.get("ad_rotation_count", 0)) + 1
-    session["ad_rotation_count"] = visit
-    last_id = session.get("ad_last_id")
-    choices = [ad for ad in ads if str(ad["id"]) != str(last_id)] or ads
-    day = datetime.utcnow().strftime("%Y-%m-%d")
-    pick = int(hashlib.sha256(f"{day}:{seed}:{visit}".encode()).hexdigest(), 16) % len(choices)
-    ad = choices[pick].copy()
-    session["ad_last_id"] = ad["id"]
-    raw_variants = str(ad.get("headline_variants", "")).replace("\\n", "\n")
-    variants = [x.strip() for x in re.split(r"[\n;|]+", raw_variants) if x.strip()]
-    headlines = list(dict.fromkeys([str(ad.get("headline", "")).strip()] + variants))
-    headlines = [x for x in headlines if x]
-    last_headline = session.get(f"ad_headline_{ad['id']}")
-    headline_choices = [x for x in headlines if x != last_headline] or headlines
-    if headline_choices:
-        variant_pick = int(hashlib.sha256(f"{day}:{seed}:{visit}:{ad['id']}:headline".encode()).hexdigest(), 16) % len(headline_choices)
-        ad["headline"] = headline_choices[variant_pick]
-        session[f"ad_headline_{ad['id']}"] = ad["headline"]
-    return ad
-
-
-def get_public_downloads():
-    with db_session() as conn:
-        return [dict(row) for row in conn.execute("SELECT * FROM hub_downloads WHERE visible=1 ORDER BY sort_order, title COLLATE NOCASE").fetchall()]
-
-
-def normalise_http_url(value):
+def safe_external_url(value: str) -> str:
     value = (value or "").strip()
     if not value:
-        raise ValueError("Enter a destination URL.")
-    if not re.match(r"^https?://", value, re.I):
-        value = "https://" + value
+        return ""
     parsed = urlparse(value)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc or not parsed.hostname:
-        raise ValueError("Enter a valid http:// or https:// destination URL.")
-    if any(ch.isspace() for ch in value):
-        raise ValueError("URLs cannot contain spaces.")
+    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
+        return ""
     return value
 
 
-def clean_analytics_query(value: str) -> str:
-    value = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email hidden]", value)
-    value = re.sub(r"(?<!\w)(?:\+?\d[\d ()-]{6,}\d)(?!\w)", "[number hidden]", value)
-    return value.strip()[:120]
+_BLOCKED_PROPERTY_PORTAL_DOMAINS = (
+    "property254.co.ke", "property254.com", "property24.co.ke",
+    "buyrentkenya.com", "buyrentkenya.co.ke", "jiji.co.ke",
+)
 
 
-def log_event(event_type, site_id=None, query=""):
+def is_competitor_property_portal_url(value: str) -> bool:
+    """Identify property-marketplace URLs the public site must not promote."""
+    raw = safe_external_url(value)
+    if not raw:
+        return False
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if any(host == domain or host.endswith("." + domain)
+           for domain in _BLOCKED_PROPERTY_PORTAL_DOMAINS):
+        return True
+    # Also prevent a Google search shortcut from bypassing the host check.
+    if host in {"google.com", "www.google.com", "google.co.ke", "www.google.co.ke"}:
+        search_text = (parsed.query + " " + parsed.fragment).lower()
+        return any(domain in search_text for domain in _BLOCKED_PROPERTY_PORTAL_DOMAINS)
+    return False
+
+
+def public_base() -> str:
+    # Deployment environment is authoritative so canonical links stay on the desired domain,
+    # even if an older database contains an obsolete public_base_url setting.
+    configured = safe_external_url(os.environ.get("PUBLIC_BASE_URL", "") or setting("public_base_url", "") or "https://trororinovationstech.co.ke")
+    return configured.rstrip("/") if configured else request.url_root.rstrip("/")
+
+
+def listing_lifecycle_days() -> int:
     try:
-        with db_session() as conn:
-            conn.execute("INSERT INTO events(event_type,site_id,query,created_at) VALUES(?,?,?,?)",
-                         (event_type, site_id, clean_analytics_query(query) if event_type == "search" else "", utc_now()))
-            conn.commit()
-    except sqlite3.Error:
-        app.logger.exception("Analytics event could not be recorded")
+        return max(1, min(365, int(setting("listing_expiry_days", "30"))))
+    except (TypeError, ValueError):
+        return 30
 
 
-def site_matches(site, query):
-    query_l = query.casefold().strip()
-    if not query_l:
+def expiry_days_remaining(value: str | None):
+    if not value:
+        return None
+    try:
+        due = datetime.fromisoformat(value)
+        if due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        return math.ceil((due - datetime.now(timezone.utc)).total_seconds() / 86400)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalized_recovery_answer(value: str) -> str:
+    return " ".join((value or "").strip().casefold().split())[:160]
+
+
+def expire_due_listings() -> None:
+    """Take expired adverts out of public search while retaining their history and media."""
+    now = now_iso()
+    db = get_db()
+    changed = db.execute(
+        "UPDATE listings SET status='expired',updated_at=? WHERE status='available' AND expires_at<>'' AND expires_at<=?",
+        (now, now),
+    ).rowcount
+    if changed:
+        print(f"PataMahali: {changed} expired listing(s) hidden from public search; records retained.")
+    # After a 7-day renewal grace period, move unrenewed expiry records to a private archive.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).replace(microsecond=0).isoformat()
+    db.execute("UPDATE listings SET status='archived',archived_at=CASE WHEN archived_at='' THEN ? ELSE archived_at END,updated_at=? WHERE status='expired' AND expires_at<>'' AND expires_at<=? AND renewal_payment_status<>'submitted'",
+               (now, now, cutoff))
+
+
+def fee_for_category(category: str) -> float:
+    meta = CATEGORY_META.get(category, CATEGORY_META["residential"])
+    try:
+        return max(0, float(setting(meta["fee"], DEFAULT_SETTINGS[meta["fee"]])))
+    except ValueError:
         return 0
-    title = str(site.get("name", "")).casefold()
-    categories = " ".join(site_categories(site)).casefold()
-    description = str(site.get("description", "")).casefold()
-    keywords = [x.strip().casefold() for x in re.split(r"[,\n;]", str(site.get("keywords", ""))) if x.strip()]
-    score = 0
-    if query_l == title:
-        score += 12
-    elif query_l in title:
-        score += 8
-    if query_l in categories:
-        score += 7 if query_l in [c.casefold() for c in site_categories(site)] else 5
-    if query_l in description:
-        score += 3
-    if any(query_l == keyword for keyword in keywords):
-        score += 8
-    elif any(query_l in keyword or keyword in query_l for keyword in keywords):
-        score += 5
-    terms = [t for t in re.findall(r"[a-z0-9]+", query_l) if len(t) > 2]
-    expanded = list(terms)
-    for term in terms:
-        for alias in SEARCH_TOKEN_ALIASES.get(term, ()):
-            for alias_term in re.findall(r"[a-z0-9]+", alias.casefold()):
-                if len(alias_term) > 2 and alias_term not in expanded:
-                    expanded.append(alias_term)
-    haystack = " ".join([title, categories, description, " ".join(keywords)])
-    for term in terms:
-        if term in haystack:
-            score += 1
-    # Synonym-only matches can reveal a platform even when its official name differs
-    # from the customer's everyday wording (for example, boda -> motorcycle transport).
-    for term in expanded[len(terms):]:
-        if term in haystack:
-            score += 1
-    return score
 
 
-def get_categories(sites=None):
-    sites = sites if sites is not None else get_sites(visible_only=True)
-    seen, result = set(), []
-    for site in sites:
-        for cat in site_categories(site):
-            cat = cat.strip()
-            if cat and cat.casefold() not in seen:
-                result.append(cat)
-                seen.add(cat.casefold())
-    return result
+def listing_images(row) -> list[str]:
+    try:
+        return json.loads(row["images"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
 
 
-def icon_svg(key, size=28):
-    paths = {
-        "home": '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
-        "bed": '<path d="M3 18V5m0 10h18v5M3 9h7a3 3 0 0 1 3 3v3M13 12h5a3 3 0 0 1 3 3"/>',
-        "bed-double": '<path d="M3 18V5m0 10h18v5M3 9h7a3 3 0 0 1 3 3v3M13 12h5a3 3 0 0 1 3 3v3M7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
-        "plane": '<path d="m2 16 20-7-6-5-3 1 3 5-6 2-4-4-2 1 2 5-4 2z"/>',
-        "ticket": '<path d="M4 5h16v4a3 3 0 0 0 0 6v4H4v-4a3 3 0 0 0 0-6z"/><path d="M13 7v2m0 3v2m0 3v1"/>',
-        "chair": '<path d="M6 11V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6M5 11h14v4H5zM7 15v6m10-6v6"/>',
-        "bricks": '<path d="M3 4h8v5H3zM13 4h8v5h-8zM7 10h10v5H7zM3 16h8v4H3zM13 16h8v4h-8z"/>',
-        "compass": '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8z"/>',
-        "activity": '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
-        "calculator": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2m4 0h2M8 16h2m4 0h2"/>',
-        "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
-        "message": '<path d="M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.3-4.2A8.5 8.5 0 1 1 21 11.5z"/>',
-        "shopping": '<path d="M4 8h16l-1.5 12h-13zM8 8a4 4 0 0 1 8 0"/>',
-        "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
-        "building": '<path d="M4 21V4h11v17M15 9h5v12M7 7h2m-2 4h2m-2 4h2m4-8h1m-1 4h1m-1 4h1m5-3h1m-1 4h1M2 21h20"/>',
-        "map": '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15m6-12v15"/>',
-        "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM20 8v6m3-3h-6"/>',
-        "receipt": '<path d="M4 3 6 5l2-2 2 2 2-2 2 2 2-2 2 2v18l-2-2-2 2-2-2-2 2-2-2-2 2zM8 9h8M8 13h8M8 17h5"/>',
-        "calendar": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
-        "shirt": '<path d="m8 4 4 2 4-2 5 4-3 4-3-2v11H9V10l-3 2-3-4z"/>',
-        "gem": '<path d="M6 3h12l4 6-10 12L2 9zM2 9h20M9 3l-2 6 5 12 5-12-5-6"/>',
-        "table": '<path d="M3 5h18v4H3zM5 9v12m14-12v12M3 21h18"/>',
-        "sofa": '<path d="M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3M5 10a2 2 0 0 0-2 2v5h18v-5a2 2 0 0 0-2-2M5 17v4m14-4v4M3 14h18"/>',
-        "archive": '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v11h14V9M10 13h4"/>',
-        "panels-top-left": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
-        "lamp": '<path d="M9 3h6l4 9H5zM12 12v6m-4 3h8"/>',
-        "flower-2": '<path d="M12 12c-5-6-11 0-5 4-2 7 7 7 5 0 2 7 11 7 5 0 6-4 0-10-5-4zM12 12V4"/>',
-        "briefcase-business": '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"/>',
-        "door-open": '<path d="M4 21V4l12-2v19M4 21h16M12 12h.01"/>',
-        "grid-2x2": '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>',
-        "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
-        "plus-square": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8m-4-4h8"/>',
-        "map-pin": '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>',
-        "warehouse": '<path d="M3 21V8l9-5 9 5v13M3 12h18M7 16h3m4 0h3M7 21v-5m10 5v-5"/>',
-        "store": '<path d="M3 10h18l-2-6H5zM5 10v11h14V10M9 21v-6h6v6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
-        "bike": '<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M5.5 17.5 10 9h4l4.5 8.5M8 13h7M10 9 8 6H5"/>',
-        "car-front": '<path d="m5 11 2-5h10l2 5M3 11h18l-1 8H4zM7 19v2m10-2v2M6 14h.01M18 14h.01"/>',
-        "truck": '<path d="M3 6h11v12H3zM14 10h4l3 4v4h-7zM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
-        "package": '<path d="m12 3 9 5-9 5-9-5zM3 8v8l9 5 9-5V8M12 13v8"/>',
-        "code-2": '<path d="m8 8-4 4 4 4m8-8 4 4-4 4m-3-11-2 14"/>',
-        "download": '<path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/>',
-        "app-window": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>',
-        "shield-check": '<path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/><path d="m9 12 2 2 4-4"/>',
-        "sparkles": '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 14l1 2.5 2.5 1-2.5 1L19 21l-1-2.5-2.5-1 2.5-1z"/>',
-    }
-    path = paths.get(key, paths["compass"])
-    return Markup(f'<svg class="line-icon" width="{int(size)}" height="{int(size)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{path}</svg>')
+def freshness_threshold() -> str:
+    # Kept for compatibility with any older local integrations; expiry is now
+    # controlled by the explicit expires_at field instead of a 14-day heartbeat.
+    return (datetime.now(timezone.utc) - timedelta(days=listing_lifecycle_days())).replace(microsecond=0).isoformat()
 
 
-@app.route("/")
-def home():
-    sites = get_sites(visible_only=True)
-    services = get_services(visible_only=True)
-    service_groups = {}
-    for service in services:
-        service_groups.setdefault(service["group_name"], []).append(service)
-    ad = get_active_ad()
-    description = "Search Kenya's growing network of individually listed services for travel, property, furniture, fashion, mobility, shopping, APK downloads and website or app development."
-    return render_template("home.html", sites=sites, services=services, service_groups=service_groups, ad=ad,
-                           title="Toror Technology & Innovations in Kenya",
-                           meta_description="Discover Toror Technology & Innovations Ltd. services in Kenya, including Android app release information, travel and group retreats, event ticketing, property, furniture, mobility, online shopping, and website or app development.",
-                           robots="index,follow", current_year=datetime.utcnow().year)
+def is_public_listing(row) -> bool:
+    if not row:
+        return False
+    owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=?", (row["owner_id"],)).fetchone()
+    expiry = row["expires_at"] if "expires_at" in row.keys() else ""
+    still_in_term = bool(expiry and expiry > now_iso())
+    return bool(owner and owner["verified"] and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["property_verified"] and row["status"] == "available" and still_in_term)
 
 
-@app.route("/account/register", methods=["GET", "POST"])
-def customer_register():
-    if session.get("customer_id"):
-        return redirect(url_for("customer_projects"))
-    if request.method == "POST":
-        name = request.form.get("full_name", "").strip()[:100]
-        email = request.form.get("email", "").strip().lower()[:160]
-        password = request.form.get("password", "")
-        if not name or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email) or len(password) < 8:
-            flash("Enter your name, a valid email and a password of at least 8 characters.", "error")
-            return render_template("account_auth.html", title="Create project account", mode="register", robots="noindex,nofollow"), 400
+def log_event(event_type: str, path: str, details: str = "") -> None:
+    try:
+        user = get_current_user()
+        visitor_key = current_visitor_key()
+        get_db().execute(
+            "INSERT INTO visitor_events(visitor_key,user_id,event_type,path,details,created_at) VALUES(?,?,?,?,?,?)",
+            (visitor_key, user["id"] if user else None, event_type, path[:500], details[:1500], now_iso()),
+        )
+    except Exception as exc:
+        print(f"Visitor event not recorded: {exc}")
+
+
+def device_label(user_agent: str) -> str:
+    ua = (user_agent or "").lower()
+    if "iphone" in ua:
+        return "iPhone"
+    if "ipad" in ua:
+        return "iPad"
+    if "android" in ua and "mobile" in ua:
+        return "Android phone"
+    if "android" in ua:
+        return "Android tablet / device"
+    if any(token in ua for token in ("mobile", "windows phone")):
+        return "Mobile browser"
+    if ua:
+        return "Desktop browser"
+    return "Unknown"
+
+
+@app.after_request
+def record_page_view(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(self), camera=(), microphone=()")
+    if request.path.startswith(("/manage-admin", ADMIN_ROOT, "/partner/", "/login", "/join")):
+        response.headers["Cache-Control"] = "no-store"
+    if request.method == "GET" and response.status_code < 400 and request.endpoint not in {
+        "static", "manifest", "service_worker", "icon_svg", "robots_txt", "sitemap_xml", "qr_platform", "listing_qr", "promo_media"
+    }:
         try:
-            with db_session() as conn:
-                cur = conn.execute("INSERT INTO customer_accounts(full_name,email,password_hash,created_at) VALUES(?,?,?,?)",
-                                   (name, email, generate_password_hash(password), utc_now()))
-                account_id = cur.lastrowid
-        except sqlite3.IntegrityError:
-            flash("An account already uses that email. Please sign in instead.", "error")
-            return render_template("account_auth.html", title="Create project account", mode="register", robots="noindex,nofollow"), 409
-        session.clear()
-        session["customer_id"] = account_id
-        session["customer_name"] = name
-        session["csrf_token"] = secrets.token_urlsafe(32)
-        session.permanent = True
-        flash("Your project account is ready. You can now track requests and read updates here.", "success")
-        return redirect(url_for("customer_projects"))
-    return render_template("account_auth.html", title="Create project account", mode="register", robots="noindex,nofollow")
-
-
-@app.route("/account/login", methods=["GET", "POST"])
-def customer_login():
-    if session.get("customer_id"):
-        return redirect(url_for("customer_projects"))
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()[:160]
-        password = request.form.get("password", "")
-        with db_session() as conn:
-            account = conn.execute("SELECT * FROM customer_accounts WHERE email=?", (email,)).fetchone()
-        if not account or not check_password_hash(account["password_hash"], password):
-            flash("Email or password was not recognised.", "error")
-            return render_template("account_auth.html", title="Sign in to your project account", mode="login", robots="noindex,nofollow"), 401
-        session.clear()
-        session["customer_id"] = account["id"]
-        session["customer_name"] = account["full_name"]
-        session["csrf_token"] = secrets.token_urlsafe(32)
-        session.permanent = True
-        return redirect(url_for("customer_projects"))
-    return render_template("account_auth.html", title="Sign in to your project account", mode="login", robots="noindex,nofollow")
-
-
-@app.route("/account/logout", methods=["POST"])
-def customer_logout():
-    session.clear()
-    return redirect(url_for("home"))
-
-
-@app.route("/my-projects")
-def customer_projects():
-    customer_id = session.get("customer_id")
-    if not customer_id:
-        flash("Sign in to a project account to track submitted requests and read updates.", "info")
-        return redirect(url_for("customer_login", next="/my-projects"))
-    with db_session() as conn:
-        rows = conn.execute("SELECT * FROM project_requests WHERE user_id=? ORDER BY created_at DESC", (customer_id,)).fetchall()
-    return render_template("customer_projects.html", title="My project requests", requests=[dict(row) for row in rows], project_types=PROJECT_TYPES, robots="noindex,nofollow")
-
-
-PROJECT_TYPES = {
-    "business-website": "Business website",
-    "online-store": "E-commerce / online store",
-    "web-app": "Web application or portal",
-    "mobile-app": "Mobile app",
-    "redesign": "Website or app redesign",
-    "automation": "Integration or business automation",
-    "seo": "Search visibility / SEO",
-    "other": "Other digital project",
-}
-
-# Planning ranges in KES are deliberately indicative and are recalculated on the server.
-PROJECT_BASE_RANGES = {
-    "business-website": (10000, 20000),
-    "online-store": (25000, 60000),
-    "web-app": (50000, 120000),
-    "mobile-app": (60000, 150000),
-    "redesign": (8000, 22000),
-    "automation": (15000, 45000),
-    "seo": (5000, 20000),
-    "other": (12000, 45000),
-}
-PAGE_RANGES = {"1-5": (0, 0), "6-10": (5000, 9000), "11-20": (12000, 22000), "21+": (25000, 50000)}
-FEATURE_RANGES = {"simple": (0, 0), "standard": (5000, 15000), "advanced": (15000, 40000)}
-CONTENT_RANGES = {"ready": (0, 0), "need-help": (3000, 10000), "full-service": (6000, 18000)}
-TIMELINE_MULTIPLIERS = {"flexible": (1.0, 1.0), "month": (1.0, 1.08), "two-weeks": (1.08, 1.15), "one-week": (1.18, 1.30)}
-
-
-def estimate_project(form):
-    project_type = form.get("project_type", "business-website")
-    if project_type not in PROJECT_BASE_RANGES:
-        project_type = "other"
-    low, high = PROJECT_BASE_RANGES[project_type]
-    pages = form.get("pages_count", "1-5")
-    if pages not in PAGE_RANGES:
-        pages = "1-5"
-    add_low, add_high = PAGE_RANGES[pages]
-    low += add_low
-    high += add_high
-    features = form.get("feature_level", "standard")
-    if features not in FEATURE_RANGES:
-        features = "standard"
-    add_low, add_high = FEATURE_RANGES[features]
-    low += add_low
-    high += add_high
-    content = form.get("content_status", "need-help")
-    if content not in CONTENT_RANGES:
-        content = "need-help"
-    add_low, add_high = CONTENT_RANGES[content]
-    low += add_low
-    high += add_high
-    timeline = form.get("timeline", "flexible")
-    if timeline not in TIMELINE_MULTIPLIERS:
-        timeline = "flexible"
-    min_factor, max_factor = TIMELINE_MULTIPLIERS[timeline]
-    return int(round(low * min_factor / 500) * 500), int(round(high * max_factor / 500) * 500)
-
-
-@app.route("/build-a-website-or-app", methods=["GET", "POST"])
-def project_request():
-    default_estimate = estimate_project({"project_type": "business-website", "pages_count": "1-5", "feature_level": "simple", "content_status": "ready", "timeline": "flexible"})
-    if request.method == "POST":
-        # Hidden honeypot catches basic form bots without disrupting real visitors.
-        if request.form.get("company_website", "").strip():
-            return redirect(url_for("project_request", submitted="1"))
-        name = request.form.get("name", "").strip()[:100]
-        phone = request.form.get("phone", "").strip()[:50]
-        email = request.form.get("email", "").strip()[:120]
-        project_type = request.form.get("project_type", "other").strip()
-        summary = request.form.get("project_summary", "").strip()[:5000]
-        if not name or not phone or not summary or project_type not in PROJECT_TYPES:
-            flash("Please complete your name, phone number, project type and project brief.", "error")
-            return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
-                                   estimate_min=default_estimate[0], estimate_max=default_estimate[1]), 400
-        if email and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
-            flash("Please enter a valid email address, or leave that field blank.", "error")
-            return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
-                                   estimate_min=default_estimate[0], estimate_max=default_estimate[1]), 400
-        estimate_min, estimate_max = estimate_project(request.form)
-        allowed = {
-            "name": name, "phone": phone, "email": email,
-            "business_name": request.form.get("business_name", "").strip()[:150],
-            "location": request.form.get("location", "").strip()[:120],
-            "project_type": project_type,
-            "project_name": request.form.get("project_name", "").strip()[:150],
-            "project_summary": summary,
-            "target_audience": request.form.get("target_audience", "").strip()[:1000],
-            "pages_count": request.form.get("pages_count", "1-5") if request.form.get("pages_count") in PAGE_RANGES else "1-5",
-            "feature_level": request.form.get("feature_level", "standard") if request.form.get("feature_level") in FEATURE_RANGES else "standard",
-            "key_features": request.form.get("key_features", "").strip()[:3000],
-            "brand_assets": request.form.get("brand_assets", "").strip()[:1000],
-            "content_status": request.form.get("content_status", "need-help") if request.form.get("content_status") in CONTENT_RANGES else "need-help",
-            "domain_hosting": request.form.get("domain_hosting", "not-sure") if request.form.get("domain_hosting") in ("have-both", "domain-only", "hosting-only", "need-both", "not-sure") else "not-sure",
-            "integrations": request.form.get("integrations", "").strip()[:1500],
-            "target_launch": request.form.get("target_launch", "").strip()[:40],
-            "timeline": request.form.get("timeline", "flexible") if request.form.get("timeline") in TIMELINE_MULTIPLIERS else "flexible",
-            "budget": request.form.get("budget", "not-sure") if request.form.get("budget") in ("under-10000", "10000-25000", "25000-50000", "50000-100000", "100000-plus", "not-sure") else "not-sure",
-            "maintenance": request.form.get("maintenance", "not-sure") if request.form.get("maintenance") in ("yes", "no", "not-sure") else "not-sure",
-            "additional_notes": request.form.get("additional_notes", "").strip()[:2500],
-            "estimate_min": estimate_min, "estimate_max": estimate_max,
-            "user_id": session.get("customer_id"),
-            "created_at": utc_now(), "updated_at": utc_now(),
-        }
-        with db_session() as conn:
-            conn.execute("""INSERT INTO project_requests
-                (user_id,name,phone,email,business_name,location,project_type,project_name,project_summary,target_audience,
-                 pages_count,feature_level,key_features,brand_assets,content_status,domain_hosting,integrations,
-                 target_launch,timeline,budget,maintenance,additional_notes,estimate_min,estimate_max,status,admin_feedback,created_at,updated_at)
-                VALUES(:user_id,:name,:phone,:email,:business_name,:location,:project_type,:project_name,:project_summary,:target_audience,
-                 :pages_count,:feature_level,:key_features,:brand_assets,:content_status,:domain_hosting,:integrations,
-                 :target_launch,:timeline,:budget,:maintenance,:additional_notes,:estimate_min,:estimate_max,'New','',:created_at,:updated_at)""", allowed)
-        flash("Your project brief has been received. The estimate is a planning guide; the final price and delivery plan will be confirmed after scope review.", "success")
-        return redirect(url_for("project_request", submitted="1"))
-    return render_template("project_request.html", title="Website and app development in Kenya", project_types=PROJECT_TYPES,
-                           submitted=request.args.get("submitted") == "1", estimate_min=default_estimate[0], estimate_max=default_estimate[1],
-                           meta_description="Request affordable website, e-commerce, web app or mobile app development in Kenya. Share your project brief and get an initial price range based on scope, features and timing.", robots="index,follow")
-
-
-@app.route("/admin/requests")
-@admin_required
-def admin_project_requests():
-    with db_session() as conn:
-        rows = conn.execute("SELECT * FROM project_requests ORDER BY created_at DESC LIMIT 500").fetchall()
-    return render_template("admin_requests.html", title="Project requests", section="requests", requests=[dict(r) for r in rows], project_types=PROJECT_TYPES)
-
-
-@app.route("/admin/requests/<int:request_id>/status", methods=["POST"])
-@admin_required
-def admin_project_request_status(request_id):
-    status = request.form.get("status", "New")
-    if status not in ("New", "Reviewing", "Contacted", "Quoted", "Won", "Closed"):
-        status = "New"
-    feedback = request.form.get("admin_feedback", "").strip()[:4000]
-    with db_session() as conn:
-        changed = conn.execute("UPDATE project_requests SET status=?,admin_feedback=?,updated_at=? WHERE id=?", (status, feedback, utc_now(), request_id)).rowcount
-    if not changed:
-        abort(404)
-    flash("Project request status updated.", "success")
-    return redirect(url_for("admin_project_requests") + f"#request-{request_id}")
-
-
-@app.route("/admin/requests/export.csv")
-@admin_required
-def admin_project_requests_export():
-    with db_session() as conn:
-        rows = conn.execute("SELECT * FROM project_requests ORDER BY created_at DESC").fetchall()
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(rows[0].keys() if rows else ["id", "name", "phone", "email", "project_type", "project_summary", "status", "created_at"])
-    for row in rows:
-        writer.writerow([row[k] for k in row.keys()])
-    response = make_response(output.getvalue())
-    response.headers["Content-Type"] = "text/csv; charset=utf-8"
-    response.headers["Content-Disposition"] = 'attachment; filename="project-requests.csv"'
+            user = get_current_user()
+            visitor_key = current_visitor_key()
+            now = datetime.now(timezone.utc)
+            now_text = now.replace(microsecond=0).isoformat()
+            existing = get_db().execute("SELECT * FROM visitor_sessions WHERE visitor_key=?", (visitor_key,)).fetchone()
+            role = "administrator" if user and user["role"] == "admin" else (
+                "partner" if user and user["role"] in {"owner", "agent", "host", "business"} else
+                "house seeker" if user and user["role"] == "seeker" else "visitor"
+            )
+            referrer = ""
+            if request.referrer:
+                try:
+                    referrer = urlparse(request.referrer).netloc[:200]
+                except Exception:
+                    referrer = ""
+            account_phone = normalize_visitor_phone(user["phone"] or "") if user else ""
+            account_name = (user["full_name"] or "") if user else ""
+            if existing:
+                try:
+                    last_seen_dt = datetime.fromisoformat(existing["last_seen"])
+                    new_visit = (now - last_seen_dt) > timedelta(minutes=30)
+                except (TypeError, ValueError):
+                    new_visit = True
+                visit_count = int(existing["visit_count"] or 1) + (1 if new_visit else 0)
+                last_visit_at = now_text if new_visit or not existing["last_visit_at"] else existing["last_visit_at"]
+                known_phone = account_phone or existing["contact_phone"] or ""
+                known_name = account_name or existing["contact_name"] or ""
+                # Admin page visits are not counted as public visits. Existing admin browsers are
+                # still updated so they remain labelled as administration traffic.
+                get_db().execute(
+                    "UPDATE visitor_sessions SET user_id=?,role=?,last_seen=?,last_path=?,referrer=?,device=?,page_views=page_views+1,visit_count=?,last_visit_at=?,contact_phone=?,contact_name=? WHERE visitor_key=?",
+                    (user["id"] if user else existing["user_id"], role, now_text, request.path[:500], referrer, device_label(request.headers.get("User-Agent", "")), visit_count, last_visit_at, known_phone, known_name, visitor_key),
+                )
+            else:
+                get_db().execute(
+                    "INSERT INTO visitor_sessions(visitor_key,user_id,role,first_seen,last_seen,last_path,referrer,device,page_views,visit_count,last_visit_at,contact_phone,contact_name) VALUES(?,?,?,?,?,?,?,?,1,1,?,?,?)",
+                    (visitor_key, user["id"] if user else None, role, now_text, now_text, request.path[:500], referrer, device_label(request.headers.get("User-Agent", "")), now_text, account_phone, account_name),
+                )
+            get_db().execute(
+                "INSERT INTO visitor_events(visitor_key,user_id,event_type,path,details,created_at) VALUES(?,?,?,?,?,?)",
+                (visitor_key, user["id"] if user else None, "page_view", request.path[:500], role, now_text),
+            )
+        except Exception as exc:
+            print(f"Visitor analytics not recorded: {exc}")
+    # Retain an anonymous first-party visitor key for 180 days so repeat visits
+    # from this browser do not inflate unique-visitor counts. Cookie is HttpOnly.
+    stable_key = current_visitor_key()
+    if stable_key:
+        response.set_cookie(
+            "pm_visitor", stable_key, max_age=180 * 24 * 60 * 60,
+            httponly=True, secure=request.is_secure, samesite="Lax", path="/"
+        )
     return response
 
 
-@app.route("/search")
-def search():
-    query = request.args.get("q", "").strip()[:120]
-    results = []
-    service_results = []
-    service_listing = False
-    if query:
-        log_event("search", query=query)
-        sites = get_sites(visible_only=True)
-        scored = [(site_matches(site, query), site) for site in sites]
-        results = [site for score, site in sorted(scored, key=lambda x: (x[0], x[1]["featured"], -x[1]["sort_order"]), reverse=True) if score > 0]
-        query_normalised = re.sub(r"[^a-z0-9]+", " ", query.casefold()).strip()
-        scored_services = [(service_matches(service, query), service) for service in get_services(visible_only=True)]
-        service_results = [service for score, service in sorted(scored_services, key=lambda x: (x[0], x[1]["featured"], -x[1]["sort_order"]), reverse=True) if score >= (3 if len(re.findall(r"[a-z0-9]+", query_normalised)) > 1 else 2)]
-        development_terms = ("web developer", "web development", "website", "websites", "build a site", "build website",
-                             "make a website", "app developer", "app development", "mobile app", "web app", "software",
-                             "ecommerce", "e commerce", "online store", "website design", "app design", "developer", "coding")
-        service_listing = any(term in query_normalised for term in development_terms)
-    return render_template("search.html", query=query, results=results, service_results=service_results,
-                           service_listing=service_listing, title=(f"Search: {query}" if query else "Search our network"),
-                           meta_description="Search individual travel, property, fashion, furniture, mobility and digital services available through the network.", robots="noindex,follow")
+def safe_video_embed_url(value: str) -> str:
+    """Allow only well-formed YouTube/Vimeo videos in the campaign placement."""
+    raw = safe_external_url(value)
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").lower()
+    path_parts = [part for part in parsed.path.split("/") if part]
+    video_id = ""
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+        if parsed.path == "/watch":
+            from urllib.parse import parse_qs
+            video_id = (parse_qs(parsed.query).get("v") or [""])[0]
+        elif len(path_parts) >= 2 and path_parts[0] in {"embed", "shorts", "live"}:
+            video_id = path_parts[1]
+        if re.fullmatch(r"[A-Za-z0-9_-]{6,20}", video_id or ""):
+            return f"https://www.youtube-nocookie.com/embed/{video_id}"
+    elif host == "youtu.be" and path_parts and re.fullmatch(r"[A-Za-z0-9_-]{6,20}", path_parts[0]):
+        return f"https://www.youtube-nocookie.com/embed/{path_parts[0]}"
+    elif host in {"vimeo.com", "www.vimeo.com"} and path_parts and path_parts[0].isdigit():
+        return f"https://player.vimeo.com/video/{path_parts[0]}"
+    elif host == "player.vimeo.com" and len(path_parts) >= 2 and path_parts[0] == "video" and path_parts[1].isdigit():
+        return f"https://player.vimeo.com/video/{path_parts[1]}"
+    return ""
 
 
-@app.route("/service-group/<path:group_slug>")
-def service_group(group_slug):
-    services = [item for item in get_services(visible_only=True) if slugify(item.get("group_name", "")) == group_slug]
-    if not services:
-        abort(404)
-    group_name = services[0]["group_name"]
-    return render_template("service_group.html", group_name=group_name, services=services,
-                           title=f"{group_name} in Kenya",
-                           meta_description=f"Discover individually listed {group_name.lower()} services across Kenya. Search by exact task and choose the relevant doorway.",
-                           robots="index,follow")
+@app.context_processor
+def inject_globals():
+    user = get_current_user()
+    settings = all_settings()
+    enabled_categories = {
+        key: meta for key, meta in CATEGORY_META.items()
+        if settings.get(f"category_enabled_{key}", "1") == "1"
+    }
+    header_resource_links = []
+    if settings.get("header_links_enabled", "0") == "1":
+        for raw_line in settings.get("header_links", "").splitlines()[:8]:
+            if "|" not in raw_line:
+                continue
+            label, target = raw_line.split("|", 1)
+            label, target = label.strip(), safe_external_url(target.strip())
+            if label and target and not is_competitor_property_portal_url(target):
+                header_resource_links.append({"label": label[:55], "url": target})
+    return {
+        "site_settings": settings,
+        "header_resource_links": header_resource_links,
+        "promo_embed_url": safe_video_embed_url(settings.get("promo_video_url", "")),
+        "is_competitor_property_portal_url": is_competitor_property_portal_url,
+        "current_user": user,
+        "csrf_field": csrf_field,
+        "listing_images": listing_images,
+        "category_meta": CATEGORY_META,
+        "seo_category_pages": SEO_CATEGORY_PAGES,
+        "public_base": public_base,
+        "public_categories": enabled_categories,
+        "money": money,
+        "fee_for_category": fee_for_category,
+        "expiry_days_remaining": expiry_days_remaining,
+        "recovery_questions": RECOVERY_QUESTIONS,
+        "admin_root": ADMIN_ROOT,
+        "current_year": datetime.now().year,
+        "current_date": datetime.now(timezone.utc).date().isoformat(),
+        "storage_warning": bool(os.environ.get("RENDER_SERVICE_ID") or os.environ.get("RENDER")) and DATA_DIR.resolve() == (BASE_DIR / "instance").resolve(),
+        "place_selector_data": selector_data(),
+        "slugify": slugify,
+    }
 
 
-@app.route("/service/<slug>")
-def service_detail(slug):
-    service = get_service_by_slug(slug)
-    if not service:
-        abort(404)
-    target = service_target(service)
-    siblings = [x for x in get_services(visible_only=True) if x["group_name"] == service["group_name"] and x["slug"] != slug][:8]
-    brand = get_setting("brand_name", DEFAULT_SETTINGS["brand_name"])
-    wa_digits = re.sub(r"\D", "", get_setting("whatsapp_number", ""))
-    if wa_digits.startswith("00"): wa_digits = wa_digits[2:]
-    elif len(wa_digits) == 10 and wa_digits.startswith(("07", "01")): wa_digits = "254" + wa_digits[1:]
-    service_whatsapp_url = ("https://wa.me/" + wa_digits + "?text=" + quote_plus(f"Hello, I found {service['name']} on {brand}. Please help me with the correct link or next steps.")) if len(wa_digits) >= 10 else ""
-    keyword_phrase = ", ".join([x.strip() for x in str(service.get("keywords") or "").split(",") if x.strip()][:4])
-    app_landing = APP_DISCOVERY_CONTENT.get(slug)
-    if app_landing:
-        page_title = app_landing["page_title"]
-        meta = app_landing["meta_description"]
-    else:
-        page_title = f"{service['name']} in Kenya"
-        meta = (service["description"].strip() + (f" Find {keyword_phrase} in Kenya." if keyword_phrase else " Explore this connected service in Kenya."))[:300]
-    return render_template("service_detail.html", service=service, target=target, siblings=siblings,
-                           service_whatsapp_url=service_whatsapp_url, app_landing=app_landing,
-                           title=page_title, meta_description=meta, robots="index,follow")
+def safe_next_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return None
 
 
-@app.route("/open-service/<slug>")
-def open_service(slug):
-    service = get_service_by_slug(slug)
-    if not service: abort(404)
-    target = service_target(service)
-    if not target:
-        flash("This service's direct platform link has not been connected yet. You can still contact us or send a related project brief.", "info")
-        return redirect(url_for("service_detail", slug=slug))
-    if not target.startswith("/"):
-        log_event("click", service.get("parent_site_id"))
-    return redirect(target, code=302)
+def save_upload(file, target_dir: Path, allowed: set[str]) -> str:
+    if not file or not file.filename:
+        return ""
+    original = secure_filename(file.filename)
+    ext = original.rsplit(".", 1)[-1].lower() if "." in original else ""
+    if ext not in allowed:
+        raise ValueError(f"Unsupported file type for {original}. Allowed: {', '.join(sorted(allowed))}.")
+    file.stream.seek(0, os.SEEK_END)
+    size = file.stream.tell()
+    file.stream.seek(0)
+    if size > MAX_FILE_BYTES:
+        raise ValueError(f"{original} is too large. Each image/document must be no more than {MAX_FILE_BYTES // (1024*1024)} MB.")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if ext == "pdf":
+        header = file.stream.read(5)
+        file.stream.seek(0)
+        if header != b"%PDF-":
+            raise ValueError(f"{original} does not look like a valid PDF document.")
+        filename = f"{uuid.uuid4().hex}.pdf"
+        file.save(target_dir / filename)
+        return filename
+    try:
+        with Image.open(file.stream) as probe:
+            probe.verify()
+        file.stream.seek(0)
+        with Image.open(file.stream) as opened:
+            image = ImageOps.exif_transpose(opened).convert("RGB")
+            image.thumbnail((1800, 1600), Image.Resampling.LANCZOS)
+            filename = f"{uuid.uuid4().hex}.webp"
+            image.save(target_dir / filename, format="WEBP", quality=86, method=5)
+            image.close()
+        file.stream.seek(0)
+        return filename
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError(f"{original} is not a valid supported image. Upload a real JPG, PNG or WebP file.") from exc
 
 
-@app.route("/downloads")
-def downloads_page():
-    query = request.args.get("q", "").strip()[:120]
-    items = get_public_downloads()
-    if query:
-        terms = [term for term in re.findall(r"[a-z0-9]+", query.casefold()) if len(term) > 1]
-        items = [item for item in items if all(term in " ".join(str(item.get(field, "")) for field in ("title", "description", "platform", "version", "keywords")).casefold() for term in terms)]
-    return render_template("downloads.html", items=items, query=query, title=(f"{query} downloads" if query else "Toror apps, APKs and digital downloads"),
-                           meta_description="Browse Android APKs, app releases and digital downloads published by Toror Technology & Innovations Ltd. in Kenya.",
-                           robots="noindex,follow" if query or not items else "index,follow")
+def public_listings(where: str = "", params: tuple = (), limit: int = 100):
+    sql = """
+        SELECT l.*,u.full_name AS partner_name,u.business_name,u.role AS partner_role,u.verified AS partner_verified,
+               (SELECT ROUND(AVG(r.stars),1) FROM ratings r WHERE r.listing_id=l.id) AS rating_average,
+               (SELECT COUNT(*) FROM ratings r WHERE r.listing_id=l.id) AS rating_count
+        FROM listings l JOIN users u ON u.id=l.owner_id
+        WHERE l.status='available' AND l.approval_status='approved' AND l.payment_status='paid'
+          AND l.property_verified=1 AND u.verified=1 AND u.suspended=0
+    """
+    if where:
+        sql += " AND " + where
+    sql += " AND l.expires_at <> '' AND l.expires_at > ?"
+    sql += " ORDER BY CASE WHEN l.featured_until > ? AND lower(l.boost_tier)='vvip' THEN 0 WHEN l.featured_until > ? AND lower(l.boost_tier)='vip' THEN 1 WHEN l.featured_until > ? THEN 2 ELSE 3 END, l.posted_at DESC LIMIT ?"
+    now = now_iso()
+    return get_db().execute(sql, (*params, now, now, now, now, limit)).fetchall()
 
 
-@app.route("/downloads/<slug>")
-def download_detail(slug):
-    with db_session() as conn:
-        item = conn.execute("SELECT * FROM hub_downloads WHERE slug=? AND visible=1", (slug,)).fetchone()
-    if not item: abort(404)
-    item = dict(item)
-    return render_template("download_detail.html", item=item, title=f"{item['title']} download",
-                           meta_description=(item["description"] or item["title"])[:300], robots="index,follow")
+def haversine_km(lat1, lon1, lat2, lon2):
+    radius = 6371.0
+    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
+    dlat, dlon = math.radians(float(lat2) - float(lat1)), math.radians(float(lon2) - float(lon1))
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-@app.route("/download-file/<slug>")
-def download_file(slug):
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM hub_downloads WHERE slug=? AND visible=1", (slug,)).fetchone()
-        if not row: abort(404)
-        item = dict(row)
-        conn.execute("UPDATE hub_downloads SET downloads_count=downloads_count+1 WHERE id=?", (item["id"],))
-    if item.get("stored_filename"):
-        path = DOWNLOAD_UPLOAD_DIR / Path(item["stored_filename"]).name
-        if not path.is_file():
-            flash("This download file is temporarily unavailable. Please contact the site administrator.", "error")
-            return redirect(url_for("download_detail", slug=slug))
-        return send_from_directory(DOWNLOAD_UPLOAD_DIR, path.name, as_attachment=True, download_name=item.get("original_filename") or path.name, max_age=0)
-    if item.get("external_url"):
-        return redirect(item["external_url"], code=302)
-    abort(404)
+@app.route("/")
+def index():
+    focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
+    featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
+                         for name in focus_order if name in COUNTY_CONSTITUENCIES]
+    return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties)
 
 
-@app.route("/explore/<path:category_slug>")
-def explore_category(category_slug):
-    sites = get_sites(visible_only=True)
-    matching = [s for s in sites if any(slugify(cat) == category_slug for cat in site_categories(s))]
-    if not matching:
-        abort(404)
-    category_name = next((cat for site in matching for cat in site_categories(site) if slugify(cat) == category_slug), matching[0]["category"])
-    return render_template("category.html", category_name=category_name, sites=matching,
-                           title=f"Explore {category_name}", meta_description=f"Discover websites and services for {category_name.lower()}.", robots="index,follow")
-
-
-@app.route("/go/<int:site_id>")
-def go_site(site_id):
-    site = get_site(site_id)
-    if not site or not site["visible"]:
-        abort(404)
-    query = request.args.get("q", "").strip()[:120]
-    log_event("click", site_id=site_id)
-    target = site["url"]
-    pattern = site.get("search_url_template", "").strip()
-    if query and pattern and "{query}" in pattern:
+def build_listing_location(form, existing=None):
+    """Validate the owner's Kenya location hierarchy and build its public label."""
+    existing = existing or {}
+    def get_existing(key):
         try:
-            target = pattern.replace("{query}", quote_plus(query))
-            parsed = urlparse(target)
-            allowed = urlparse(site["url"])
-            if parsed.scheme not in ("http", "https") or parsed.netloc != allowed.netloc:
-                target = site["url"]
-        except Exception:
-            target = site["url"]
-    return redirect(target, code=302)
+            return existing[key] or ""
+        except (KeyError, IndexError, TypeError):
+            return ""
+    raw_county = (form.get("county") or get_existing("county") or "").strip()
+    county = next((name for name in COUNTY_CONSTITUENCIES if name.casefold() == raw_county.casefold() or slugify(name) == slugify(raw_county)), "")
+    raw_constituency = (form.get("constituency") or get_existing("constituency") or "").strip()
+    constituency = next((name for name in COUNTY_CONSTITUENCIES.get(county, []) if name.casefold() == raw_constituency.casefold() or slugify(name) == slugify(raw_constituency)), "")
+    if not county or not constituency:
+        return {"county": county, "constituency": constituency, "ward": "", "local_area": "", "location_name": ""}
+    known_localities = selector_data().get(county, {}).get(constituency, [])
+    raw_ward = (form.get("area_select") or form.get("ward") or get_existing("ward") or "").strip()
+    ward = next((name for name in known_localities if name.casefold() == raw_ward.casefold() or slugify(name) == slugify(raw_ward)), "")
+    raw_local = (form.get("local_area") or get_existing("local_area") or "").strip()[:180]
+    # Existing listings with no separate structured fields can keep their address
+    # while a landlord completes the hierarchy on the next edit.
+    if not ward and not raw_local and not (form.get("county") or form.get("constituency")):
+        old_label = (form.get("location_name") or get_existing("location_name") or "").strip()[:180]
+        raw_local = old_label
+    most_specific = raw_local or ward or constituency
+    parts = []
+    for part in (most_specific, constituency, county):
+        if part and part.casefold() not in [p.casefold() for p in parts]:
+            parts.append(part)
+    label = ", ".join(parts)[:180]
+    return {"county": county, "constituency": constituency, "ward": ward, "local_area": raw_local,
+            "location_name": label}
 
 
-@app.route("/robots.txt")
-def robots_txt():
-    lines = ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /qaz", "Disallow: /go/", "Disallow: /open-service/", "Disallow: /account/", "Disallow: /my-projects", "Disallow: /download-file/", "Disallow: /api/", f"Sitemap: {canonical_url(url_for('sitemap_xml'))}"]
-    response = app.response_class("\n".join(lines) + "\n", mimetype="text/plain")
+def _search_tokens(value: str) -> list[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", (value or "").casefold()) if len(token) > 1]
+
+
+def _fuzzy_search_score(query: str, searchable_text: str) -> float:
+    """Return a 0..1 score, tolerating typos without broadening every empty search."""
+    query_tokens = _search_tokens(query)
+    if not query_tokens:
+        return 0.0
+    words = set(_search_tokens(searchable_text))
+    if not words:
+        return 0.0
+    scores = []
+    for token in query_tokens:
+        if token in words:
+            scores.append(1.0)
+            continue
+        if len(token) >= 3 and any((token in word or word in token) and min(len(token), len(word)) >= 3 for word in words):
+            scores.append(0.88)
+            continue
+        if len(token) < 4:
+            scores.append(0.0)
+            continue
+        best = max((SequenceMatcher(None, token, word).ratio() for word in words), default=0.0)
+        scores.append(best if best >= 0.72 else 0.0)
+    matched = sum(1 for score in scores if score > 0)
+    if matched == len(scores):
+        return sum(scores) / len(scores)
+    # Allow one missed token in longer queries, but not a single lucky match.
+    if len(scores) >= 3 and matched >= len(scores) - 1:
+        return (sum(scores) / len(scores)) * 0.94
+    return 0.0
+
+
+def _listing_search_text(row) -> str:
+    category_label = CATEGORY_META.get(row["category"], {}).get("label", "")
+    return " ".join(str(row[key] or "") for key in (
+        "title", "description", "location_name", "landmarks", "property_type", "amenities", "water_quality", "county", "constituency", "ward", "local_area"
+    )) + " " + category_label
+
+
+@app.route("/homes")
+def homes():
+    q = request.args.get("q", "").strip()[:120]
+    category = request.args.get("category", "residential").strip() or "residential"
+    property_type = request.args.get("type", "").strip()
+    location = request.args.get("location", "").strip()[:120]
+    min_price = request.args.get("min_price", "").strip()
+    max_price = request.args.get("max_price", "").strip()
+    min_beds = request.args.get("bedrooms", "").strip()
+    category_meta = visible_categories()
+    if category not in category_meta:
+        category = "residential" if "residential" in category_meta else (next(iter(category_meta), ""))
+        property_type = ""
+    base_clauses, base_params = [], []
+    if category in category_meta:
+        base_clauses.append("l.category=?"); base_params.append(category)
+    else:
+        active_keys = list(category_meta)
+        if active_keys:
+            base_clauses.append("l.category IN (" + ",".join("?" for _ in active_keys) + ")")
+            base_params.extend(active_keys)
+        else:
+            base_clauses.append("1=0")
+    if property_type:
+        base_clauses.append("l.property_type=?"); base_params.append(property_type)
+    if min_price:
+        try:
+            value = max(0, float(min_price)); base_clauses.append("l.price_amount>=?"); base_params.append(value)
+        except ValueError:
+            min_price = ""
+    if max_price:
+        try:
+            value = max(0, float(max_price)); base_clauses.append("l.price_amount<=?"); base_params.append(value)
+        except ValueError:
+            max_price = ""
+    if min_price and max_price:
+        try:
+            if float(min_price) > float(max_price):
+                min_price, max_price = max_price, min_price
+                # Rebuild the price clauses in the correct order.
+                base_clauses = [c for c in base_clauses if c not in {"l.price_amount>=?", "l.price_amount<=?"}]
+                base_params = [v for v in base_params if not isinstance(v, (float, int)) or True]
+                base_clauses.extend(["l.price_amount>=?", "l.price_amount<=?"])
+                # Preserve all non-price values by reconstructing from filters above.
+                base_params = []
+                if category in category_meta:
+                    base_params.append(category)
+                else:
+                    base_params.extend(list(category_meta))
+                if property_type: base_params.append(property_type)
+                base_params.extend([float(min_price), float(max_price)])
+        except ValueError:
+            pass
+    if min_beds:
+        try:
+            base_clauses.append("COALESCE(l.bedrooms,0)>=?"); base_params.append(int(min_beds))
+        except ValueError:
+            min_beds = ""
+    base_where = " AND ".join(base_clauses)
+    clauses, params = list(base_clauses), list(base_params)
+    if q:
+        clauses.append("(l.title LIKE ? OR l.description LIKE ? OR l.location_name LIKE ? OR l.landmarks LIKE ? OR l.property_type LIKE ? OR l.amenities LIKE ? OR l.water_quality LIKE ? OR l.county LIKE ? OR l.constituency LIKE ? OR l.ward LIKE ? OR l.local_area LIKE ?)")
+        params.extend([f"%{q}%"] * 11)
+    if location:
+        clauses.append("(l.location_name LIKE ? OR l.landmarks LIKE ? OR l.county LIKE ? OR l.constituency LIKE ? OR l.ward LIKE ? OR l.local_area LIKE ?)")
+        params.extend([f"%{location}%"] * 6)
+    where = " AND ".join(clauses)
+    results = public_listings(where, tuple(params), 300)
+    fuzzy_used = False
+    user_lat, user_lon = request.args.get("lat", ""), request.args.get("lon", "")
+    if not results and (q or location):
+        # Search within other exact filters first. This handles common typos such as
+        # "Ruyaka" for "Ruaka" and "apartmant" for "apartment".
+        candidates = public_listings(base_where, tuple(base_params), 600)
+        search_text = " ".join(x for x in (q, location) if x)
+        scored = []
+        for candidate in candidates:
+            score = _fuzzy_search_score(search_text, _listing_search_text(candidate))
+            if score >= 0.70:
+                scored.append((score, candidate))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        results = [row for _, row in scored[:200]]
+        fuzzy_used = bool(results)
+    if user_lat and user_lon:
+        try:
+            latf, lonf = float(user_lat), float(user_lon)
+            results = sorted(results, key=lambda r: haversine_km(latf, lonf, r["latitude"], r["longitude"]) if r["latitude"] is not None and r["longitude"] is not None else 1e9)
+        except (ValueError, TypeError):
+            user_lat, user_lon = "", ""
+    details = {
+        "q": q, "category": category, "type": property_type, "location": location,
+        "min_price": min_price, "max_price": max_price, "bedrooms": min_beds,
+        "count": len(results), "fuzzy_used": fuzzy_used,
+        "no_match": not bool(results), "sort_nearby": bool(user_lat and user_lon),
+    }
+    log_event("property_search", request.path, json.dumps(details))
+    return render_template(
+        "homes.html", listings=results, q=q, category=category, property_type=property_type,
+        location=location, min_price=min_price, max_price=max_price, bedrooms=min_beds,
+        types=CATEGORY_META.get(category, {}).get("types", []),
+        sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
+        category_meta=category_meta,
+        external_searches=external_property_searches(" ".join(x for x in (q, location) if x), category),
+        featured_area_cards=[
+            {"name":"Nairobi","slug":"nairobi"}, {"name":"Kiambu","slug":"kiambu"},
+            {"name":"Mombasa","slug":"mombasa"}, {"name":"Nakuru","slug":"nakuru"},
+            {"name":"Kisumu","slug":"kisumu"}, {"name":"Uasin Gishu","slug":"uasin-gishu"}
+        ],
+    )
+
+
+def _place_category():
+    requested = request.args.get("category", "residential").strip()
+    return requested if requested in visible_categories() else ("residential" if "residential" in visible_categories() else next(iter(visible_categories()), "residential"))
+
+
+def external_property_searches(area: str, category: str = "residential") -> list[dict]:
+    """No third-party marketplace promotion: visitors stay within this platform."""
+    return []
+
+
+def _place_listing_results(terms: list[str], limit: int = 300, county: str | None = None,
+                           constituency: str | None = None):
+    """Search a place page without leaking results from neighbouring locations."""
+    terms = list(dict.fromkeys(t.strip() for t in terms if t and t.strip()))[:150]
+    if not terms:
+        return []
+    scope_clauses, scope_params = [], []
+    if county:
+        scope_clauses.append("l.county=?")
+        scope_params.append(county)
+    if constituency:
+        scope_clauses.append("l.constituency=?")
+        scope_params.append(constituency)
+    match_clauses, match_params = [], []
+    for term in terms:
+        match_clauses.append("(lower(COALESCE(l.location_name,'')) LIKE ? OR lower(COALESCE(l.landmarks,'')) LIKE ? OR lower(COALESCE(l.ward,'')) LIKE ? OR lower(COALESCE(l.local_area,'')) LIKE ?)")
+        pattern = f"%{term.casefold()}%"
+        match_params.extend([pattern, pattern, pattern, pattern])
+    match_sql = "(" + " OR ".join(match_clauses) + ")"
+    where = " AND ".join([*scope_clauses, match_sql])
+    params = tuple([*scope_params, *match_params])
+    try:
+        return public_listings(where, params, limit)
+    except Exception:
+        # Retain the county/constituency scope if an older SQLite build imposes
+        # a tighter bind-parameter limit than expected.
+        fallback = " AND ".join([*scope_clauses,
+            "(lower(COALESCE(l.location_name,'')) LIKE ? OR lower(COALESCE(l.landmarks,'')) LIKE ? OR lower(COALESCE(l.ward,'')) LIKE ? OR lower(COALESCE(l.local_area,'')) LIKE ?)"])
+        pattern = f"%{terms[0].casefold()}%"
+        return public_listings(fallback, tuple([*scope_params, pattern, pattern, pattern, pattern]), limit)
+
+
+def published_area_cards(county: str, constituency: str | None = None) -> list[dict]:
+    """Return curated local-area links plus exact locality names on live listings.
+
+    Owner-entered locations become discoverable without requiring a code update,
+    but only after the listing is genuinely public and has passed platform checks.
+    """
+    cards = [row.copy() for row in county_fine_areas(county)
+             if not constituency or row.get("constituency") == constituency]
+    seen = {row["slug"] for row in cards}
+    where = "l.county=?"
+    params: tuple = (county,)
+    if constituency:
+        where += " AND l.constituency=?"
+        params = (county, constituency)
+    for row in public_listings(where, params, 10000):
+        name = (row["local_area"] or row["ward"] or "").strip()
+        if not name:
+            continue
+        slug = slugify(name)
+        if not slug or slug in seen:
+            continue
+        row_constituency = (row["constituency"] or constituency or "").strip()
+        cards.append({"name": name, "slug": slug, "constituency": row_constituency})
+        seen.add(slug)
+    return cards
+
+
+def _place_context(county: str, area: str, category: str, listings: list, related: list | None = None):
+    return {
+        "county": county,
+        "area": area,
+        "category": category,
+        "listings": listings,
+        "other_sites": external_property_searches(f"{area}, {county}", category),
+        "maps_url": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{area}, {county}, Kenya"),
+        "related_places": related or [],
+    }
+
+
+@app.route("/places")
+def places_index():
+    counties = [{"name": name, "slug": slugify(name), "constituency_count": len(constituencies),
+                 "summary": COUNTY_SUMMARIES.get(name, f"Browse homes, land and commercial property by constituency and local area across {name} County."),
+                 "search_terms": " ".join([name, *constituencies, *all_known_localities(name)]),
+                 "counties": None}
+                for name, constituencies in sorted(COUNTY_CONSTITUENCIES.items())]
+    focus_order = ["Nairobi", "Kiambu", "Kajiado", "Machakos", "Nakuru", "Mombasa", "Murang'a", "Kisumu", "Kilifi", "Nyeri", "Uasin Gishu", "Laikipia"]
+    counties.sort(key=lambda row: (focus_order.index(row["name"]) if row["name"] in focus_order else 99, row["name"]))
+    return render_template("places_index.html", counties=counties)
+
+
+@app.route("/places/<county_slug>")
+def county_page(county_slug: str):
+    county = county_by_slug(county_slug)
+    if not county:
+        abort(404)
+    category = _place_category()
+    constituency_names = COUNTY_CONSTITUENCIES[county]
+    wards = ward_map(county)
+    areas = published_area_cards(county)
+    terms = [county, *constituency_names, *[a["name"] for a in areas]]
+    listings = _place_listing_results(terms, county=county)
+    summary = COUNTY_SUMMARIES.get(county, f"Browse property opportunities throughout {county} County. Use the constituency directory and local-area links to narrow your search. Owners can publish an exact neighbourhood, ward, landmark and property photos.")
+    constituency_cards = [{"name": con, "slug": slugify(con), "wards": wards.get(con, [])}
+                          for con in constituency_names]
+    return render_template("place_page.html", page_kind="county", county=county,
+        area=county, summary=summary, category=category, listings=listings,
+        constituency_cards=constituency_cards, area_cards=areas,
+        other_sites=external_property_searches(county, category),
+        maps_url="https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{county} County, Kenya"),
+        canonical_url=public_base() + request.path)
+
+
+@app.route("/places/<county_slug>/<constituency_slug>")
+def constituency_page(county_slug: str, constituency_slug: str):
+    county = county_by_slug(county_slug)
+    constituency = constituency_by_slug(county, constituency_slug) if county else None
+    if not county or not constituency:
+        abort(404)
+    category = _place_category()
+    wards = ward_map(county).get(constituency, [])
+    area_cards = published_area_cards(county, constituency)
+    area_names = [item["name"] for item in area_cards]
+    terms = [constituency, *wards, *area_names]
+    listings = _place_listing_results(terms, county=county, constituency=constituency)
+    summary = (f"Browse property in {constituency}, {county} County. Narrow the search by ward or neighbourhood and explore locally published listings."
+               if county not in COUNTY_SUMMARIES else f"Explore {constituency} in {county} County with a more exact search by ward, estate, road or neighbourhood. The directory below helps owners and visitors move beyond a broad county search.")
+    # Show other local constituencies nearby as easy navigation instead of a dead end.
+    all_cons = COUNTY_CONSTITUENCIES[county]
+    at = all_cons.index(constituency)
+    nearby = [{"name": name, "slug": slugify(name)} for name in all_cons[max(0, at-2):at] + all_cons[at+1:at+3]]
+    return render_template("place_page.html", page_kind="constituency", county=county,
+        area=constituency, summary=summary, category=category, listings=listings,
+        constituency=constituency, wards=wards, area_cards=area_cards,
+        nearby_constituencies=nearby,
+        other_sites=external_property_searches(f"{constituency}, {county}", category),
+        maps_url="https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{constituency}, {county}, Kenya"),
+        canonical_url=public_base() + request.path)
+
+
+@app.route("/places/<county_slug>/<constituency_slug>/ward/<ward_slug>")
+def ward_page(county_slug: str, constituency_slug: str, ward_slug: str):
+    county = county_by_slug(county_slug)
+    constituency = constituency_by_slug(county, constituency_slug) if county else None
+    if not county or not constituency:
+        abort(404)
+    ward = next((name for name in ward_map(county).get(constituency, []) if slugify(name) == slugify(ward_slug)), None)
+    if not ward:
+        abort(404)
+    category = _place_category()
+    listings = _place_listing_results([ward], county=county, constituency=constituency)
+    context = _place_context(county, ward, category, listings)
+    return render_template("place_page.html", page_kind="locality", **context,
+        summary=f"Find property listings associated with {ward}, within {constituency}, {county} County. Search by an exact estate, nearby road or landmark, or expand to the wider constituency.",
+        constituency=constituency, parent_slug=slugify(constituency),
+        area_cards=[], wards=[], nearby_constituencies=[], canonical_url=public_base() + request.path)
+
+
+@app.route("/places/<county_slug>/area/<area_slug>")
+def place_area_page(county_slug: str, area_slug: str):
+    county = county_by_slug(county_slug)
+    if not county:
+        abort(404)
+    row = next((area for area in published_area_cards(county) if area["slug"] == slugify(area_slug)), None)
+    if not row:
+        abort(404)
+    category = _place_category()
+    constituency = row["constituency"]
+    related = [{"name": item["name"], "slug": item["slug"], "constituency": item["constituency"]}
+               for item in published_area_cards(county, constituency) if item["slug"] != row["slug"]][:18]
+    listings = _place_listing_results([row["name"]], county=county, constituency=constituency)
+    context = _place_context(county, row["name"], category, listings, related)
+    return render_template("place_page.html", page_kind="locality", **context,
+        summary=f"Explore homes, stays, commercial spaces and property search links for {row['name']} in {constituency}, {county} County. Use the location name together with your budget and property type to narrow the result.",
+        constituency=constituency, parent_slug=slugify(constituency), area_cards=[], wards=[],
+        nearby_constituencies=[], canonical_url=public_base() + request.path)
+
+@app.route("/property-search/<category_slug>")
+@app.route("/property-search/<category_slug>/<county_slug>")
+@app.route("/property-search/<category_slug>/<county_slug>/<constituency_slug>")
+@app.route("/property-search/<category_slug>/<county_slug>/<constituency_slug>/<area_slug>")
+def property_search_page(category_slug: str, county_slug: str | None = None, constituency_slug: str | None = None, area_slug: str | None = None):
+    page = SEO_CATEGORY_PAGES.get(category_slug)
+    if not page:
+        abort(404)
+    category = page["category"]
+    if category not in visible_categories():
+        abort(404)
+    county = county_by_slug(county_slug) if county_slug else None
+    if county_slug and not county:
+        abort(404)
+    constituency = constituency_by_slug(county, constituency_slug) if county and constituency_slug else None
+    if constituency_slug and not constituency:
+        abort(404)
+    area_name = None
+    if area_slug:
+        if not county or not constituency:
+            abort(404)
+        area_card = next((item for item in published_area_cards(county, constituency) if item["slug"] == slugify(area_slug)), None)
+        if area_card:
+            area_name = area_card["name"]
+        else:
+            area_name = next((ward for ward in ward_map(county).get(constituency, []) if slugify(ward) == slugify(area_slug)), None)
+        if not area_name:
+            abort(404)
+    clauses, params = ["l.category=?"], [category]
+    if county:
+        clauses.append("l.county=?"); params.append(county)
+    if constituency:
+        clauses.append("l.constituency=?"); params.append(constituency)
+    if area_name:
+        clauses.append("(lower(COALESCE(l.local_area,''))=lower(?) OR lower(COALESCE(l.ward,''))=lower(?) OR lower(COALESCE(l.location_name,'')) LIKE ? OR lower(COALESCE(l.landmarks,'')) LIKE ?)")
+        area_pattern = f"%{area_name.casefold()}%"
+        params.extend([area_name, area_name, area_pattern, area_pattern])
+    listings = public_listings(" AND ".join(clauses), tuple(params), 300)
+    place_name = area_name or constituency or county or "Kenya"
+    if area_name:
+        place_suffix = f" in {area_name}, {constituency}, {county} County, Kenya"
+    elif constituency:
+        place_suffix = f" in {constituency}, {county} County, Kenya"
+    elif county:
+        place_suffix = f" in {county} County, Kenya"
+    else:
+        place_suffix = " across Kenya"
+    seo_title = f"{page['label']}{place_suffix} | PataMahali"
+    if len(seo_title) > 68:
+        seo_title = f"{page['short']} in {place_name} | PataMahali"
+    description = f"{page['description']}"
+    if area_name:
+        description = f"{page['label']} in {area_name}, {constituency}, {county} County, Kenya. {page['description']} Browse active property adverts for this exact ward or neighbourhood and compare the details supplied by each advertiser."
+    elif constituency:
+        description = f"{page['label']} in {constituency}, {county} County, Kenya. {page['description']} Browse live listings where available, explore nearby wards, and list a property in this exact area."
+    elif county:
+        description = f"{page['label']} in {county} County, Kenya. {page['description']} Explore the county's constituencies and local areas, then open any live listings published here."
+    nearby_areas = [item for item in published_area_cards(county, constituency) if not area_name or item["slug"] != slugify(area_name)][:60] if county else []
+    wards = ward_map(county).get(constituency, []) if county and constituency else []
+    constituency_cards = []
+    if county and not constituency:
+        constituency_cards = [{"name": name, "slug": slugify(name)} for name in COUNTY_CONSTITUENCIES.get(county, [])]
+    enabled = visible_categories()
+    category_links = [{"slug": slug, "label": item["label"], "count": item["category"]} for slug, item in SEO_CATEGORY_PAGES.items() if slug != category_slug and item["category"] in enabled]
+    canonical_url = public_base() + request.path
+    # Don't index empty, nearly-identical category/location combinations. The main
+    # county and constituency directory pages remain indexable and discoverable.
+    allow_index = (county is None) or bool(listings)
+    return render_template("property_search_page.html", page=page, category=category, county=county,
+        constituency=constituency, area_name=area_name, place_name=place_name, listings=listings, seo_title=seo_title,
+        description=description, canonical_url=canonical_url, allow_index=allow_index,
+        nearby_areas=nearby_areas, wards=wards, constituency_cards=constituency_cards,
+        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()))
+
+
+@app.route("/listing/<int:listing_id>")
+def listing_detail(listing_id: int):
+    row = get_db().execute("SELECT l.*,u.full_name AS partner_name,u.business_name,u.role AS partner_role,u.phone AS partner_phone,u.email AS partner_email,u.contact_preference AS contact_preference,u.website_url AS website_url,u.social_url AS social_url,u.verified AS partner_verified FROM listings l JOIN users u ON l.owner_id=u.id WHERE l.id=?", (listing_id,)).fetchone()
+    if not row or not is_public_listing(row):
+        abort(404)
+    get_db().execute("UPDATE listings SET views=views+1 WHERE id=?", (listing_id,))
+    log_event("listing_view", request.path, json.dumps({"listing_id": listing_id, "category": row["category"]}))
+    try:
+        posted = datetime.fromisoformat(row["posted_at"])
+        posted_display = posted.strftime("%d %b %Y")
+    except (ValueError, TypeError):
+        posted_display = row["posted_at"][:10]
+    rating_summary = get_db().execute("SELECT ROUND(AVG(stars),1) AS average,COUNT(*) AS count FROM ratings WHERE listing_id=?", (listing_id,)).fetchone()
+    my_rating = None
+    viewer = get_current_user()
+    if viewer and viewer["role"] == "seeker":
+        my_rating = get_db().execute("SELECT stars,review FROM ratings WHERE listing_id=? AND reviewer_id=?", (listing_id, viewer["id"])).fetchone()
+    return render_template("listing_detail.html", listing=row, images=listing_images(row), category=CATEGORY_META.get(row["category"], CATEGORY_META["residential"]), posted_display=posted_display, rating_summary=rating_summary, my_rating=my_rating)
+
+
+@app.post("/listing/<int:listing_id>/rate")
+@login_required
+def rate_listing(listing_id: int):
+    user = get_current_user()
+    if not user or user["role"] != "seeker":
+        flash("Property ratings are available to signed-in house seekers.", "warning")
+        return redirect(url_for("listing_detail", listing_id=listing_id) + "#ratings")
+    row = get_db().execute("SELECT * FROM listings WHERE id=?", (listing_id,)).fetchone()
+    if not row or not is_public_listing(row): abort(404)
+    if row["owner_id"] == user["id"]:
+        flash("You cannot rate your own property.", "warning")
+        return redirect(url_for("listing_detail", listing_id=listing_id) + "#ratings")
+    try:
+        stars = int(request.form.get("stars", "5"))
+        if stars < 1 or stars > 5: raise ValueError()
+    except ValueError:
+        flash("Choose a rating from 1 to 5 stars.", "error")
+        return redirect(url_for("listing_detail", listing_id=listing_id) + "#ratings")
+    review = request.form.get("review", "").strip()[:1200]
+    get_db().execute("INSERT INTO ratings(listing_id,reviewer_id,stars,review,created_at) VALUES(?,?,?,?,?) ON CONFLICT(listing_id,reviewer_id) DO UPDATE SET stars=excluded.stars,review=excluded.review,created_at=excluded.created_at", (listing_id, user["id"], stars, review, now_iso()))
+    audit("property_rating_saved", "listing", listing_id, f"Stars={stars}")
+    flash("Your rating has been saved.", "success")
+    return redirect(url_for("listing_detail", listing_id=listing_id) + "#ratings")
+
+
+@app.post("/listing/<int:listing_id>/interest")
+def express_interest(listing_id: int):
+    row = get_db().execute("SELECT * FROM listings WHERE id=?", (listing_id,)).fetchone()
+    if not row or not is_public_listing(row):
+        abort(404)
+    name = request.form.get("full_name", "").strip()[:120]
+    phone = request.form.get("phone", "").strip()[:40]
+    email = request.form.get("email", "").strip()[:160]
+    message = request.form.get("message", "").strip()[:2000]
+    if not name or not phone:
+        flash("Please add your name and phone number so the property partner can reply.", "error")
+        return redirect(url_for("listing_detail", listing_id=listing_id) + "#interest")
+    user = get_current_user()
+    cur = get_db().execute("INSERT INTO interests(listing_id,seeker_id,full_name,phone,email,message,created_at) VALUES(?,?,?,?,?,?,?)", (listing_id, user["id"] if user and user["role"] == "seeker" else None, name, phone, email, message, now_iso()))
+    # Link the voluntary enquiry contact to this browser, reducing repeat counts when
+    # the same person returns on another visit/device using the same supplied number.
+    visitor_key = current_visitor_key()
+    normalized_phone = normalize_visitor_phone(phone)
+    stamp = now_iso()
+    tracked = get_db().execute("SELECT visitor_key FROM visitor_sessions WHERE visitor_key=?", (visitor_key,)).fetchone()
+    if tracked:
+        get_db().execute("UPDATE visitor_sessions SET user_id=COALESCE(?,user_id),role='house seeker',contact_name=?,contact_phone=?,last_seen=?,last_path=? WHERE visitor_key=?", (user["id"] if user and user["role"] == "seeker" else None, name, normalized_phone, stamp, request.path[:500], visitor_key))
+    else:
+        get_db().execute("INSERT INTO visitor_sessions(visitor_key,user_id,role,first_seen,last_seen,last_path,device,page_views,visit_count,last_visit_at,contact_name,contact_phone) VALUES(?,?,?,?,?,?,?,0,1,?,?,?)", (visitor_key, user["id"] if user and user["role"] == "seeker" else None, "house seeker", stamp, stamp, request.path[:500], device_label(request.headers.get("User-Agent", "")), stamp, name, normalized_phone))
+    log_event("interest_submitted", request.path, json.dumps({"listing_id": listing_id, "interest_id": cur.lastrowid}))
+    audit("interest_submitted", "listing", listing_id, f"Enquiry submitted by {name}")
+    flash("Your interest has been sent. The property partner can now contact you to confirm availability and viewing details.", "success")
+    return redirect(url_for("listing_detail", listing_id=listing_id) + "#interest")
+
+
+@app.post("/listing/<int:listing_id>/report-taken")
+def report_taken(listing_id: int):
+    row = get_db().execute("SELECT * FROM listings WHERE id=?", (listing_id,)).fetchone()
+    if not row or not is_public_listing(row):
+        abort(404)
+    reason = request.form.get("reason", "").strip()[:800] or "Reported as no longer available"
+    user = get_current_user()
+    name = (user["full_name"] if user else request.form.get("reporter_name", "Visitor").strip()[:120])
+    get_db().execute("INSERT INTO reports(listing_id,reporter_id,reporter_name,reason,created_at) VALUES(?,?,?,?,?)", (listing_id, user["id"] if user else None, name, reason, now_iso()))
+    get_db().execute("UPDATE listings SET status='reported_taken',updated_at=? WHERE id=?", (now_iso(), listing_id))
+    log_event("listing_reported_taken", request.path, json.dumps({"listing_id": listing_id}))
+    audit("listing_reported_taken", "listing", listing_id, reason)
+    flash("Thank you. The listing has been hidden while the report is reviewed by an administrator.", "success")
+    return redirect(url_for("homes"))
+
+
+@app.route("/privacy")
+def privacy_policy():
+    return render_template("privacy.html")
+
+
+@app.route("/terms")
+def terms_of_use():
+    return render_template("terms.html")
+
+
+@app.route("/partners")
+def partners_directory():
+    rows = get_db().execute("SELECT u.id,u.full_name,u.business_name,u.role,u.created_at,COUNT(l.id) AS listing_count FROM users u LEFT JOIN listings l ON l.owner_id=u.id AND l.status='available' AND l.approval_status='approved' AND l.payment_status='paid' AND l.property_verified=1 WHERE u.role IN ('owner','agent','host','business') AND u.verified=1 AND u.suspended=0 GROUP BY u.id ORDER BY listing_count DESC,u.full_name").fetchall()
+    return render_template("partners.html", partners=rows)
+
+
+@app.route("/partner/register", methods=["GET", "POST"])
+def partner_register():
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()[:120]
+        business_name = request.form.get("business_name", "").strip()[:160]
+        role = request.form.get("role", "owner").strip()
+        email = request.form.get("email", "").strip().lower()[:160] or None
+        phone = request.form.get("phone", "").strip()[:40]
+        contact_preference = request.form.get("contact_preference", "whatsapp").strip()
+        website_url = safe_external_url(request.form.get("website_url", "").strip())[:300]
+        social_url = safe_external_url(request.form.get("social_url", "").strip())[:300]
+        if is_competitor_property_portal_url(website_url) or is_competitor_property_portal_url(social_url):
+            flash("Please use your own website or social profile, not a competing property marketplace.", "error")
+            return render_template("partner_register.html", form=request.form)
+        password = request.form.get("password", "")
+        recovery_question = request.form.get("recovery_question", "").strip()
+        recovery_answer = normalized_recovery_answer(request.form.get("recovery_answer", ""))
+        identity_type = request.form.get("identity_type", "national_id").strip()
+        if contact_preference not in {"whatsapp", "call", "email", "website"}: contact_preference = "whatsapp"
+        front_file = request.files.get("identity_front")
+        back_file = request.files.get("identity_back")
+        if role not in {"owner", "agent", "host", "business"}:
+            role = "owner"
+        if not full_name or not phone or not password or len(password) < 10:
+            flash("Add your name and phone, and use a password of at least 10 characters.", "error")
+            return render_template("partner_register.html", form=request.form)
+        if recovery_question not in RECOVERY_QUESTIONS or len(recovery_answer) < 3:
+            flash("Choose a private account-recovery question and enter an answer you can remember. The answer is stored as a password hash.", "error")
+            return render_template("partner_register.html", form=request.form)
+        if not front_file or not front_file.filename or not back_file or not back_file.filename:
+            flash("Upload both sides of the identity document to request partner verification.", "error")
+            return render_template("partner_register.html", form=request.form)
+        try:
+            front = save_upload(front_file, PRIVATE_DOC_DIR, ALLOWED_DOC_EXTENSIONS)
+            back = save_upload(back_file, PRIVATE_DOC_DIR, ALLOWED_DOC_EXTENSIONS)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return render_template("partner_register.html", form=request.form)
+        try:
+            cur = get_db().execute("INSERT INTO users(role,account_type,full_name,business_name,email,phone,contact_preference,website_url,social_url,password_hash,identity_type,identity_front,identity_back,created_at,recovery_question,recovery_answer_hash,recovery_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (role, role, full_name, business_name, email, phone, contact_preference, website_url, social_url, generate_password_hash(password), identity_type, front, back, now_iso(), recovery_question, generate_password_hash(recovery_answer), now_iso()))
+        except sqlite3.IntegrityError:
+            flash("That email address is already registered. Please sign in instead or use another email.", "error")
+            return render_template("partner_register.html", form=request.form)
+        session.clear()
+        session["user_id"] = cur.lastrowid
+        session["csrf_token"] = secrets.token_urlsafe(24)
+        session["visitor_key"] = secrets.token_urlsafe(20)
+        refresh_current_user_cache()
+        audit("partner_registered", "user", cur.lastrowid, f"Partner role={role}")
+        flash("Partner application received. Your identity check is pending. You can submit listings and payment references, but nothing publishes until the required checks pass.", "success")
+        return redirect(url_for("partner_dashboard"))
+    return render_template("partner_register.html", form={})
+
+
+@app.route("/partner/login", methods=["GET", "POST"])
+def partner_login():
+    if request.method == "POST":
+        if auth_is_limited("partner"):
+            flash("Too many unsuccessful sign-in attempts. Try again in 15 minutes.", "error")
+            return render_template("partner_login.html"), 429
+        identity = request.form.get("identity", "").strip().lower()
+        password = request.form.get("password", "")
+        user = get_db().execute("SELECT * FROM users WHERE (lower(email)=? OR phone=?) AND role IN ('owner','agent','host','business')", (identity, identity)).fetchone()
+        if not user or not check_password_hash(user["password_hash"], password):
+            auth_failed("partner")
+            flash("Those sign-in details did not match a partner account.", "error")
+        elif user["suspended"]:
+            flash("This partner account is temporarily suspended. Please contact support.", "error")
+        else:
+            auth_succeeded("partner")
+            session.clear(); session["user_id"] = user["id"]; session["csrf_token"] = secrets.token_urlsafe(24); session["visitor_key"] = secrets.token_urlsafe(20)
+            refresh_current_user_cache()
+            get_db().execute("UPDATE users SET last_login=? WHERE id=?", (now_iso(), user["id"]))
+            audit("partner_login", "user", user["id"])
+            return redirect(safe_next_url(request.args.get("next")) or url_for("partner_dashboard"))
+    return render_template("partner_login.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        if auth_is_limited("seeker"):
+            flash("Too many unsuccessful sign-in attempts. Try again in 15 minutes.", "error")
+            return render_template("login.html"), 429
+        identity = request.form.get("identity", "").strip().lower()
+        password = request.form.get("password", "")
+        user = get_db().execute("SELECT * FROM users WHERE (lower(email)=? OR phone=?) AND role='seeker'", (identity, identity)).fetchone()
+        if not user or not check_password_hash(user["password_hash"], password):
+            auth_failed("seeker")
+            flash("Those sign-in details did not match a house-seeker account.", "error")
+        elif user["suspended"]:
+            flash("This account is temporarily suspended.", "error")
+        else:
+            auth_succeeded("seeker")
+            session.clear(); session["user_id"] = user["id"]; session["csrf_token"] = secrets.token_urlsafe(24); session["visitor_key"] = secrets.token_urlsafe(20)
+            refresh_current_user_cache()
+            get_db().execute("UPDATE users SET last_login=? WHERE id=?", (now_iso(), user["id"]))
+            audit("seeker_login", "user", user["id"])
+            return redirect(safe_next_url(request.args.get("next")) or url_for("index"))
+    return render_template("login.html")
+
+
+@app.route("/join", methods=["GET", "POST"])
+def join():
+    if request.method == "POST":
+        name = request.form.get("full_name", "").strip()[:120]
+        phone = request.form.get("phone", "").strip()[:40]
+        email = request.form.get("email", "").strip().lower()[:160] or None
+        password = request.form.get("password", "")
+        if not name or not phone or len(password) < 10:
+            flash("Add your name and phone number, and use a password of at least 10 characters.", "error")
+        else:
+            try:
+                cur = get_db().execute("INSERT INTO users(role,account_type,full_name,email,phone,password_hash,created_at) VALUES('seeker','seeker',?,?,?,?,?)", (name, email, phone, generate_password_hash(password), now_iso()))
+                session.clear(); session["user_id"] = cur.lastrowid; session["csrf_token"] = secrets.token_urlsafe(24); session["visitor_key"] = secrets.token_urlsafe(20)
+                refresh_current_user_cache()
+                audit("seeker_registered", "user", cur.lastrowid)
+                flash("Your house-seeker account is ready.", "success")
+                return redirect(url_for("index"))
+            except sqlite3.IntegrityError:
+                flash("That email address is already registered. Please sign in.", "error")
+    return render_template("join.html")
+
+
+@app.post("/logout")
+@login_required
+def logout():
+    user = get_current_user()
+    audit("logout", "user", user["id"] if user else "")
+    session.clear()
+    return redirect(url_for("index"))
+
+
+@app.post("/partner/profile")
+@partner_required
+def partner_profile_update():
+    user = get_current_user()
+    phone = request.form.get("phone", "").strip()[:40]
+    email = request.form.get("email", "").strip().lower()[:160] or None
+    preference = request.form.get("contact_preference", "whatsapp").strip()
+    website = safe_external_url(request.form.get("website_url", "").strip())[:300]
+    social = safe_external_url(request.form.get("social_url", "").strip())[:300]
+    if is_competitor_property_portal_url(website) or is_competitor_property_portal_url(social):
+        flash("Please use your own website or social profile, not a competing property marketplace.", "error")
+        return redirect(url_for("partner_dashboard") + "#contact-profile")
+    if preference not in {"whatsapp", "call", "email", "website"}: preference = "whatsapp"
+    if not phone:
+        flash("Add a phone number so people can contact you.", "error")
+        return redirect(url_for("partner_dashboard") + "#contact-profile")
+    if request.form.get("website_url", "").strip() and not website:
+        flash("Website URL must be a valid HTTP or HTTPS link.", "error")
+        return redirect(url_for("partner_dashboard") + "#contact-profile")
+    if request.form.get("social_url", "").strip() and not social:
+        flash("Social profile URL must be a valid HTTP or HTTPS link.", "error")
+        return redirect(url_for("partner_dashboard") + "#contact-profile")
+    try:
+        get_db().execute("UPDATE users SET phone=?,email=?,contact_preference=?,website_url=?,social_url=? WHERE id=?", (phone,email,preference,website,social,user["id"]))
+    except sqlite3.IntegrityError:
+        flash("That email is already associated with another account.", "error")
+        return redirect(url_for("partner_dashboard") + "#contact-profile")
+    audit("partner_contact_profile_updated", "user", user["id"])
+    flash("Your public contact options have been updated.", "success")
+    return redirect(url_for("partner_dashboard") + "#contact-profile")
+
+
+@app.route("/partner/dashboard")
+@partner_required
+def partner_dashboard():
+    user = get_current_user()
+    listing_rows = get_db().execute("SELECT * FROM listings WHERE owner_id=? ORDER BY posted_at DESC", (user["id"],)).fetchall()
+    listings = [dict(row) for row in listing_rows]
+    interests = get_db().execute("SELECT i.*,l.title AS listing_title,l.owner_id FROM interests i JOIN listings l ON l.id=i.listing_id WHERE l.owner_id=? ORDER BY i.created_at DESC LIMIT 30", (user["id"],)).fetchall()
+    stats = {
+        "listings": len(listings),
+        "published": sum(1 for x in listings if x["status"] == "available" and x["approval_status"] == "approved" and x["payment_status"] == "paid" and x["property_verified"]),
+        "enquiries": get_db().execute("SELECT COUNT(*) FROM interests i JOIN listings l ON i.listing_id=l.id WHERE l.owner_id=?", (user["id"],)).fetchone()[0],
+    }
+    return render_template("partner_dashboard.html", listings=listings, interests=interests, stats=stats)
+
+
+@app.route("/partner/listings/<int:listing_id>/renew", methods=["GET", "POST"])
+@partner_required
+def partner_renew_listing(listing_id):
+    user = get_current_user()
+    listing = get_db().execute("SELECT * FROM listings WHERE id=? AND owner_id=?", (listing_id, user["id"])).fetchone()
+    if not listing:
+        abort(404)
+    if listing["status"] not in {"available", "expired", "archived"} or not (listing["approval_status"] == "approved" and listing["property_verified"] and listing["payment_status"] == "paid"):
+        flash("Only a previously approved and paid listing that has not been marked taken, rejected or withdrawn can be renewed.", "warning")
+        return redirect(url_for("partner_dashboard"))
+    if request.method == "POST":
+        reference = request.form.get("payment_reference", "").strip()[:120]
+        if not reference:
+            flash("Enter the new M-Pesa/payment reference after paying the same fee shown below.", "error")
+        elif listing["renewal_payment_status"] == "submitted":
+            flash("A renewal payment is already awaiting administrator review for this property.", "warning")
+        else:
+            get_db().execute("UPDATE listings SET renewal_payment_status='submitted',renewal_payment_reference=?,renewal_submitted_at=?,updated_at=? WHERE id=? AND owner_id=?", (reference, now_iso(), now_iso(), listing_id, user["id"]))
+            audit("listing_renewal_payment_submitted", "listing", listing_id, f"Fee={float(listing['fee_amount'] or fee_for_category(listing['category']))}; reference supplied")
+            flash("Renewal payment submitted. The listing stays hidden after its expiry until an administrator confirms the payment.", "success")
+            return redirect(url_for("partner_dashboard"))
+    return render_template("partner_renew_listing.html", listing=listing,
+        renewal_fee=float(listing["fee_amount"] or fee_for_category(listing["category"])),
+        payment_method=setting("payment_method", "M-Pesa"), payment_paybill=setting("payment_paybill", ""),
+        payment_account=setting("payment_account", ""), payment_phone=setting("payment_phone", ""),
+        payment_instructions=setting("payment_instructions", DEFAULT_SETTINGS["payment_instructions"]),
+        expiry_days=listing_lifecycle_days())
+
+
+@app.route("/partner/listings/<int:listing_id>/boost", methods=["GET", "POST"])
+@partner_required
+def partner_boost(listing_id):
+    user = get_current_user()
+    listing = get_db().execute("SELECT * FROM listings WHERE id=? AND owner_id=?", (listing_id, user["id"])).fetchone()
+    if not listing:
+        abort(404)
+    requests_for_listing = get_db().execute("SELECT * FROM boost_requests WHERE listing_id=? AND owner_id=? ORDER BY created_at DESC", (listing_id, user["id"])).fetchall()
+    if request.method == "POST":
+        tier = (request.form.get("tier") or "").strip().lower()
+        if tier not in {"vip", "vvip"}:
+            flash("Choose either VIP or VVIP visibility.", "error")
+            return redirect(url_for("partner_boost", listing_id=listing_id))
+        if not (listing["status"] == "available" and listing["approval_status"] == "approved" and listing["payment_status"] == "paid" and listing["property_verified"]):
+            flash("Boost requests open once this property is live and approved. Finish the normal listing checks first.", "warning")
+            return redirect(url_for("partner_boost", listing_id=listing_id))
+        pending = get_db().execute("SELECT id FROM boost_requests WHERE listing_id=? AND status='pending' LIMIT 1", (listing_id,)).fetchone()
+        if pending:
+            flash("A boost payment is already waiting for admin review for this property.", "warning")
+            return redirect(url_for("partner_boost", listing_id=listing_id))
+        payment_reference = request.form.get("payment_reference", "").strip()[:120]
+        if not payment_reference:
+            flash("Enter the payment transaction/reference code. A real boost is applied only after an administrator reconciles it.", "error")
+            return redirect(url_for("partner_boost", listing_id=listing_id))
+        fee_key = "boost_fee_vvip" if tier == "vvip" else "boost_fee_vip"
+        try:
+            fee_amount = max(0, float(setting(fee_key, DEFAULT_SETTINGS[fee_key])))
+        except (ValueError, TypeError):
+            fee_amount = float(DEFAULT_SETTINGS[fee_key])
+        timestamp = now_iso()
+        get_db().execute("INSERT INTO boost_requests(listing_id,owner_id,tier,fee_amount,payment_reference,status,created_at,updated_at) VALUES(?,?,?,?,?,'pending',?,?)",
+            (listing_id, user["id"], tier, fee_amount, payment_reference, timestamp, timestamp))
+        audit("boost_payment_submitted", "listing", listing_id, f"Tier={tier}; fee={fee_amount}; reference supplied")
+        flash("Boost request submitted. It will be applied after the admin confirms payment and reviews the request.", "success")
+        return redirect(url_for("partner_boost", listing_id=listing_id))
+    return render_template("partner_boost.html", listing=listing, boost_requests=requests_for_listing,
+        vip_fee=setting("boost_fee_vip", DEFAULT_SETTINGS["boost_fee_vip"]),
+        vvip_fee=setting("boost_fee_vvip", DEFAULT_SETTINGS["boost_fee_vvip"]),
+        vip_days=setting("boost_duration_days_vip", DEFAULT_SETTINGS["boost_duration_days_vip"]),
+        vvip_days=setting("boost_duration_days_vvip", DEFAULT_SETTINGS["boost_duration_days_vvip"]))
+
+
+@app.route("/partner/recover", methods=["GET", "POST"])
+def partner_recover():
+    account = None
+    stage = "lookup"
+    identity = ""
+    if request.method == "POST":
+        if auth_is_limited("recovery"):
+            flash("Too many recovery attempts. Please try again in 15 minutes.", "error")
+            return render_template("partner_recover.html", stage="lookup", identity=""), 429
+        stage = request.form.get("stage", "lookup")
+        if stage == "lookup":
+            identity = request.form.get("identity", "").strip().lower()[:160]
+            account = get_db().execute("SELECT id,recovery_question,recovery_answer_hash FROM users WHERE (lower(email)=? OR phone=?) AND role IN ('owner','agent','host','business')", (identity, identity)).fetchone()
+            if account and account["recovery_question"] and account["recovery_answer_hash"]:
+                return render_template("partner_recover.html", stage="reset", identity=identity, account_id=account["id"], recovery_question=account["recovery_question"])
+            auth_failed("recovery")
+            flash("We could not verify an owner account with recovery details. Try the account's registered email or phone, or contact support.", "error")
+            return render_template("partner_recover.html", stage="lookup", identity=identity)
+        try:
+            account_id = int(request.form.get("account_id", "0"))
+        except ValueError:
+            account_id = 0
+        account = get_db().execute("SELECT * FROM users WHERE id=? AND role IN ('owner','agent','host','business')", (account_id,)).fetchone()
+        answer = normalized_recovery_answer(request.form.get("recovery_answer", ""))
+        new_password = request.form.get("new_password", "")
+        if not account or not account["recovery_answer_hash"] or not check_password_hash(account["recovery_answer_hash"], answer):
+            auth_failed("recovery")
+            flash("The recovery answer did not match. Please try again.", "error")
+            if account:
+                return render_template("partner_recover.html", stage="reset", identity=account["email"] or account["phone"], account_id=account["id"], recovery_question=account["recovery_question"]), 401
+            return render_template("partner_recover.html", stage="lookup", identity=""), 401
+        if len(new_password) < 10:
+            flash("Use a new password with at least 10 characters.", "error")
+            return render_template("partner_recover.html", stage="reset", identity=account["email"] or account["phone"], account_id=account["id"], recovery_question=account["recovery_question"]), 400
+        get_db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(new_password), account["id"]))
+        auth_succeeded("recovery")
+        audit("partner_password_recovered", "user", account["id"], "Password reset using configured recovery answer")
+        flash("Password updated. You can now sign in to your existing PataMahali account.", "success")
+        return redirect(url_for("partner_login"))
+    return render_template("partner_recover.html", stage=stage, identity=identity)
+
+
+@app.post("/partner/recovery-settings")
+@partner_required
+def partner_recovery_settings():
+    user = get_current_user()
+    question = request.form.get("recovery_question", "").strip()
+    answer = normalized_recovery_answer(request.form.get("recovery_answer", ""))
+    current_password = request.form.get("current_password", "")
+    stored = get_db().execute("SELECT password_hash FROM users WHERE id=?", (user["id"],)).fetchone()
+    if question not in RECOVERY_QUESTIONS or len(answer) < 3:
+        flash("Choose a question and provide an answer of at least 3 characters.", "error")
+    elif not stored or not check_password_hash(stored["password_hash"], current_password):
+        flash("Enter your current password to protect recovery settings.", "error")
+    else:
+        get_db().execute("UPDATE users SET recovery_question=?,recovery_answer_hash=?,recovery_updated_at=? WHERE id=?", (question, generate_password_hash(answer), now_iso(), user["id"]))
+        audit("partner_recovery_settings_updated", "user", user["id"])
+        flash("Account recovery details saved. Your answer is stored as a password hash, not as readable text.", "success")
+    return redirect(url_for("partner_dashboard") + "#account-recovery")
+
+
+@app.route("/partner/management")
+@partner_required
+def partner_management():
+    target = safe_external_url(setting("management_url", ""))
+    if target:
+        return redirect(target, code=302)
+    return render_template("management_not_connected.html")
+
+
+@app.route("/partner/listings/new", methods=["GET", "POST"])
+@partner_required
+def partner_new_listing():
+    user = get_current_user()
+    if request.method == "POST":
+        category = request.form.get("category", "residential")
+        if category not in CATEGORY_META:
+            category = "residential"
+        property_type = request.form.get("property_type", "").strip()[:120]
+        title = request.form.get("title", "").strip()[:180]
+        description = request.form.get("description", "").strip()[:5000]
+        location = build_listing_location(request.form)
+        location_name = location["location_name"]
+        external_url = safe_external_url(request.form.get("external_url", ""))
+        if is_competitor_property_portal_url(external_url):
+            flash("Links to competing property marketplaces are not published here. Add your own website or booking page, or leave this optional field blank.", "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+        landmarks = request.form.get("landmarks", "").strip()[:1200]
+        price_period = request.form.get("price_period", "per month").strip()
+        property_condition = request.form.get("property_condition", "").strip()[:120]
+        if price_period not in PRICE_PERIODS:
+            price_period = "per month"
+        try:
+            price_amount = float(request.form.get("price_amount", "0") or 0)
+            deposit_amount = float(request.form.get("deposit_amount", "") or 0)
+            bedrooms = int(request.form.get("bedrooms", "") or 0) or None
+            bathrooms = int(request.form.get("bathrooms", "") or 0) or None
+        except ValueError:
+            flash("Check that rent, deposit and bedroom fields contain valid numbers.", "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+        floor_area = request.form.get("floor_area", "").strip()[:80]
+        amenities = request.form.get("amenities", "").strip()[:1200]
+        water_quality = request.form.get("water_quality", "").strip()[:180]
+        try:
+            latitude = float(request.form.get("latitude", "").strip()) if request.form.get("latitude", "").strip() else None
+            longitude = float(request.form.get("longitude", "").strip()) if request.form.get("longitude", "").strip() else None
+            if latitude is not None and not -90 <= latitude <= 90: raise ValueError()
+            if longitude is not None and not -180 <= longitude <= 180: raise ValueError()
+        except ValueError:
+            flash("Map coordinates are not valid. Use the map pin or leave coordinates blank for now.", "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+        if not title or not property_type or not location_name or not location["county"] or not location["constituency"] or not (location["ward"] or location["local_area"]) or price_amount < 0:
+            flash("Please complete property name, type, price, county, constituency and a ward/neighbourhood or exact local area.", "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+        if latitude is None or longitude is None:
+            flash("Add the property's map coordinates to help house seekers reach the real location. You can save this listing, but it cannot be approved until its location is checked.", "info")
+        image_names = []
+        try:
+            for file in request.files.getlist("images")[:8]:
+                if file and file.filename:
+                    image_names.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
+        except ValueError as exc:
+            for name in image_names: (LISTING_UPLOAD_DIR / name).unlink(missing_ok=True)
+            flash(str(exc), "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+        if not image_names:
+            flash("Upload at least one genuine property photo so the review team can assess the listing.", "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+        fee = fee_for_category(category)
+        payment_reference = request.form.get("payment_reference", "").strip()[:120]
+        payment_status = "submitted" if payment_reference else "pending"
+        cur = get_db().execute("""INSERT INTO listings(owner_id,category,property_type,title,description,price_amount,price_period,deposit_amount,bedrooms,bathrooms,floor_area,amenities,water_quality,location_name,county,constituency,ward,local_area,external_url,landmarks,latitude,longitude,property_condition,images,status,approval_status,payment_status,payment_reference,fee_amount,posted_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','pending',?,?,?,?,?)""",
+            (user["id"], category, property_type, title, description, price_amount, price_period, deposit_amount, bedrooms, bathrooms, floor_area, amenities, water_quality, location_name, location["county"], location["constituency"], location["ward"], location["local_area"], external_url, landmarks, latitude, longitude, property_condition, json.dumps(image_names), payment_status, payment_reference, fee, now_iso(), now_iso()))
+        listing_id = cur.lastrowid
+        log_event("property_submitted", request.path, json.dumps({"listing_id": listing_id, "category": category}))
+        audit("property_submitted", "listing", listing_id, f"Fee {fee}; payment reference supplied={bool(payment_reference)}")
+        flash("Listing saved privately. It will not appear in public searches until the payment is confirmed, your partner account is verified, and an administrator approves the property.", "success")
+        return redirect(url_for("partner_dashboard"))
+    return render_template("listing_form.html", form={}, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
+
+
+@app.route("/partner/listings/<int:listing_id>/edit", methods=["GET", "POST"])
+@partner_required
+def partner_edit_listing(listing_id):
+    user = get_current_user()
+    row = get_db().execute("SELECT * FROM listings WHERE id=? AND owner_id=?", (listing_id, user["id"])).fetchone()
+    if not row:
+        abort(404)
+    if request.method == "POST":
+        category = request.form.get("category", row["category"])
+        if category not in CATEGORY_META:
+            category = row["category"]
+        property_type = request.form.get("property_type", "").strip()[:120]
+        title = request.form.get("title", "").strip()[:180]
+        description = request.form.get("description", "").strip()[:5000]
+        location = build_listing_location(request.form, row)
+        location_name = location["location_name"]
+        external_url = safe_external_url(request.form.get("external_url", row["external_url"] or ""))
+        if is_competitor_property_portal_url(external_url):
+            flash("Links to competing property marketplaces are not published here. Remove that link and add your own website or booking page, or leave the field blank.", "error")
+            return redirect(url_for("partner_edit_listing", listing_id=listing_id))
+        landmarks = request.form.get("landmarks", "").strip()[:1200]
+        price_period = request.form.get("price_period", "per month").strip()
+        condition = request.form.get("property_condition", "").strip()[:120]
+        water_quality = request.form.get("water_quality", row["water_quality"] or "").strip()[:180]
+        if price_period not in PRICE_PERIODS: price_period = "per month"
+        try:
+            price_amount = float(request.form.get("price_amount", "0") or 0)
+            deposit_amount = float(request.form.get("deposit_amount", "") or 0)
+            bedrooms = int(request.form.get("bedrooms", "") or 0) or None
+            bathrooms = int(request.form.get("bathrooms", "") or 0) or None
+            latitude = float(request.form.get("latitude", "").strip()) if request.form.get("latitude", "").strip() else None
+            longitude = float(request.form.get("longitude", "").strip()) if request.form.get("longitude", "").strip() else None
+            if latitude is not None and not -90 <= latitude <= 90: raise ValueError()
+            if longitude is not None and not -180 <= longitude <= 180: raise ValueError()
+        except ValueError:
+            flash("Check the price, room and coordinate fields.", "error")
+            return redirect(url_for("partner_edit_listing", listing_id=listing_id))
+        if not title or not property_type or not location_name or not location["county"] or not location["constituency"] or not (location["ward"] or location["local_area"]) or price_amount < 0:
+            flash("Property name, type, price, county, constituency and a ward/neighbourhood or exact local area are required.", "error")
+            return redirect(url_for("partner_edit_listing", listing_id=listing_id))
+        original_names = listing_images(row)
+        remove_names = set(request.form.getlist("remove_images"))
+        names = [name for name in original_names if name not in remove_names]
+        try:
+            additions = []
+            for file in request.files.getlist("images")[:8]:
+                if file and file.filename:
+                    additions.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
+            if additions:
+                names = (names + additions)[-8:]
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("partner_edit_listing", listing_id=listing_id))
+        if not names:
+            flash("At least one genuine property photo is required.", "error")
+            return redirect(url_for("partner_edit_listing", listing_id=listing_id))
+        fee = fee_for_category(category)
+        payment_status = row["payment_status"]
+        payment_reference = row["payment_reference"]
+        if category != row["category"]:
+            payment_status = "pending"
+            payment_reference = ""
+        elif row["payment_status"] == "paid":
+            fee = float(row["fee_amount"])
+        # Any substantive edit puts the property back into the review queue.
+        get_db().execute("""UPDATE listings SET category=?,property_type=?,title=?,description=?,price_amount=?,price_period=?,deposit_amount=?,bedrooms=?,bathrooms=?,floor_area=?,amenities=?,water_quality=?,location_name=?,county=?,constituency=?,ward=?,local_area=?,external_url=?,landmarks=?,latitude=?,longitude=?,property_condition=?,images=?,status='pending',approval_status='pending',payment_status=?,payment_reference=?,fee_amount=?,property_verified=0,last_confirmed_at='',updated_at=? WHERE id=? AND owner_id=?""",
+            (category, property_type, title, description, price_amount, price_period, deposit_amount, bedrooms, bathrooms, request.form.get("floor_area", "").strip()[:80], request.form.get("amenities", "").strip()[:1200], water_quality, location_name, location["county"], location["constituency"], location["ward"], location["local_area"], external_url, landmarks, latitude, longitude, condition, json.dumps(names), payment_status, payment_reference, fee, now_iso(), listing_id, user["id"]))
+        # Remove deleted photo files only if no other listing references them.
+        if remove_names:
+            other_rows = get_db().execute("SELECT images FROM listings WHERE id<>?", (listing_id,)).fetchall()
+            referenced = set()
+            for other in other_rows:
+                try:
+                    referenced.update(json.loads(other["images"] or "[]"))
+                except (TypeError, json.JSONDecodeError):
+                    pass
+            for filename in remove_names - referenced:
+                if filename in original_names and Path(filename).name == filename:
+                    (LISTING_UPLOAD_DIR / filename).unlink(missing_ok=True)
+        audit("partner_edited_property", "listing", listing_id, "Listing returned to verification queue after edit")
+        flash("Listing updated and returned to review. It stays private until the property is checked again. If its category changed, the new fee must be paid.", "success")
+        return redirect(url_for("partner_dashboard"))
+    form = dict(row)
+    return render_template("listing_form.html", form=form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, edit_mode=True, existing_images=listing_images(row), existing_listing=row, location_catalog=selector_data())
+
+
+@app.route("/partner/listings/<int:listing_id>/availability", methods=["POST"])
+@partner_required
+def partner_confirm_availability(listing_id):
+    user = get_current_user()
+    row = get_db().execute("SELECT * FROM listings WHERE id=? AND owner_id=?", (listing_id, user["id"])).fetchone()
+    if not row:
+        abort(404)
+    action = request.form.get("availability", "available")
+    if action == "taken":
+        get_db().execute("UPDATE listings SET status='occupied',updated_at=? WHERE id=?", (now_iso(), listing_id))
+        audit("partner_marked_taken", "listing", listing_id)
+        flash("The property is now marked as taken and is hidden from available searches.", "success")
+    elif action == "available":
+        # Partners can re-confirm but cannot unilaterally reverse an admin-reviewed taken/report status.
+        if row["status"] in {"occupied", "reported_taken"}:
+            flash("An administrator must review a taken/report status before the property can be listed again.", "warning")
+        elif row["approval_status"] == "approved" and row["payment_status"] == "paid" and row["property_verified"]:
+            get_db().execute("UPDATE listings SET status='available',last_confirmed_at=?,updated_at=? WHERE id=?", (now_iso(), now_iso(), listing_id))
+            audit("availability_confirmed", "listing", listing_id)
+            flash("Availability confirmation recorded.", "success")
+        else:
+            flash("This property is not yet approved for publication.", "warning")
+    return redirect(url_for("partner_dashboard"))
+
+
+@app.route("/partner/listings/<int:listing_id>/withdraw", methods=["POST"])
+@partner_required
+def partner_withdraw_listing(listing_id):
+    user = get_current_user()
+    row = get_db().execute("SELECT id,title,status FROM listings WHERE id=? AND owner_id=?", (listing_id, user["id"])).fetchone()
+    if not row:
+        abort(404)
+    get_db().execute("UPDATE listings SET status='removed',approval_status='removed',updated_at=? WHERE id=? AND owner_id=?", (now_iso(), listing_id, user["id"]))
+    audit("partner_withdrew_property", "listing", listing_id, "Owner withdrew listing from public search; record retained")
+    flash("This property has been withdrawn from public search. Its record and enquiry history have been kept.", "success")
+    return redirect(url_for("partner_dashboard"))
+
+
+@app.route("/manage-admin", methods=["GET"])
+def admin_base_redirect():
+    return redirect(ADMIN_ROOT)
+
+
+def admin_entry():
+    user = get_current_user()
+    if user and user["role"] == "admin":
+        return redirect(url_for("admin_dashboard"))
+    if request.method == "POST":
+        if auth_is_limited("admin"):
+            flash("Too many unsuccessful sign-in attempts. Try again in 15 minutes.", "error")
+            return render_template("admin_login.html", admin_path=ADMIN_ROOT), 429
+        identity = request.form.get("identity", "").strip()
+        password = request.form.get("password", "")
+        admin = get_db().execute("SELECT * FROM users WHERE role='admin' AND full_name=? LIMIT 1", (identity,)).fetchone()
+        if not admin and identity:
+            admin = get_db().execute("SELECT * FROM users WHERE role='admin' AND lower(COALESCE(email,''))=lower(?) LIMIT 1", (identity,)).fetchone()
+        if not admin or not check_password_hash(admin["password_hash"], password):
+            auth_failed("admin")
+            flash("Administrator sign-in failed.", "error")
+            return render_template("admin_login.html", admin_path=ADMIN_ROOT)
+        auth_succeeded("admin")
+        session.clear(); session["user_id"] = admin["id"]; session["csrf_token"] = secrets.token_urlsafe(24); session["visitor_key"] = secrets.token_urlsafe(20)
+        refresh_current_user_cache()
+        get_db().execute("UPDATE users SET last_login=? WHERE id=?", (now_iso(), admin["id"]))
+        audit("admin_login", "user", admin["id"])
+        return redirect(url_for("admin_dashboard"))
+    return render_template("admin_login.html", admin_path=ADMIN_ROOT)
+
+
+app.add_url_rule(ADMIN_ROOT, endpoint="admin_entry", view_func=admin_entry, methods=["GET", "POST"])
+
+
+@app.route("/manage-admin/logout", methods=["POST"])
+@admin_required
+def admin_logout():
+    audit("admin_logout", "user", get_current_user()["id"])
+    session.clear()
+    return redirect(ADMIN_ROOT)
+
+
+@app.route("/manage-admin/dashboard")
+@admin_required
+def admin_dashboard():
+    conn = get_db()
+    day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    stats = {
+        "listings": conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0],
+        "published": conn.execute("SELECT COUNT(*) FROM listings WHERE status='available' AND approval_status='approved' AND payment_status='paid' AND property_verified=1").fetchone()[0],
+        "pending_payment": conn.execute("SELECT COUNT(*) FROM listings WHERE payment_status IN ('pending','submitted')").fetchone()[0],
+        "pending_review": conn.execute("SELECT COUNT(*) FROM listings WHERE payment_status='paid' AND approval_status='pending'").fetchone()[0],
+        "partners": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business')").fetchone()[0],
+        "partners_pending": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business') AND verified=0 AND suspended=0").fetchone()[0],
+        "interests": conn.execute("SELECT COUNT(*) FROM interests").fetchone()[0],
+        "reports": conn.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0],
+        "visitors_today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
+    }
+    listings = conn.execute("SELECT l.*,u.full_name AS partner_name,u.business_name FROM listings l JOIN users u ON u.id=l.owner_id ORDER BY l.posted_at DESC LIMIT 8").fetchall()
+    latest_events = conn.execute("SELECT * FROM visitor_events ORDER BY id DESC LIMIT 10").fetchall()
+    return render_template("admin_dashboard.html", stats=stats, listings=listings, events=latest_events)
+
+
+@app.route("/manage-admin/discoveries", methods=["GET", "POST"])
+@admin_required
+def admin_market_discoveries():
+    flash("External property-feed cards are disabled. Public listings now come only from owner/agent submissions approved by the site administrator.", "info")
+    return redirect(url_for("admin_listings"))
+
+
+@app.post("/manage-admin/discoveries/<int:item_id>/delete")
+@admin_required
+def admin_market_discovery_delete(item_id):
+    return redirect(url_for("admin_listings"))
+
+
+@app.route("/manage-admin/listings")
+@admin_required
+def admin_listings():
+    status = request.args.get("status", "").strip()
+    category = request.args.get("category", "").strip()
+    clauses, params = [], []
+    if status:
+        clauses.append("l.status=?"); params.append(status)
+    if category in CATEGORY_META:
+        clauses.append("l.category=?"); params.append(category)
+    sql = "SELECT l.*,u.full_name AS partner_name,u.business_name,u.phone AS partner_phone,u.email AS partner_email,u.contact_preference AS contact_preference,u.website_url AS website_url,u.social_url AS social_url,u.verified AS partner_verified FROM listings l JOIN users u ON l.owner_id=u.id"
+    if clauses: sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY l.posted_at DESC LIMIT 300"
+    listings = get_db().execute(sql, params).fetchall()
+    return render_template("admin_listings.html", listings=listings, status=status, category=category)
+
+
+@app.route("/manage-admin/listings/<int:listing_id>/edit", methods=["GET", "POST"])
+@admin_required
+def admin_edit_listing(listing_id):
+    row = get_db().execute("SELECT * FROM listings WHERE id=?", (listing_id,)).fetchone()
+    if not row: abort(404)
+    if request.method == "POST":
+        category = request.form.get("category", row["category"])
+        if category not in CATEGORY_META: category = row["category"]
+        property_type = request.form.get("property_type", "").strip()[:120]
+        title = request.form.get("title", "").strip()[:180]
+        description = request.form.get("description", "").strip()[:5000]
+        location_name = request.form.get("location_name", "").strip()[:180]
+        landmarks = request.form.get("landmarks", "").strip()[:1200]
+        condition = request.form.get("property_condition", "").strip()[:120]
+        water_quality = request.form.get("water_quality", "").strip()[:180]
+        price_period = request.form.get("price_period", "per month").strip()
+        if price_period not in PRICE_PERIODS: price_period = "per month"
+        try:
+            price_amount = float(request.form.get("price_amount", "0") or 0)
+            deposit_amount = float(request.form.get("deposit_amount", "") or 0)
+            bedrooms = int(request.form.get("bedrooms", "") or 0) or None
+            bathrooms = int(request.form.get("bathrooms", "") or 0) or None
+            latitude = float(request.form.get("latitude", "").strip()) if request.form.get("latitude", "").strip() else None
+            longitude = float(request.form.get("longitude", "").strip()) if request.form.get("longitude", "").strip() else None
+            if latitude is not None and not -90 <= latitude <= 90: raise ValueError()
+            if longitude is not None and not -180 <= longitude <= 180: raise ValueError()
+            if price_amount < 0 or deposit_amount < 0: raise ValueError()
+        except ValueError:
+            flash("Check the price, deposit, room and coordinate fields.", "error")
+            return redirect(url_for("admin_edit_listing", listing_id=listing_id))
+        if not title or not property_type or not location_name:
+            flash("Property title, type and location are required.", "error")
+            return redirect(url_for("admin_edit_listing", listing_id=listing_id))
+        images = listing_images(row)
+        additions = []
+        try:
+            for file in request.files.getlist("images")[:8]:
+                if file and file.filename:
+                    additions.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
+        except ValueError as exc:
+            for name in additions: (LISTING_UPLOAD_DIR / name).unlink(missing_ok=True)
+            flash(str(exc), "error")
+            return redirect(url_for("admin_edit_listing", listing_id=listing_id))
+        images = (images + additions)[-8:]
+        changed_category = category != row["category"]
+        payment_status = "pending" if changed_category else row["payment_status"]
+        payment_reference = "" if changed_category else row["payment_reference"]
+        fee_amount = fee_for_category(category) if changed_category else float(row["fee_amount"])
+        get_db().execute("""UPDATE listings SET category=?,property_type=?,title=?,description=?,price_amount=?,price_period=?,deposit_amount=?,bedrooms=?,bathrooms=?,floor_area=?,amenities=?,water_quality=?,location_name=?,landmarks=?,latitude=?,longitude=?,property_condition=?,images=?,status='pending',approval_status='pending',payment_status=?,payment_reference=?,fee_amount=?,property_verified=0,last_confirmed_at='',updated_at=? WHERE id=?""",
+            (category,property_type,title,description,price_amount,price_period,deposit_amount,bedrooms,bathrooms,request.form.get("floor_area", "").strip()[:80],request.form.get("amenities", "").strip()[:1200],water_quality,location_name,landmarks,latitude,longitude,condition,json.dumps(images),payment_status,payment_reference,fee_amount,now_iso(),listing_id))
+        audit("admin_edited_listing", "listing", listing_id, "Listing returned to verification after admin edit")
+        flash("Property updated. It is in the review queue and will be republished only after the required checks pass.", "success")
+        return redirect(url_for("admin_listings"))
+    return render_template("admin_listing_edit.html", listing=row, form=dict(row), categories=CATEGORY_META, price_periods=PRICE_PERIODS, existing_images=listing_images(row))
+
+
+@app.post("/manage-admin/listings/<int:listing_id>/action")
+@admin_required
+def admin_listing_action(listing_id):
+    row = get_db().execute("SELECT l.*,u.verified AS owner_verified FROM listings l JOIN users u ON u.id=l.owner_id WHERE l.id=?", (listing_id,)).fetchone()
+    if not row: abort(404)
+    action = request.form.get("action", "")
+    if action == "mark_paid":
+        reference = (request.form.get("payment_reference", "").strip() or row["payment_reference"] or "")[:120]
+        if not reference:
+            flash("Add and reconcile the actual payment reference before marking this listing paid.", "error")
+        else:
+            get_db().execute("UPDATE listings SET payment_status='paid',payment_reference=?,updated_at=? WHERE id=?", (reference, now_iso(), listing_id))
+            audit("payment_confirmed_manually", "listing", listing_id, f"ref={reference}")
+            flash("Payment marked as confirmed. Listing approval is still a separate step.", "success")
+    elif action == "approve":
+        if request.form.get("checks_confirmed") != "yes":
+            flash("Confirm that you checked the property's existence and the partner's authority to advertise it.", "error")
+        elif row["payment_status"] != "paid":
+            flash("Cannot approve a listing until payment is confirmed.", "error")
+        elif not row["owner_verified"]:
+            flash("Verify the owner/agent account first.", "error")
+        elif row["latitude"] is None or row["longitude"] is None:
+            flash("Add and verify the property's actual map coordinates before approval.", "error")
+        elif not listing_images(row):
+            flash("A property photo is required before approval.", "error")
+        else:
+            published_at = now_iso()
+            listing_expires = (datetime.now(timezone.utc) + timedelta(days=listing_lifecycle_days())).replace(microsecond=0).isoformat()
+            get_db().execute("UPDATE listings SET approval_status='approved',property_verified=1,status='available',last_confirmed_at=?,expires_at=?,archived_at='',updated_at=? WHERE id=?", (published_at, listing_expires, published_at, listing_id))
+            audit("listing_verified_and_approved", "listing", listing_id, f"Publication term ends {listing_expires}")
+            flash("Property approved and published. It now passes the payment, partner and property verification gates.", "success")
+    elif action == "confirm_renewal":
+        reference = (request.form.get("payment_reference", "").strip() or row["renewal_payment_reference"] or "")[:120]
+        if row["renewal_payment_status"] != "submitted" or not reference:
+            flash("A submitted renewal reference is required before confirming renewal.", "error")
+        elif not row["owner_verified"] or row["approval_status"] != "approved" or not row["property_verified"]:
+            flash("This property does not pass the partner and listing checks required for renewal.", "error")
+        else:
+            renewal_time = datetime.now(timezone.utc).replace(microsecond=0)
+            current_expiry = None
+            try:
+                current_expiry = datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None
+                if current_expiry and current_expiry.tzinfo is None:
+                    current_expiry = current_expiry.replace(tzinfo=timezone.utc)
+            except ValueError:
+                current_expiry = None
+            renewal_start = current_expiry if current_expiry and current_expiry > renewal_time else renewal_time
+            renewed_until = (renewal_start + timedelta(days=listing_lifecycle_days())).replace(microsecond=0).isoformat()
+            get_db().execute("UPDATE listings SET renewal_payment_status='paid',payment_reference=CASE WHEN payment_reference='' THEN ? ELSE payment_reference END,renewal_payment_reference=?,renewal_count=renewal_count+1,renewal_submitted_at='',expires_at=?,status='available',last_confirmed_at=?,archived_at='',updated_at=? WHERE id=?", (reference, reference, renewed_until, renewal_time.isoformat(), renewal_time.isoformat(), listing_id))
+            audit("listing_renewal_payment_confirmed", "listing", listing_id, f"Renewed until {renewed_until}; reference={reference}")
+            flash(f"Renewal confirmed. The property term now runs through {renewed_until[:10]}.", "success")
+    elif action == "reject":
+        get_db().execute("UPDATE listings SET approval_status='rejected',status='rejected',updated_at=? WHERE id=?", (now_iso(), listing_id))
+        audit("listing_rejected", "listing", listing_id, request.form.get("reason", "")[:500])
+        flash("Listing rejected and kept out of public search.", "success")
+    elif action == "mark_taken":
+        get_db().execute("UPDATE listings SET status='occupied',updated_at=? WHERE id=?", (now_iso(), listing_id))
+        audit("admin_marked_taken", "listing", listing_id)
+        flash("Listing marked as taken.", "success")
+    elif action == "reinstate":
+        if row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["property_verified"] and row["owner_verified"]:
+            reinstated_at = now_iso()
+            reinstated_expiry = (datetime.now(timezone.utc) + timedelta(days=listing_lifecycle_days())).replace(microsecond=0).isoformat()
+            get_db().execute("UPDATE listings SET status='available',last_confirmed_at=?,expires_at=?,archived_at='',updated_at=? WHERE id=?", (reinstated_at, reinstated_expiry, reinstated_at, listing_id))
+            audit("admin_reinstated_listing", "listing", listing_id, f"New term ends {reinstated_expiry}")
+            flash("Listing reinstated by administrator.", "success")
+        else:
+            flash("This listing does not meet all publication checks and cannot be reinstated.", "error")
+    elif action == "remove":
+        get_db().execute("UPDATE listings SET status='removed',approval_status='rejected',updated_at=? WHERE id=?", (now_iso(), listing_id))
+        audit("listing_removed", "listing", listing_id, request.form.get("reason", "")[:500])
+        flash("Listing removed from public results. Its history has been retained.", "success")
+    elif action in {"delete_permanently", "archive_listing"}:
+        # Safety-first soft deletion: remove from public search, but preserve owner data,
+        # uploaded property photos, enquiries, ratings and audit history for recovery.
+        archived_at = now_iso()
+        get_db().execute("UPDATE listings SET status='archived',approval_status='removed',archived_at=?,updated_at=? WHERE id=?", (archived_at, archived_at, listing_id))
+        audit("listing_archived_not_hard_deleted", "listing", listing_id, f"Title={row['title'][:160]}; data retained for recovery")
+        flash("Property archived and removed from public search. The listing record, photos, enquiries and ratings were retained for data safety.", "success")
+    else:
+        flash("Unknown listing action.", "error")
+    return redirect(url_for("admin_listings"))
+
+
+@app.route("/manage-admin/partners")
+@admin_required
+def admin_partners():
+    rows = get_db().execute("SELECT u.*, (SELECT COUNT(*) FROM listings l WHERE l.owner_id=u.id) AS listing_count FROM users u WHERE u.role IN ('owner','agent','host','business') ORDER BY u.created_at DESC").fetchall()
+    return render_template("admin_partners.html", partners=rows)
+
+
+@app.post("/manage-admin/partners/<int:user_id>/action")
+@admin_required
+def admin_partner_action(user_id):
+    user = get_db().execute("SELECT * FROM users WHERE id=? AND role IN ('owner','agent','host','business')", (user_id,)).fetchone()
+    if not user: abort(404)
+    action = request.form.get("action", "")
+    if action == "verify":
+        if not user["identity_front"] or not user["identity_back"]:
+            flash("Cannot verify this partner: both identity document sides are missing.", "error")
+        else:
+            get_db().execute("UPDATE users SET verified=1,suspended=0 WHERE id=?", (user_id,))
+            audit("partner_identity_verified", "user", user_id)
+            flash("Partner verified. Property listings still require their own checks and confirmed payment.", "success")
+    elif action == "unverify":
+        get_db().execute("UPDATE users SET verified=0 WHERE id=?", (user_id,))
+        audit("partner_verification_revoked", "user", user_id)
+        flash("Partner verification removed. Their listings no longer appear in public search.", "success")
+    elif action == "suspend":
+        get_db().execute("UPDATE users SET suspended=1 WHERE id=?", (user_id,))
+        audit("partner_suspended", "user", user_id)
+        flash("Partner suspended.", "success")
+    elif action == "restore":
+        get_db().execute("UPDATE users SET suspended=0 WHERE id=?", (user_id,))
+        audit("partner_restored", "user", user_id)
+        flash("Partner account restored.", "success")
+    return redirect(url_for("admin_partners"))
+
+
+@app.route("/manage-admin/documents/<path:filename>")
+@admin_required
+def admin_private_document(filename):
+    allowed_names = set()
+    for row in get_db().execute("SELECT identity_front,identity_back FROM users"):
+        if row["identity_front"]: allowed_names.add(row["identity_front"])
+        if row["identity_back"]: allowed_names.add(row["identity_back"])
+    if filename not in allowed_names or Path(filename).name != filename:
+        abort(404)
+    response = send_from_directory(PRIVATE_DOC_DIR, filename, as_attachment=True, max_age=0)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
+
+
+@app.route("/manage-admin/interests")
+@admin_required
+def admin_interests():
+    rows = get_db().execute("SELECT i.*,l.title AS listing_title,l.category,u.full_name AS partner_name FROM interests i JOIN listings l ON l.id=i.listing_id JOIN users u ON u.id=l.owner_id ORDER BY i.created_at DESC LIMIT 500").fetchall()
+    return render_template("admin_interests.html", interests=rows)
+
+
+@app.post("/manage-admin/interests/<int:interest_id>/action")
+@admin_required
+def admin_interest_action(interest_id):
+    row = get_db().execute("SELECT * FROM interests WHERE id=?", (interest_id,)).fetchone()
+    if not row: abort(404)
+    status = request.form.get("status", "contacted")
+    if status not in {"new", "contacted", "viewing", "closed", "spam"}: status = "contacted"
+    get_db().execute("UPDATE interests SET status=? WHERE id=?", (status, interest_id))
+    audit("interest_status_changed", "interest", interest_id, status)
+    flash("Enquiry status updated.", "success")
+    return redirect(url_for("admin_interests"))
+
+
+@app.route("/manage-admin/reports")
+@admin_required
+def admin_reports():
+    rows = get_db().execute("SELECT r.*,l.title AS listing_title,l.status AS listing_status,l.owner_id,l.location_name FROM reports r JOIN listings l ON l.id=r.listing_id ORDER BY CASE r.status WHEN 'open' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 500").fetchall()
+    return render_template("admin_reports.html", reports=rows)
+
+
+@app.post("/manage-admin/reports/<int:report_id>/action")
+@admin_required
+def admin_report_action(report_id):
+    row = get_db().execute("SELECT r.*,l.status AS listing_status,l.payment_status,l.approval_status,l.property_verified,l.latitude,l.longitude,l.owner_id FROM reports r JOIN listings l ON l.id=r.listing_id WHERE r.id=?", (report_id,)).fetchone()
+    if not row: abort(404)
+    action = request.form.get("action", "")
+    if action == "confirm_taken":
+        get_db().execute("UPDATE listings SET status='occupied',updated_at=? WHERE id=(SELECT listing_id FROM reports WHERE id=?)", (now_iso(), report_id))
+        get_db().execute("UPDATE reports SET status='confirmed_taken',resolved_at=? WHERE id=?", (now_iso(), report_id))
+        audit("report_confirmed_taken", "report", report_id)
+        flash("Report confirmed. Property remains hidden as taken.", "success")
+    elif action == "reinstate":
+        owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=?", (row["owner_id"],)).fetchone()
+        if row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["property_verified"] and owner and owner["verified"] and not owner["suspended"] and row["latitude"] is not None and row["longitude"] is not None:
+            get_db().execute("UPDATE listings SET status='available',last_confirmed_at=?,updated_at=? WHERE id=(SELECT listing_id FROM reports WHERE id=?)", (now_iso(), now_iso(), report_id))
+            get_db().execute("UPDATE reports SET status='dismissed',resolved_at=? WHERE id=?", (now_iso(), report_id))
+            audit("report_dismissed_and_listing_reinstated", "report", report_id)
+            flash("Report dismissed and listing reinstated by administrator.", "success")
+        else:
+            flash("Cannot reinstate: the listing no longer passes all checks. Review payment, partner and property verification first.", "error")
+    elif action == "dismiss":
+        get_db().execute("UPDATE reports SET status='dismissed',resolved_at=? WHERE id=?", (now_iso(), report_id))
+        audit("report_dismissed", "report", report_id)
+        flash("Report dismissed. The listing status was not changed automatically; check it separately.", "success")
+    return redirect(url_for("admin_reports"))
+
+
+@app.route("/manage-admin/analytics")
+@admin_required
+def admin_analytics():
+    conn = get_db()
+    sessions = conn.execute("SELECT v.*,COALESCE(NULLIF(u.full_name,''),NULLIF(v.contact_name,'')) AS full_name,u.business_name,COALESCE(NULLIF(u.phone,''),NULLIF(v.contact_phone,'')) AS account_phone FROM visitor_sessions v LEFT JOIN users u ON v.user_id=u.id WHERE v.role != 'administrator' ORDER BY v.last_seen DESC LIMIT 250").fetchall()
+    top_pages = conn.execute("SELECT e.path,COUNT(*) AS hits,COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) AS visitors FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE '/manage-admin%' AND e.path NOT LIKE ? GROUP BY e.path ORDER BY hits DESC LIMIT 15", (ADMIN_ROOT + '%',)).fetchall()
+    search_events = conn.execute("SELECT details,created_at FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 1500").fetchall()
+    popular_counter, failed_counter = Counter(), Counter()
+    popular_meta, failed_meta = {}, {}
+    for event in search_events:
+        try:
+            data = json.loads(event["details"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        parts = [str(data.get(k, "")).strip() for k in ("q", "location", "category", "type") if str(data.get(k, "")).strip()]
+        query_label = " · ".join(parts) or "Browse all places"
+        normalized = re.sub(r"\s+", " ", query_label.casefold()).strip()
+        popular_counter[normalized] += 1
+        popular_meta[normalized] = {"label": query_label, "latest": event["created_at"], "count": data.get("count", 0)}
+        if bool(data.get("no_match")) or int(data.get("count", 0) or 0) == 0:
+            failed_counter[normalized] += 1
+            failed_meta[normalized] = {"label": query_label, "latest": event["created_at"]}
+    popular_searches = [{"label": popular_meta[key]["label"], "searches": count, "latest": popular_meta[key]["latest"], "last_count": popular_meta[key]["count"]} for key, count in popular_counter.most_common(12)]
+    failed_searches = [{"label": failed_meta[key]["label"], "searches": count, "latest": failed_meta[key]["latest"]} for key, count in failed_counter.most_common(12)]
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    active_after = (now - timedelta(minutes=15)).isoformat()
+    totals = {
+        "sessions": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator'").fetchone()[0],
+        "returning": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions v WHERE role != 'administrator' AND (visit_count>1 OR (contact_phone != '' AND contact_phone IN (SELECT contact_phone FROM visitor_sessions WHERE contact_phone != '' GROUP BY contact_phone HAVING COUNT(*)>1)) OR (user_id IS NOT NULL AND user_id IN (SELECT user_id FROM visitor_sessions WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(*)>1)))").fetchone()[0],
+        "shared": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND location_shared=1").fetchone()[0],
+        "today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
+        "active": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND last_seen>=?", (active_after,)).fetchone()[0],
+        "mobile": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND (device LIKE '%phone%' OR device LIKE '%Mobile%' OR device LIKE '%iPhone%' OR device LIKE '%iPad%' OR device LIKE '%Android%')").fetchone()[0],
+        "searches": conn.execute("SELECT COUNT(*) FROM visitor_events WHERE event_type='property_search'").fetchone()[0],
+        "no_results": sum(failed_counter.values()),
+    }
+    return render_template("admin_analytics.html", sessions=sessions, top_pages=top_pages, popular_searches=popular_searches, failed_searches=failed_searches, totals=totals)
+
+@app.post("/api/location")
+def save_opt_in_location():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("consent") is not True:
+        return jsonify({"ok": False, "error": "Explicit location consent is required."}), 400
+    try:
+        lat, lon = float(payload.get("latitude")), float(payload.get("longitude"))
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180): raise ValueError()
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Coordinates were not valid."}), 400
+    # Keep approximate neighborhood-level coordinates, not a precise movement history.
+    lat = round(lat, 3); lon = round(lon, 3)
+    key = current_visitor_key()
+    user = get_current_user()
+    conn = get_db()
+    exists = conn.execute("SELECT visitor_key FROM visitor_sessions WHERE visitor_key=?", (key,)).fetchone()
+    if exists:
+        conn.execute("UPDATE visitor_sessions SET latitude_approx=?,longitude_approx=?,location_shared=1,user_id=?,last_seen=? WHERE visitor_key=?", (lat, lon, user["id"] if user else None, now_iso(), key))
+    else:
+        role = "partner" if user and user["role"] in {"owner", "agent", "host", "business"} else "house seeker" if user and user["role"] == "seeker" else "visitor"
+        conn.execute("INSERT INTO visitor_sessions(visitor_key,user_id,role,first_seen,last_seen,last_path,device,page_views,latitude_approx,longitude_approx,location_shared) VALUES(?,?,?,?,?,?,?,?,?,?,1)", (key, user["id"] if user else None, role, now_iso(), now_iso(), request.referrer or "/", device_label(request.headers.get("User-Agent", "")), 0, lat, lon))
+    conn.execute("INSERT INTO visitor_events(visitor_key,user_id,event_type,path,details,created_at) VALUES(?,?,?,?,?,?)", (key, user["id"] if user else None, "location_shared_with_consent", request.path, "Approximate coordinates rounded to 3 decimal places", now_iso()))
+    return jsonify({"ok": True, "latitude": lat, "longitude": lon})
+
+
+@app.route("/manage-admin/boost-requests")
+@admin_required
+def admin_boost_requests():
+    rows = get_db().execute("""SELECT b.*,l.title AS listing_title,l.status AS listing_status,l.approval_status,l.payment_status AS listing_payment_status,l.property_verified,u.full_name AS owner_name,u.phone AS owner_phone
+        FROM boost_requests b JOIN listings l ON l.id=b.listing_id JOIN users u ON u.id=b.owner_id
+        ORDER BY CASE b.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, b.created_at DESC LIMIT 500""").fetchall()
+    return render_template("admin_boost_requests.html", boost_requests=rows)
+
+
+@app.post("/manage-admin/boost-requests/<int:request_id>/action")
+@admin_required
+def admin_boost_action(request_id):
+    admin = get_current_user()
+    boost = get_db().execute("SELECT b.*,l.status AS listing_status,l.approval_status,l.payment_status AS listing_payment_status,l.property_verified FROM boost_requests b JOIN listings l ON l.id=b.listing_id WHERE b.id=?", (request_id,)).fetchone()
+    if not boost:
+        abort(404)
+    if boost["status"] != "pending":
+        flash("This boost request was already reviewed.", "warning")
+        return redirect(url_for("admin_boost_requests"))
+    action = request.form.get("action", "").strip().lower()
+    note = request.form.get("admin_note", "").strip()[:600]
+    stamp = now_iso()
+    if action == "approve":
+        if not (boost["listing_status"] == "available" and boost["approval_status"] == "approved" and boost["listing_payment_status"] == "paid" and boost["property_verified"]):
+            flash("Cannot activate a boost on a property that is not currently live, paid and approved.", "error")
+            return redirect(url_for("admin_boost_requests"))
+        tier = boost["tier"]
+        duration_key = "boost_duration_days_vvip" if tier == "vvip" else "boost_duration_days_vip"
+        try:
+            days = max(1, min(365, int(setting(duration_key, DEFAULT_SETTINGS[duration_key]))))
+        except (ValueError, TypeError):
+            days = int(DEFAULT_SETTINGS[duration_key])
+        active_until = (datetime.now(timezone.utc) + timedelta(days=days)).replace(microsecond=0).isoformat()
+        get_db().execute("UPDATE listings SET boost_tier=?,featured_until=?,updated_at=? WHERE id=?", (tier, active_until, stamp, boost["listing_id"]))
+        get_db().execute("UPDATE boost_requests SET status='approved',admin_note=?,updated_at=? WHERE id=?", (note or f"Payment manually reviewed by administrator {admin['id']}", stamp, request_id))
+        audit("boost_activated", "listing", boost["listing_id"], f"{tier.upper()} visibility for {days} days; boost request {request_id}")
+        flash(f"{tier.upper()} placement is active for {days} days. It will appear ahead of standard listings in supported search results.", "success")
+    elif action == "reject":
+        if not note:
+            note = "Payment or boost request could not be approved. Contact support if you believe this is an error."
+        get_db().execute("UPDATE boost_requests SET status='rejected',admin_note=?,updated_at=? WHERE id=?", (note, stamp, request_id))
+        audit("boost_rejected", "listing", boost["listing_id"], f"Boost request {request_id}: {note}")
+        flash("Boost request rejected. It was not activated.", "success")
+    else:
+        flash("Choose approve or reject.", "error")
+    return redirect(url_for("admin_boost_requests"))
+
+
+@app.route("/manage-admin/settings", methods=["GET", "POST"])
+@admin_required
+def admin_settings():
+    if request.method == "POST":
+        logo_file = request.files.get("logo_file")
+        if logo_file and logo_file.filename:
+            try:
+                logo_name = save_upload(logo_file, BRANDING_DIR, ALLOWED_IMAGE_EXTENSIONS)
+                old_logo = setting("site_logo", "")
+                set_setting("site_logo", logo_name)
+                if old_logo and old_logo != logo_name and Path(old_logo).name == old_logo:
+                    (BRANDING_DIR / old_logo).unlink(missing_ok=True)
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("admin_settings"))
+        promo_file = request.files.get("promo_image_file")
+        if promo_file and promo_file.filename:
+            try:
+                promo_name = save_upload(promo_file, PROMO_DIR, ALLOWED_IMAGE_EXTENSIONS)
+                old_promo = setting("promo_image", "")
+                set_setting("promo_image", promo_name)
+                if old_promo and old_promo != promo_name and Path(old_promo).name == old_promo:
+                    (PROMO_DIR / old_promo).unlink(missing_ok=True)
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("admin_settings"))
+        if request.form.get("remove_promo_image"):
+            old_promo = setting("promo_image", "")
+            set_setting("promo_image", "")
+            if old_promo and Path(old_promo).name == old_promo:
+                (PROMO_DIR / old_promo).unlink(missing_ok=True)
+        allowed_keys = set(DEFAULT_SETTINGS.keys())
+        for key in allowed_keys:
+            if key.endswith("_enabled"):
+                value = "1" if request.form.get(key) else "0"
+            elif key in request.form:
+                value = request.form.get(key, "").strip()
+            else:
+                continue
+            if key in {"brand_primary", "brand_accent"} and not (len(value) == 7 and value.startswith("#") and all(c in "0123456789abcdefABCDEF" for c in value[1:])):
+                flash(f"{key.replace('_',' ').title()} must be a valid hex color.", "error")
+                return redirect(url_for("admin_settings"))
+            if key == "management_url" and value and not safe_external_url(value):
+                flash("Management URL must begin with https:// or http:// and include a valid host.", "error")
+                return redirect(url_for("admin_settings"))
+            if key == "promo_link" and value and not safe_external_url(value):
+                flash("Campaign destination must be a valid http:// or https:// URL.", "error")
+                return redirect(url_for("admin_settings"))
+            if key == "promo_link" and value and is_competitor_property_portal_url(value):
+                flash("Use your own business destination for promotions, not a competing property marketplace.", "error")
+                return redirect(url_for("admin_settings"))
+            if key == "promo_video_url" and value and not safe_video_embed_url(value):
+                flash("Video must be a public YouTube or Vimeo link.", "error")
+                return redirect(url_for("admin_settings"))
+            if key == "header_links" and value:
+                for line_number, line in enumerate(value.splitlines(), 1):
+                    if not line.strip():
+                        continue
+                    if "|" not in line:
+                        flash(f"Header link line {line_number} must use Label | https://address format.", "error")
+                        return redirect(url_for("admin_settings"))
+                    label, target = line.split("|", 1)
+                    if not label.strip() or len(label.strip()) > 55 or not safe_external_url(target.strip()):
+                        flash(f"Header link line {line_number} needs a label (55 characters max) and a valid http:// or https:// URL.", "error")
+                        return redirect(url_for("admin_settings"))
+                    if is_competitor_property_portal_url(target.strip()):
+                        flash(f"Header link line {line_number} cannot point to a competing property marketplace.", "error")
+                        return redirect(url_for("admin_settings"))
+            if key == "public_base_url" and value and not safe_external_url(value):
+                flash("Public base URL must begin with https:// or http:// and include a valid host.", "error")
+                return redirect(url_for("admin_settings"))
+            if key.endswith("_url") and key.startswith("social_") and value and not safe_external_url(value):
+                flash("Social profile links must be valid http:// or https:// URLs.", "error")
+                return redirect(url_for("admin_settings"))
+            if key.startswith("fee_"):
+                try:
+                    number = float(value)
+                    if number < 0 or number > 100000000: raise ValueError()
+                    value = str(round(number, 2))
+                except ValueError:
+                    flash(f"{key.replace('_',' ').title()} must be a non-negative number.", "error")
+                    return redirect(url_for("admin_settings"))
+            if key in {"listing_expiry_days", "boost_duration_days_vip", "boost_duration_days_vvip"}:
+                try:
+                    days = int(value)
+                    if not 1 <= days <= 365: raise ValueError()
+                    value = str(days)
+                except ValueError:
+                    flash(f"{key.replace('_',' ').title()} must be between 1 and 365 days.", "error")
+                    return redirect(url_for("admin_settings"))
+            if key in {"boost_fee_vip", "boost_fee_vvip"}:
+                try:
+                    amount = float(value)
+                    if amount < 0 or amount > 100000000: raise ValueError()
+                    value = str(round(amount, 2))
+                except ValueError:
+                    flash(f"{key.replace('_',' ').title()} must be a non-negative amount.", "error")
+                    return redirect(url_for("admin_settings"))
+            set_setting(key, value)
+        new_password = request.form.get("new_admin_password", "")
+        if new_password:
+            if len(new_password) < 12:
+                flash("New administrator password must be at least 12 characters.", "error")
+                return redirect(url_for("admin_settings"))
+            admin = get_current_user()
+            get_db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(new_password), admin["id"]))
+            audit("admin_password_changed", "user", admin["id"])
+        audit("settings_updated", "settings", "all", "Site name, brand, fees and configuration updated")
+        flash("Settings saved. New fees apply to newly submitted listings; existing invoice amounts stay recorded on their listings.", "success")
+        return redirect(url_for("admin_settings"))
+    settings = all_settings()
+    # When an old configuration contains competitor destinations, present the admin
+    # with a cleaned form so saving the settings removes those shortcuts permanently.
+    settings["promo_link"] = "" if is_competitor_property_portal_url(settings.get("promo_link", "")) else settings.get("promo_link", "")
+    allowed_header_lines = []
+    for line in settings.get("header_links", "").splitlines():
+        if "|" not in line:
+            continue
+        _label, _target = line.split("|", 1)
+        if not is_competitor_property_portal_url(_target.strip()):
+            allowed_header_lines.append(line)
+    settings["header_links"] = "\n".join(allowed_header_lines)
+    return render_template("admin_settings.html", settings=settings)
+
+
+@app.route("/manage-admin/backups")
+@admin_required
+def admin_backups():
+    files = sorted(BACKUP_DIR.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
+    backups = [{"name": p.name, "size": p.stat().st_size, "modified": datetime.fromtimestamp(p.stat().st_mtime).strftime("%d %b %Y %H:%M"), "url": url_for("admin_download_backup", filename=p.name)} for p in files[:50]]
+    return render_template("admin_backups.html", backups=backups, db_size=DB_PATH.stat().st_size if DB_PATH.exists() else 0)
+
+
+@app.post("/manage-admin/backups/create")
+@admin_required
+def admin_create_backup():
+    filename = f"manual-{datetime.now().strftime('%Y%m%d-%H%M%S')}.sqlite3"
+    path = create_db_snapshot(BACKUP_DIR / filename)
+    audit("manual_database_backup_created", "backup", filename, f"{path.stat().st_size} bytes")
+    flash(f"Database-only SQLite snapshot created: {filename}", "success")
+    return redirect(url_for("admin_backups"))
+
+
+@app.route("/manage-admin/backups/download-current")
+@admin_required
+def admin_download_current_backup():
+    filename = f"patamahali-full-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.sqlite3"
+    path = create_db_snapshot(BACKUP_DIR / filename)
+    audit("database_backup_downloaded", "backup", filename)
+    return send_file(path, as_attachment=True, download_name=filename, mimetype="application/vnd.sqlite3", max_age=0)
+
+
+@app.route("/manage-admin/backups/download-full")
+@admin_required
+def admin_download_full_backup():
+    """Download a portable snapshot containing SQLite records and uploaded media."""
+    handle = tempfile.NamedTemporaryFile(prefix="patamahali-full-", suffix=".zip", delete=False)
+    path = Path(handle.name)
+    handle.close()
+    try:
+        create_full_backup_archive(path)
+        audit("full_backup_archive_downloaded", "backup", path.name, "SQLite database plus listing, branding, promotion and private documents")
+        response = send_file(path, as_attachment=True, download_name=f"patamahali-full-recovery-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip", mimetype="application/zip", max_age=0)
+        response.call_on_close(lambda: path.unlink(missing_ok=True))
+        return response
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+
+@app.route("/manage-admin/backups/<path:filename>")
+@admin_required
+def admin_download_backup(filename):
+    if Path(filename).name != filename or not filename.endswith(".sqlite3"):
+        abort(404)
+    path = BACKUP_DIR / filename
+    if not path.is_file(): abort(404)
+    audit("backup_downloaded", "backup", filename)
+    return send_file(path, as_attachment=True, download_name=filename, mimetype="application/vnd.sqlite3", max_age=0)
+
+
+@app.post("/manage-admin/backups/restore")
+@admin_required
+def admin_restore_backup():
+    file = request.files.get("backup_file")
+    if not file or not file.filename:
+        flash("Choose a SQLite backup file first.", "error")
+        return redirect(url_for("admin_backups"))
+    ext = Path(secure_filename(file.filename)).suffix.lower()
+    if ext not in {".sqlite3", ".sqlite", ".db"}:
+        flash("Choose a .sqlite3, .sqlite or .db file.", "error")
+        return redirect(url_for("admin_backups"))
+    temp_upload = BACKUP_DIR / f"restore-upload-{uuid.uuid4().hex}{ext}"
+    try:
+        file.save(temp_upload)
+        if temp_upload.stat().st_size < 1024:
+            raise ValueError("The file is too small to be a complete database.")
+        test_conn = sqlite3.connect(f"file:{temp_upload}?mode=ro", uri=True)
+        try:
+            check = test_conn.execute("PRAGMA quick_check").fetchone()
+            tables = {r[0] for r in test_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            required = {"settings", "users", "listings", "interests", "visitor_sessions", "visitor_events", "reports", "audit_log", "auth_attempts"}
+            if not check or check[0] != "ok" or not required.issubset(tables):
+                raise ValueError("This file is not a valid backup for this site.")
+        finally:
+            test_conn.close()
+        create_db_snapshot(BACKUP_DIR / f"before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}.sqlite3")
+        # Close this request's connection, then restore through SQLite's backup API.
+        # This preserves SQLite journaling semantics better than replacing a live DB file.
+        close_db()
+        source_conn = sqlite3.connect(str(temp_upload), timeout=30)
+        target_conn = connect_db(DB_PATH)
+        try:
+            source_conn.backup(target_conn)
+            target_conn.commit()
+            integrity = target_conn.execute("PRAGMA integrity_check").fetchone()
+            if not integrity or integrity[0] != "ok":
+                raise ValueError("Restored database failed the integrity check.")
+        finally:
+            source_conn.close()
+            target_conn.close()
+        refresh_current_user_cache()
+        audit_conn = connect_db()
+        try:
+            admin_id = session.get("user_id")
+            valid_admin = audit_conn.execute("SELECT id FROM users WHERE id=? AND role='admin'", (admin_id,)).fetchone() if admin_id else None
+            actor_id = valid_admin["id"] if valid_admin else None
+            audit_conn.execute("INSERT INTO audit_log(actor_id,action,target_type,target_id,details,created_at) VALUES(?,?,?,?,?,?)", (actor_id, "database_restored", "backup", secure_filename(file.filename), "Database replaced after SQLite integrity and schema validation", now_iso()))
+            audit_conn.commit()
+            if not valid_admin:
+                session.clear()
+                refresh_current_user_cache()
+        finally:
+            audit_conn.close()
+        flash("Database restored from the selected backup. A safety backup of the previous database was created first.", "success")
+    except Exception as exc:
+        flash(f"Restore failed: {exc}", "error")
+    finally:
+        temp_upload.unlink(missing_ok=True)
+    return redirect(url_for("admin_backups"))
+
+
+@app.route("/media/<path:filename>")
+def listing_media(filename):
+    if Path(filename).name != filename or Path(filename).suffix.lower().lstrip(".") not in ALLOWED_IMAGE_EXTENSIONS:
+        abort(404)
+    row = get_db().execute("SELECT id,images,status,approval_status,payment_status,property_verified FROM listings WHERE images LIKE ? LIMIT 1", (f"%{filename}%",)).fetchone()
+    if not row:
+        abort(404)
+    owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=(SELECT owner_id FROM listings WHERE id=?)", (row["id"],)).fetchone()
+    # Photos for unapproved listings are visible only to the owning partner or admin.
+    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and row["property_verified"] and owner and owner["verified"] and not owner["suspended"]):
+        user = get_current_user()
+        listing_owner = get_db().execute("SELECT owner_id FROM listings WHERE id=?", (row["id"],)).fetchone()
+        if not user or (user["role"] != "admin" and user["id"] != listing_owner["owner_id"]):
+            abort(404)
+    response = send_from_directory(LISTING_UPLOAD_DIR, filename, max_age=86400)
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
 
-@app.route("/sitemap.xml")
-def sitemap_xml():
-    # Canonical URLs always use the configured public custom domain, even when the
-    # visitor or crawler reaches a hosting-provider alias.
-    paths = ["/", url_for("project_request"), url_for("availability_centre")]
-    for category in get_categories():
-        paths.append(url_for("explore_category", category_slug=slugify(category)))
-    public_services = get_services(visible_only=True)
-    for service in public_services:
-        paths.append(url_for("service_detail", slug=service["slug"]))
-    seen_groups = set()
-    for service in public_services:
-        group_slug = slugify(service["group_name"])
-        if group_slug not in seen_groups:
-            seen_groups.add(group_slug)
-            paths.append(url_for("service_group", group_slug=group_slug))
-    public_downloads = get_public_downloads()
-    # The internal downloads directory intentionally declares noindex when it has no
-    # published files. Keep it out of the sitemap in that case to avoid conflicting signals.
-    if public_downloads:
-        paths.append(url_for("downloads_page"))
-    for item in public_downloads:
-        paths.append(url_for("download_detail", slug=item["slug"]))
-    urls = list(dict.fromkeys(canonical_url(path) for path in paths))
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for location in urls:
-        xml += f"  <url><loc>{xml_escape.escape(location)}</loc></url>\n"
-    xml += "</urlset>\n"
-    response = make_response(xml)
-    response.headers["Content-Type"] = "application/xml; charset=utf-8"
-    response.headers["Cache-Control"] = "public, max-age=300"
+@app.route("/branding/<path:filename>")
+def branding_media(filename):
+    if Path(filename).name != filename or Path(filename).suffix.lower().lstrip(".") not in ALLOWED_IMAGE_EXTENSIONS:
+        abort(404)
+    if not (BRANDING_DIR / filename).is_file() or setting("site_logo", "") != filename:
+        abort(404)
+    response = send_from_directory(BRANDING_DIR, filename, max_age=86400)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.route("/qr/platform.png")
+def qr_platform():
+    url = public_base() + "/"
+    return qr_response(url, "platform")
+
+
+@app.route("/qr/listing/<int:listing_id>.png")
+def listing_qr(listing_id):
+    row = get_db().execute("SELECT * FROM listings WHERE id=?", (listing_id,)).fetchone()
+    if not row or not is_public_listing(row): abort(404)
+    return qr_response(public_base() + url_for("listing_detail", listing_id=listing_id), f"listing-{listing_id}")
+
+
+def qr_response(url: str, filename: str):
+    from io import BytesIO
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
+    qr.add_data(url); qr.make(fit=True)
+    image = qr.make_image(fill_color="#102641", back_color="#FFFFFF")
+    out = BytesIO(); image.save(out, format="PNG"); out.seek(0)
+    return send_file(out, mimetype="image/png", download_name=f"{filename}.png", max_age=3600)
+
+
+@app.route("/promo-media/<path:filename>")
+def promo_media(filename):
+    if Path(filename).name != filename or setting("promo_image", "") != filename:
+        abort(404)
+    path = PROMO_DIR / filename
+    if not path.is_file():
+        abort(404)
+    response = send_from_directory(PROMO_DIR, filename, max_age=86400)
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
 
 @app.route("/manifest.webmanifest")
 def manifest():
-    response = make_response(render_template("manifest.webmanifest", brand=brand_safe(get_setting("brand_name")), theme=get_theme()[1]))
-    response.headers["Content-Type"] = "application/manifest+json"
-    return response
-
-
-def brand_safe(value):
-    return (value or "The Discovery Hub").strip()[:60]
+    from flask import Response
+    uploaded_logo = setting("site_logo", "")
+    if uploaded_logo:
+        logo_src = url_for("branding_media", filename=uploaded_logo)
+        logo_type = "image/webp" if uploaded_logo.lower().endswith(".webp") else "image/png" if uploaded_logo.lower().endswith(".png") else "image/jpeg"
+    else:
+        logo_src, logo_type = url_for("static", filename="img/patamahali-avatar.png"), "image/png"
+    body = {
+        "name": setting("site_name", "PataMahali"),
+        "short_name": setting("site_name", "PataMahali")[:12],
+        "description": setting("site_description", "Verified property marketplace"),
+        "start_url": "/", "scope": "/", "display": "standalone",
+        "background_color": "#F2F4F7", "theme_color": "#0C1B2D",
+        "icons": [{"src": logo_src, "sizes": "512x512" if logo_type == "image/png" else "any", "type": logo_type, "purpose": "any maskable"}],
+    }
+    return app.response_class(json.dumps(body), mimetype="application/manifest+json")
 
 
 @app.route("/service-worker.js")
 def service_worker():
-    response = send_file(BASE_DIR / "static" / "js" / "service-worker.js", mimetype="application/javascript")
+    response = send_from_directory(BASE_DIR / "static" / "js", "service-worker.js", mimetype="application/javascript")
     response.headers["Service-Worker-Allowed"] = "/"
     response.headers["Cache-Control"] = "no-cache"
     return response
 
 
-@app.route("/offline")
-def offline():
-    return render_template("offline.html", title="You're offline")
-
-
-# Fixed, trusted list only: the public availability tool never accepts arbitrary URLs,
-# avoiding open-proxy/SSRF behaviour. A short per-process cache prevents repeated probes.
-PLATFORM_PROBES = [
-    {"name": "House Hunter", "url": "https://house-hunter-ba7e.onrender.com/", "purpose": "Property, rentals and short stays"},
-    {"name": "OTravel", "url": "https://otravel-bleg.onrender.com/", "purpose": "Trips, retreats, ticketing and events"},
-    {"name": "TRT Furniture", "url": "https://trt-isfa.onrender.com/", "purpose": "Furniture, lighting and interiors"},
-    {"name": "Luxhari", "url": "https://luxhari.onrender.com/", "purpose": "Fashion, fabrics and accessories"},
-    {"name": "Oedge Mobility", "url": "https://oedge.onrender.com/services", "purpose": "Rides, moving and delivery"},
-    {"name": "Denmart", "url": "https://denmart.co.ke/", "purpose": "Online shopping"},
-    {"name": "Toror APK Site", "url": TOROR_APK_SITE_URL, "purpose": "Independent Android app catalogue"},
-]
-_AVAILABILITY_CACHE = {"checked_at": 0.0, "results": []}
-_AVAILABILITY_LOCK = threading.Lock()
-_AVAILABILITY_REFRESH_LOCK = threading.Lock()
-_AVAILABILITY_TTL_SECONDS = 75
-
-
-def _probe_platform(platform):
-    started = time.monotonic()
-    result = {"name": platform["name"], "url": platform["url"], "purpose": platform["purpose"],
-              "status": "unknown", "label": "Could not verify", "detail": "No reliable response was received.", "checked_at": None}
-    try:
-        request_obj = urllib.request.Request(
-            platform["url"], method="HEAD",
-            headers={"User-Agent": "Toror-Discovery-Availability/1.0 (+https://trorinovationstech.co.ke/)", "Accept": "text/html,*/*"},
-        )
-        try:
-            response = urllib.request.urlopen(request_obj, timeout=3.5)
-        except urllib.error.HTTPError as exc:
-            # HTTP errors still prove that a server responded; never call these "offline".
-            code = int(exc.code)
-            if code in (405, 501):
-                get_request = urllib.request.Request(platform["url"], headers={"User-Agent": "Toror-Discovery-Availability/1.0", "Range": "bytes=0-0"})
-                response = urllib.request.urlopen(get_request, timeout=3.5)
-            else:
-                result["status_code"] = code
-                if code < 500:
-                    result.update(status="online", label="Responding", detail=f"The server responded with HTTP {code}.")
-                else:
-                    result.update(status="issue", label="Server issue", detail=f"The server responded with HTTP {code}.")
-                result["checked_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-                result["duration_ms"] = round((time.monotonic() - started) * 1000)
-                return result
-        with response:
-            code = int(getattr(response, "status", 200) or 200)
-        result["status_code"] = code
-        if code < 400:
-            result.update(status="online", label="Responding", detail=f"The server responded with HTTP {code}.")
-        elif code < 500:
-            result.update(status="online", label="Responding", detail=f"The server responded with HTTP {code}.")
-        else:
-            result.update(status="issue", label="Server issue", detail=f"The server responded with HTTP {code}.")
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-        # Keep the wording cautious; DNS/network blocks and timeouts do not prove a site is down.
-        if isinstance(exc, urllib.error.HTTPError):
-            code = int(exc.code)
-            result["status_code"] = code
-            result.update(status="issue" if code >= 500 else "online",
-                          label="Server issue" if code >= 500 else "Responding",
-                          detail=f"The server responded with HTTP {code}.")
-        else:
-            result["detail"] = "The check timed out or the network did not allow verification. The site may still be available."
-    result["checked_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-    result["duration_ms"] = round((time.monotonic() - started) * 1000)
-    return result
-
-
-def get_platform_availability(force=False):
-    now = time.time()
-    with _AVAILABILITY_LOCK:
-        if not force and _AVAILABILITY_CACHE["results"] and now - _AVAILABILITY_CACHE["checked_at"] < _AVAILABILITY_TTL_SECONDS:
-            return _AVAILABILITY_CACHE["results"], _AVAILABILITY_CACHE["checked_at"]
-
-    # Avoid a burst of parallel external probes when multiple visitors press Check again.
-    with _AVAILABILITY_REFRESH_LOCK:
-        now = time.time()
-        with _AVAILABILITY_LOCK:
-            cache_age = now - _AVAILABILITY_CACHE["checked_at"] if _AVAILABILITY_CACHE["results"] else float("inf")
-            if _AVAILABILITY_CACHE["results"] and (cache_age < _AVAILABILITY_TTL_SECONDS and not force or cache_age < 8):
-                return _AVAILABILITY_CACHE["results"], _AVAILABILITY_CACHE["checked_at"]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(PLATFORM_PROBES)) as pool:
-            futures = [pool.submit(_probe_platform, platform) for platform in PLATFORM_PROBES]
-            results = []
-            for index, future in enumerate(futures):
-                try:
-                    results.append(future.result(timeout=4.5))
-                except Exception:
-                    platform = PLATFORM_PROBES[index]
-                    results.append({"name": platform["name"], "url": platform["url"], "purpose": platform["purpose"],
-                                    "status": "unknown", "label": "Could not verify", "detail": "This check did not complete. The site may still be available.", "checked_at": None})
-        checked_at = time.time()
-        with _AVAILABILITY_LOCK:
-            _AVAILABILITY_CACHE.update(checked_at=checked_at, results=results)
-        return results, checked_at
-
-
-@app.route("/availability")
-def availability_centre():
-    return render_template("availability.html", title="Platform availability checker",
-                           meta_description="Check whether connected Toror network platforms are responding, then open the service you need.",
-                           robots="index,follow")
-
-
-@app.route("/api/availability")
-def api_availability():
-    force = request.args.get("refresh") == "1"
-    results, checked_at = get_platform_availability(force=force)
-    response = make_response({"results": results, "checked_at": datetime.fromtimestamp(checked_at, tz=timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-                              "cache_seconds": _AVAILABILITY_TTL_SECONDS})
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@app.route("/health")
-def health():
-    try:
-        with db_session() as conn:
-            conn.execute("SELECT 1").fetchone()
-        return {"status": "ok", "database": "reachable"}, 200
-    except sqlite3.Error:
-        return {"status": "error", "database": "unavailable"}, 503
-
-
-# ---------------------------- Administration ----------------------------
-@app.route("/qaz", methods=["GET", "POST"])
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-    # Keep the old login URL working while making /qaz the single canonical entry.
-    if request.path == "/admin/login" and request.method == "GET":
-        return redirect("/qaz", code=302)
-    if session.get("admin_logged_in"):
-        return redirect(url_for("admin_dashboard"))
-    if request.method == "POST":
-        expected_name = os.environ.get("USER_NAME", "")
-        expected_password = os.environ.get("USER_PASSWORD", "")
-        supplied_name = request.form.get("username", "")
-        supplied_password = request.form.get("password", "")
-        if not expected_name or not expected_password:
-            flash("Admin login is not configured yet. Set USER_NAME and USER_PASSWORD in Render environment variables.", "error")
-        elif hmac.compare_digest(supplied_name, expected_name) and hmac.compare_digest(supplied_password, expected_password):
-            session.clear()
-            session["admin_logged_in"] = True
-            session["credential_fingerprint"] = credential_fingerprint()
-            session["csrf_token"] = secrets.token_urlsafe(32)
-            session.permanent = True
-            next_url = request.args.get("next", "")
-            if not next_url.startswith("/") or next_url.startswith("//"):
-                next_url = url_for("admin_dashboard")
-            return redirect(next_url)
-        else:
-            flash("Those login details were not recognised.", "error")
-    return render_template("admin_login.html", title="Administrator sign in")
-
-
-@app.route("/admin/logout", methods=["POST"])
-@admin_required
-def admin_logout():
-    session.clear()
-    flash("You have been signed out.", "success")
-    return redirect("/qaz")
-
-
-def admin_analytics():
-    since7 = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-    since30 = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
-    with db_session() as conn:
-        total_clicks = conn.execute("SELECT COUNT(*) n FROM events WHERE event_type='click'").fetchone()["n"]
-        clicks7 = conn.execute("SELECT COUNT(*) n FROM events WHERE event_type='click' AND created_at>=?", (since7,)).fetchone()["n"]
-        searches = conn.execute("SELECT COUNT(*) n FROM events WHERE event_type='search'").fetchone()["n"]
-        searches7 = conn.execute("SELECT COUNT(*) n FROM events WHERE event_type='search' AND created_at>=?", (since7,)).fetchone()["n"]
-        clicks30 = conn.execute("SELECT COUNT(*) n FROM events WHERE event_type='click' AND created_at>=?", (since30,)).fetchone()["n"]
-        top_sites = conn.execute("""SELECT s.id,s.name,s.category,COUNT(e.id) visits FROM events e JOIN sites s ON s.id=e.site_id
-                                  WHERE e.event_type='click' GROUP BY s.id ORDER BY visits DESC,s.name LIMIT 6""").fetchall()
-        top_searches = conn.execute("""SELECT query,COUNT(*) searches FROM events WHERE event_type='search' AND query!=''
-                                      GROUP BY query ORDER BY searches DESC,query LIMIT 10""").fetchall()
-        daily = []
-        for days_ago in range(13, -1, -1):
-            day = (datetime.utcnow().date() - timedelta(days=days_ago))
-            start = day.strftime("%Y-%m-%d") + " 00:00:00"
-            end = (day + timedelta(days=1)).strftime("%Y-%m-%d") + " 00:00:00"
-            n = conn.execute("SELECT COUNT(*) n FROM events WHERE created_at>=? AND created_at<?", (start, end)).fetchone()["n"]
-            daily.append({"day": day.strftime("%d %b"), "count": n})
-    all_sites = get_sites(order=False)
-    service_rows = get_services(visible_only=False)
-    with db_session() as conn:
-        active_ads = conn.execute("SELECT COUNT(*) n FROM hub_ads WHERE active=1").fetchone()["n"]
-        download_count = conn.execute("SELECT COUNT(*) n FROM hub_downloads WHERE visible=1").fetchone()["n"]
-    return {"total_clicks": total_clicks, "clicks7": clicks7, "clicks30": clicks30,
-            "searches": searches, "searches7": searches7, "top_sites": [dict(x) for x in top_sites],
-            "top_searches": [dict(x) for x in top_searches], "daily": daily, "site_count": len(all_sites),
-            "service_count": len(service_rows), "active_ads": active_ads, "download_count": download_count,
-            "visible_count": sum(1 for s in all_sites if s["visible"])}
-
-
-@app.route("/admin")
-@app.route("/admin/")
-@admin_required
-def admin_dashboard():
-    stats = admin_analytics()
-    max_daily = max([x["count"] for x in stats["daily"]] + [1])
-    return render_template("admin_dashboard.html", title="Overview", stats=stats, max_daily=max_daily, section="dashboard")
-
-
-def site_form_data(form):
-    name = form.get("name", "").strip()[:100]
-    if not name:
-        raise ValueError("Enter a site name.")
-    url = normalise_http_url(form.get("url", ""))
-    category = form.get("category", "More Services").strip()[:80] or "More Services"
-    extra_categories = form.get("extra_categories", "").strip()[:300]
-    icon = form.get("icon", "compass").strip()
-    if icon not in ICONS:
-        icon = "compass"
-    description = form.get("description", "").strip()[:400]
-    keywords = form.get("keywords", "").strip()[:1500]
-    cta = form.get("cta", "Explore now").strip()[:60] or "Explore now"
-    search_template = form.get("search_url_template", "").strip()[:500]
-    if search_template:
-        if "{query}" not in search_template:
-            raise ValueError("The search URL template must include {query}, for example https://example.com/search?q={query}.")
-        sample = search_template.replace("{query}", "test")
-        parsed = urlparse(sample)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError("Enter a valid search URL template.")
-        if parsed.netloc != urlparse(url).netloc:
-            raise ValueError("The search URL must use the same hostname as the destination URL.")
-    visible = 1 if form.get("visible") == "1" else 0
-    featured = 1 if form.get("featured") == "1" else 0
-    try:
-        sort_order = max(-10000, min(10000, int(form.get("sort_order", "100"))))
-    except ValueError:
-        sort_order = 100
-    return {"name": name, "slug": slugify(name), "url": url, "description": description,
-            "category": category, "extra_categories": extra_categories, "icon": icon, "keywords": keywords, "search_url_template": search_template,
-            "cta": cta, "visible": visible, "featured": featured, "sort_order": sort_order}
-
-
-@app.route("/admin/sites")
-@admin_required
-def admin_sites():
-    return render_template("admin_sites.html", title="Manage destinations", sites=get_sites(order=False), section="sites", icons=ICONS, categories=CATEGORIES)
-
-
-@app.route("/admin/sites/new", methods=["GET", "POST"])
-@admin_required
-def admin_site_new():
-    if request.method == "POST":
-        try:
-            data = site_form_data(request.form)
-            now = utc_now()
-            with db_session() as conn:
-                conn.execute("""INSERT INTO sites(name,slug,url,description,category,extra_categories,icon,keywords,search_url_template,cta,visible,featured,sort_order,created_at,updated_at)
-                    VALUES(:name,:slug,:url,:description,:category,:extra_categories,:icon,:keywords,:search_url_template,:cta,:visible,:featured,:sort_order,:created_at,:updated_at)""", {**data, "created_at": now, "updated_at": now})
-                conn.commit()
-            flash("Destination added to your network.", "success")
-            return redirect(url_for("admin_sites"))
-        except (ValueError, sqlite3.Error) as exc:
-            flash(str(exc), "error")
-    return render_template("admin_site_form.html", title="Add destination", site=None, section="sites", icons=ICONS, categories=CATEGORIES)
-
-
-@app.route("/admin/sites/<int:site_id>/edit", methods=["GET", "POST"])
-@admin_required
-def admin_site_edit(site_id):
-    site = get_site(site_id)
-    if not site:
-        abort(404)
-    if request.method == "POST":
-        try:
-            data = site_form_data(request.form)
-            data["updated_at"] = utc_now()
-            data["id"] = site_id
-            with db_session() as conn:
-                conn.execute("""UPDATE sites SET name=:name,slug=:slug,url=:url,description=:description,category=:category,extra_categories=:extra_categories,
-                    icon=:icon,keywords=:keywords,search_url_template=:search_url_template,cta=:cta,visible=:visible,
-                    featured=:featured,sort_order=:sort_order,updated_at=:updated_at WHERE id=:id""", data)
-                conn.commit()
-            flash("Destination updated.", "success")
-            return redirect(url_for("admin_sites"))
-        except (ValueError, sqlite3.Error) as exc:
-            flash(str(exc), "error")
-    return render_template("admin_site_form.html", title="Edit destination", site=site, section="sites", icons=ICONS, categories=CATEGORIES)
-
-
-@app.route("/admin/sites/<int:site_id>/visibility", methods=["POST"])
-@admin_required
-def admin_site_visibility(site_id):
-    site = get_site(site_id)
-    if not site:
-        abort(404)
-    with db_session() as conn:
-        conn.execute("UPDATE sites SET visible=?,updated_at=? WHERE id=?", (0 if site["visible"] else 1, utc_now(), site_id))
-        conn.commit()
-    flash(f"{site['name']} is now {'visible' if not site['visible'] else 'hidden'} on the public hub.", "success")
-    return redirect(url_for("admin_sites"))
-
-
-@app.route("/admin/sites/<int:site_id>/delete", methods=["POST"])
-@admin_required
-def admin_site_delete(site_id):
-    site = get_site(site_id)
-    if not site:
-        abort(404)
-    with db_session() as conn:
-        conn.execute("DELETE FROM sites WHERE id=?", (site_id,))
-        conn.commit()
-    flash(f"{site['name']} was removed from the hub directory. Its actual website was not deleted.", "success")
-    return redirect(url_for("admin_sites"))
-
-
-@app.route("/admin/appearance", methods=["GET", "POST"])
-@admin_required
-def admin_appearance():
-    if request.method == "POST":
-        brand = request.form.get("brand_name", "").strip()[:60]
-        if not brand:
-            flash("The brand name cannot be empty.", "error")
-        else:
-            mode = request.form.get("theme_mode", "auto")
-            selected = request.form.get("selected_theme", "evergreen")
-            if mode not in ("auto", "manual"):
-                mode = "auto"
-            if selected not in THEMES:
-                selected = "evergreen"
-            values = {
-                "brand_name": brand,
-                "tagline": request.form.get("tagline", "").strip()[:120],
-                "theme_mode": mode,
-                "selected_theme": selected,
-                "footer_note": request.form.get("footer_note", "").strip()[:160],
-                "whatsapp_number": request.form.get("whatsapp_number", "").strip()[:40],
-            }
-            for key, val in values.items():
-                set_setting(key, val)
-            flash("Branding and appearance settings saved.", "success")
-            return redirect(url_for("admin_appearance"))
-    return render_template("admin_appearance.html", title="Appearance & branding", section="appearance", themes=THEMES)
-
-
-@app.route("/admin/qr")
-@admin_required
-def admin_qr():
-    return render_template("admin_qr.html", title="QR codes", section="qr", sites=get_sites(visible_only=True))
-
-
-def make_qr_bytes(data):
-    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=3)
-    qr.add_data(data)
+@app.route("/site-qr.png")
+def site_qr():
+    """Return a scannable QR code for the configured public website URL."""
+    from io import BytesIO
+    target = public_base().rstrip("/") + "/"
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
+    qr.add_data(target)
     qr.make(fit=True)
-    image = qr.make_image(fill_color="#17342f", back_color="#ffffff")
-    import io
-    output = io.BytesIO()
-    image.save(output, format="PNG")
+    image = qr.make_image(fill_color="#102641", back_color="#ffffff").convert("RGB")
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
     output.seek(0)
-    return output
-
-
-@app.route("/share-qr.png")
-def public_hub_qr():
-    """Public QR code for visitors to share or scan the main landing page."""
-    output = make_qr_bytes(url_for("home", _external=True))
-    return send_file(output, mimetype="image/png", as_attachment=request.args.get("download") == "1", download_name="website-landing-page-qr.png", max_age=300)
-
-
-@app.route("/admin/qr/hub.png")
-@admin_required
-def admin_qr_hub_png():
-    output = make_qr_bytes(url_for("home", _external=True))
-    return send_file(output, mimetype="image/png", as_attachment=request.args.get("download") == "1", download_name="discovery-hub-qr.png")
-
-
-@app.route("/admin/qr/<int:site_id>.png")
-@admin_required
-def admin_qr_site_png(site_id):
-    site = get_site(site_id)
-    if not site:
-        abort(404)
-    output = make_qr_bytes(url_for("go_site", site_id=site_id, _external=True))
-    filename = f"{slugify(site['name'])}-qr.png"
-    return send_file(output, mimetype="image/png", as_attachment=request.args.get("download") == "1", download_name=filename)
-
-
-
-
-@app.route("/admin/services")
-@admin_required
-def admin_services():
-    services = get_services(visible_only=False)
-    for service in services:
-        service["effective_target"] = service_target(service)
-    return render_template("admin_services.html", title="Service directory", section="services", services=services, sites=get_sites(visible_only=False))
-
-
-def _service_form_data(form, current_id=None):
-    name = form.get("name", "").strip()[:120]
-    slug = slugify(form.get("slug", "") or name)[:140]
-    group_name = form.get("group_name", "").strip()[:100]
-    description = form.get("description", "").strip()[:1200]
-    keywords = form.get("keywords", "").strip()[:2000]
-    icon = form.get("icon", "compass").strip()
-    if icon not in ICONS and icon not in {"users","receipt","calendar","shirt","gem","table","sofa","archive","panels-top-left","lamp","flower-2","briefcase-business","door-open","grid-2x2","sun","plus-square","map-pin","warehouse","store","bike","car-front","truck","package","code-2","download","app-window"}:
-        icon = "compass"
-    if not name or not group_name or not description:
-        raise ValueError("Name, group and description are required.")
-    parent_raw = form.get("parent_site_id", "").strip()
-    parent_id = int(parent_raw) if parent_raw.isdigit() else None
-    target = optional_target_url(form.get("target_url", ""))
-    sort_order = max(-10000, min(10000, int(form.get("sort_order", "100") or 100)))
-    visible = 1 if form.get("visible") == "1" else 0
-    featured = 1 if form.get("featured") == "1" else 0
-    with db_session() as conn:
-        exists = conn.execute("SELECT id FROM hub_services WHERE slug=? AND id!=COALESCE(?,0)", (slug, current_id)).fetchone()
-    if exists:
-        raise ValueError("That URL slug is already used. Give this service a different slug.")
-    return {"name":name,"slug":slug,"group_name":group_name,"description":description,"keywords":keywords,"icon":icon,
-            "parent_site_id":parent_id,"target_url":target,"sort_order":sort_order,"visible":visible,"featured":featured}
-
-
-@app.route("/admin/services/new", methods=["GET", "POST"])
-@admin_required
-def admin_service_new():
-    sites = get_sites(visible_only=False)
-    if request.method == "POST":
-        try:
-            data = _service_form_data(request.form)
-            now = utc_now()
-            with db_session() as conn:
-                conn.execute("""INSERT INTO hub_services(name,slug,group_name,description,keywords,icon,parent_site_id,target_url,visible,featured,sort_order,created_at,updated_at)
-                    VALUES(:name,:slug,:group_name,:description,:keywords,:icon,:parent_site_id,:target_url,:visible,:featured,:sort_order,:created_at,:updated_at)""", {**data,"created_at":now,"updated_at":now})
-            flash("Service added to the directory.", "success")
-            return redirect(url_for("admin_services"))
-        except (ValueError, sqlite3.Error) as exc:
-            flash(str(exc), "error")
-    return render_template("admin_service_form.html", title="Add service", section="services", service=None, sites=sites, icons=ICONS, groups=sorted({x["group_name"] for x in get_services()}))
-
-
-@app.route("/admin/services/<int:service_id>/edit", methods=["GET", "POST"])
-@admin_required
-def admin_service_edit(service_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM hub_services WHERE id=?", (service_id,)).fetchone()
-    if not row: abort(404)
-    service = dict(row)
-    sites = get_sites(visible_only=False)
-    if request.method == "POST":
-        try:
-            data = _service_form_data(request.form, service_id)
-            data.update({"id":service_id,"updated_at":utc_now()})
-            with db_session() as conn:
-                conn.execute("""UPDATE hub_services SET name=:name,slug=:slug,group_name=:group_name,description=:description,keywords=:keywords,icon=:icon,
-                    parent_site_id=:parent_site_id,target_url=:target_url,visible=:visible,featured=:featured,sort_order=:sort_order,updated_at=:updated_at WHERE id=:id""", data)
-            flash("Service details saved.", "success")
-            return redirect(url_for("admin_services"))
-        except (ValueError, sqlite3.Error) as exc:
-            flash(str(exc), "error")
-    return render_template("admin_service_form.html", title="Edit service", section="services", service=service, sites=sites, icons=ICONS, groups=sorted({x["group_name"] for x in get_services()}))
-
-
-@app.route("/admin/services/<int:service_id>/visibility", methods=["POST"])
-@admin_required
-def admin_service_visibility(service_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT name,visible FROM hub_services WHERE id=?", (service_id,)).fetchone()
-        if not row: abort(404)
-        conn.execute("UPDATE hub_services SET visible=?,updated_at=? WHERE id=?", (0 if row["visible"] else 1, utc_now(), service_id))
-    flash(f"{row['name']} is now {'visible' if not row['visible'] else 'hidden'}.", "success")
-    return redirect(url_for("admin_services"))
-
-
-@app.route("/admin/services/<int:service_id>/delete", methods=["POST"])
-@admin_required
-def admin_service_delete(service_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT name FROM hub_services WHERE id=?", (service_id,)).fetchone()
-        if not row: abort(404)
-        conn.execute("DELETE FROM hub_services WHERE id=?", (service_id,))
-    flash(f"{row['name']} was removed from the directory.", "success")
-    return redirect(url_for("admin_services"))
-
-
-@app.route("/admin/ads")
-@admin_required
-def admin_ads():
-    with db_session() as conn:
-        ads = [dict(r) for r in conn.execute("SELECT * FROM hub_ads ORDER BY active DESC, sort_order, id DESC").fetchall()]
-    return render_template("admin_ads.html", title="Motion ad studio", section="ads", ads=ads)
-
-
-def _ad_form_data(form, current=None):
-    name = form.get("name", "").strip()[:120]
-    headline = form.get("headline", "").strip()[:180]
-    subheadline = form.get("subheadline", "").strip()[:250]
-    body = form.get("body", "").strip()[:1200]
-    cta_label = form.get("cta_label", "Explore").strip()[:60] or "Explore"
-    target = optional_target_url(form.get("target_url", "/#service-directory"))
-    style = form.get("style", "cinematic")
-    if style not in AD_STYLE_OPTIONS: style = "cinematic"
-    variants = "\n".join([x.strip()[:180] for x in re.split(r"[\n;|]+", form.get("headline_variants", "")) if x.strip()][:8])
-    try: order = max(-10000, min(10000, int(form.get("sort_order", "100") or 100)))
-    except ValueError: order = 100
-    if not name or not headline or not body:
-        raise ValueError("Campaign name, headline and advert message are required.")
-    start_at = form.get("start_at", "").strip()[:16].replace("T", " ")
-    end_at = form.get("end_at", "").strip()[:16].replace("T", " ")
-    if start_at and not re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", start_at): start_at = ""
-    if end_at and not re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", end_at): end_at = ""
-    if start_at: start_at += ":00"
-    if end_at: end_at += ":59"
-    music = 1 if form.get("music_enabled") == "1" else 0
-    active = 1 if form.get("active") == "1" else 0
-    image_filename = current.get("image_filename", "") if current else ""
-    if form.get("remove_image") == "1": image_filename = ""
-    upload = request.files.get("ad_image")
-    if upload and upload.filename:
-        ext = Path(upload.filename).suffix.lower()
-        if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
-            raise ValueError("Advert images must be PNG, JPG or WebP.")
-        if len(upload.read()) > 8 * 1024 * 1024:
-            raise ValueError("Advert images must be 8 MB or smaller.")
-        upload.stream.seek(0)
-        image_filename = secrets.token_hex(12) + ext
-        upload.save(AD_UPLOAD_DIR / image_filename)
-    return {"name":name,"headline":headline,"subheadline":subheadline,"body":body,"cta_label":cta_label,"target_url":target,"style":style,
-            "headline_variants":variants,"music_enabled":music,"active":active,"sort_order":order,"start_at":start_at,"end_at":end_at,"image_filename":image_filename}
-
-
-_AD_VIDEO_PALETTES = {
-    "cinematic": ((22, 18, 30), (82, 44, 68), (232, 201, 173)),
-    "champagne": ((47, 34, 38), (124, 83, 75), (247, 221, 182)),
-    "electric": ((15, 17, 41), (77, 42, 135), (88, 219, 255)),
-    "sunset": ((74, 32, 49), (198, 83, 65), (255, 199, 119)),
-    "minimal": ((16, 18, 22), (58, 61, 68), (244, 244, 238)),
-    "orchid": ((35, 19, 47), (106, 54, 122), (240, 163, 212)),
-}
-
-
-def _ad_video_font(size, bold=False):
-    candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
-    ]
-    for candidate in candidates:
-        try:
-            return ImageFont.truetype(candidate, size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-def _ad_video_wrap(draw, text, font, max_width, max_lines=3):
-    words = re.findall(r"\S+", str(text or "").strip())
-    if not words:
-        return []
-    lines, current = [], ""
-    for word in words:
-        trial = f"{current} {word}".strip()
-        if current and draw.textbbox((0, 0), trial, font=font)[2] > max_width:
-            lines.append(current)
-            current = word
-            if len(lines) >= max_lines:
-                break
-        else:
-            current = trial
-    if current and len(lines) < max_lines:
-        lines.append(current)
-    if len(lines) == max_lines and words:
-        joined = " ".join(lines)
-        consumed = len(joined.split())
-        if consumed < len(words):
-            last = lines[-1]
-            while last and draw.textbbox((0, 0), last + "…", font=font)[2] > max_width:
-                last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
-            lines[-1] = last.rstrip(" .") + "…"
-    return lines
-
-
-def _render_ad_video(headline, subheadline, body, cta_label, style, variants, image_file, output_path):
-    """Render an actual 8-second 720p H.264 MP4 from the advert form inputs."""
-    import imageio_ffmpeg
-
-    width, height, fps, seconds = 1280, 720, 24, 8
-    total_frames = fps * seconds
-    c1, c2, accent = _AD_VIDEO_PALETTES.get(style, _AD_VIDEO_PALETTES["cinematic"])
-    base = Image.new("RGB", (width, height))
-    base_draw = ImageDraw.Draw(base)
-    for y in range(height):
-        ratio = y / max(1, height - 1)
-        # A gently curved two-colour gradient, precomputed once for every frame.
-        curve = min(1.0, max(0.0, ratio * 0.88 + 0.06))
-        color = tuple(int(c1[i] * (1 - curve) + c2[i] * curve) for i in range(3))
-        base_draw.line((0, y, width, y), fill=color)
-
-    moving_image = None
-    if image_file:
-        try:
-            with Image.open(image_file) as opened:
-                artwork = ImageOps.exif_transpose(opened).convert("RGB")
-                moving_image = ImageOps.fit(artwork, (width + 100, height + 90), method=Image.Resampling.LANCZOS)
-        except Exception as exc:
-            raise ValueError("The selected advert image could not be read. Try a valid PNG, JPG or WebP image.") from exc
-
-    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    overlay_draw = ImageDraw.Draw(overlay)
-    for x in range(width):
-        alpha = int(155 * (1 - x / width) ** 0.62 + 18)
-        overlay_draw.line((x, 0, x, height), fill=(5, 6, 12, alpha))
-
-    brand_font = _ad_video_font(18, True)
-    kicker_font = _ad_video_font(17, True)
-    title_font = _ad_video_font(61, True)
-    body_font = _ad_video_font(25, False)
-    cta_font = _ad_video_font(19, True)
-    small_font = _ad_video_font(13, True)
-    title_choices = [str(headline).strip()]
-    title_choices.extend([str(value).strip() for value in variants if str(value).strip()])
-    # When a user supplies only a short headline, automatically vary the motion and
-    # framing rather than requiring a long list of copy from the administrator.
-    title_choices = list(dict.fromkeys(x for x in title_choices if x)) or ["Discover what comes next."]
-    title_choices = title_choices[:4]
-    if len(title_choices) == 1:
-        title_choices += ["One place to start. More to discover.", "Your next step starts here."]
-    phase_len = total_frames / len(title_choices)
-
-    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-               "-f", "rawvideo", "-vcodec", "rawvideo", "-pix_fmt", "rgb24",
-               "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-an",
-               "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-               "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output_path)]
-    with open(os.devnull, "wb") as nullout:
-        proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=nullout, stderr=subprocess.PIPE)
-        try:
-            for frame_no in range(total_frames):
-                phase = min(len(title_choices) - 1, int(frame_no / phase_len))
-                phase_frame = frame_no - int(phase * phase_len)
-                phase_frames = max(1, min(total_frames - int(phase * phase_len), int(phase_len)))
-                fade = min(1.0, phase_frame / max(1, int(fps * 0.45)), (phase_frames - phase_frame) / max(1, int(fps * 0.25)))
-                fade = max(0.12, min(1.0, fade))
-                t = frame_no / total_frames
-
-                if moving_image is not None:
-                    left = int(50 + 28 * (1 - math.cos(t * math.pi * 2)))
-                    top = int(45 + 15 * (1 - math.sin(t * math.pi * 2)))
-                    frame = moving_image.crop((left, top, left + width, top + height)).convert("RGBA")
-                    frame = Image.blend(frame.convert("RGB"), base, 0.28).convert("RGBA")
-                    frame = Image.alpha_composite(frame, overlay)
-                else:
-                    frame = base.copy().convert("RGBA")
-                    glow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-                    gd = ImageDraw.Draw(glow)
-                    ox = int(width * (0.76 + 0.08 * math.sin(t * math.pi * 2)))
-                    oy = int(height * (0.22 + 0.1 * math.cos(t * math.pi * 2)))
-                    radius = int(220 + 22 * math.sin(t * math.pi * 4))
-                    gd.ellipse((ox-radius, oy-radius, ox+radius, oy+radius), fill=(*accent, 48))
-                    gd.ellipse((int(width*.74), int(height*.62), int(width*.98), int(height*.98)), outline=(*accent, 80), width=3)
-                    frame = Image.alpha_composite(frame, glow)
-                    frame = Image.alpha_composite(frame, overlay)
-
-                draw_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-                draw = ImageDraw.Draw(draw_layer)
-                opacity = int(255 * fade)
-                draw.rounded_rectangle((92, 110, 101, 570), radius=4, fill=(*accent, 220))
-                kicker = str(subheadline or "TOROR TECHNOLOGY & INNOVATIONS").strip()[:100].upper()
-                draw.text((126, 116), kicker, font=kicker_font, fill=(*accent, opacity))
-
-                active_title = title_choices[phase]
-                lines = _ad_video_wrap(draw, active_title, title_font, 1000, max_lines=2)
-                x = 124 + int(20 * (1 - fade))
-                y = 208
-                line_height = 76
-                for i, line in enumerate(lines):
-                    draw.text((x, y + i * line_height), line, font=title_font, fill=(255, 255, 255, opacity), stroke_width=0)
-                body_lines = _ad_video_wrap(draw, body, body_font, 930, max_lines=3)
-                by = y + max(1, len(lines)) * line_height + 14
-                for i, line in enumerate(body_lines):
-                    draw.text((x, by + i * 36), line, font=body_font, fill=(244, 240, 244, int(220 * fade)))
-
-                cta = (str(cta_label or "Explore").strip()[:55])
-                cta_width = min(370, max(170, int(draw.textbbox((0, 0), cta, font=cta_font)[2] + 54)))
-                cta_y = 558
-                draw.rounded_rectangle((124, cta_y, 124 + cta_width, cta_y + 58), radius=11, fill=(*accent, opacity))
-                draw.text((147, cta_y + 17), cta, font=cta_font, fill=(*c1, opacity))
-                draw.text((width - 415, height - 48), "TOROR TECHNOLOGY & INNOVATIONS LTD.", font=small_font, fill=(255, 255, 255, 172))
-                draw.text((width - 126, height - 48), f"{phase + 1:02d} / {len(title_choices):02d}", font=small_font, fill=(*accent, 220))
-                frame = Image.alpha_composite(frame, draw_layer).convert("RGB")
-                proc.stdin.write(frame.tobytes())
-            proc.stdin.close()
-            error_text = proc.stderr.read().decode("utf-8", "replace")
-            return_code = proc.wait(timeout=120)
-            if return_code != 0 or not Path(output_path).is_file() or Path(output_path).stat().st_size < 1000:
-                raise RuntimeError(error_text[-800:] or "The MP4 renderer did not create a video file.")
-        except Exception:
-            try:
-                if proc.stdin and not proc.stdin.closed:
-                    proc.stdin.close()
-            except Exception:
-                pass
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
-            raise
-
-
-@app.route("/admin/ads/render.mp4", methods=["POST"])
-@admin_required
-def admin_ad_render_mp4():
-    ad_id_raw = request.form.get("render_ad_id", "").strip()
-    ad_id = int(ad_id_raw) if ad_id_raw.isdigit() else None
-    current_ad = None
-    if ad_id:
-        with db_session() as conn:
-            row = conn.execute("SELECT * FROM hub_ads WHERE id=?", (ad_id,)).fetchone()
-        current_ad = dict(row) if row else None
-
-    headline = request.form.get("headline", "").strip()[:180]
-    subheadline = request.form.get("subheadline", "").strip()[:250]
-    body = request.form.get("body", "").strip()[:1200]
-    cta_label = request.form.get("cta_label", "Explore").strip()[:60] or "Explore"
-    style = request.form.get("style", "cinematic")
-    if style not in AD_STYLE_OPTIONS:
-        style = "cinematic"
-    variants = [item.strip()[:180] for item in re.split(r"[\n;|]+", request.form.get("headline_variants", "")) if item.strip()][:7]
-    if not headline or not body:
-        flash("Add a headline and a supporting message before rendering your MP4.", "error")
-        return redirect(url_for("admin_ad_edit", ad_id=ad_id) if current_ad else url_for("admin_ad_new"))
-
-    image_path = None
-    upload = request.files.get("ad_image")
-    temp_dir = tempfile.mkdtemp(prefix="hub-ad-render-")
-    output_path = str(Path(temp_dir) / "toror-advert.mp4")
-    try:
-        if upload and upload.filename:
-            ext = Path(upload.filename).suffix.lower()
-            if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
-                raise ValueError("Advert images must be PNG, JPG or WebP.")
-            payload = upload.read(8 * 1024 * 1024 + 1)
-            if len(payload) > 8 * 1024 * 1024:
-                raise ValueError("Advert images must be 8 MB or smaller.")
-            probe = Image.open(io.BytesIO(payload))
-            probe.verify()
-            image_path = str(Path(temp_dir) / ("artwork" + ext))
-            Path(image_path).write_bytes(payload)
-        elif current_ad and current_ad.get("image_filename"):
-            candidate = AD_UPLOAD_DIR / Path(current_ad["image_filename"]).name
-            if candidate.is_file():
-                image_path = str(candidate)
-
-        _render_ad_video(headline, subheadline, body, cta_label, style, variants, image_path, output_path)
-        response = send_file(output_path, mimetype="video/mp4", as_attachment=True,
-                             download_name=f"toror-advert-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.mp4",
-                             max_age=0, conditional=False)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.call_on_close(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
-        return response
-    except ValueError as exc:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        flash(str(exc), "error")
-    except Exception as exc:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        app.logger.exception("Advert MP4 render failed")
-        flash("MP4 rendering failed on this server. Verify the image and retry; the advert itself has not been changed.", "error")
-    return redirect(url_for("admin_ad_edit", ad_id=ad_id) if current_ad else url_for("admin_ad_new"))
-
-
-@app.route("/admin/ads/new", methods=["GET", "POST"])
-@admin_required
-def admin_ad_new():
-    if request.method == "POST":
-        try:
-            data = _ad_form_data(request.form)
-            now = utc_now()
-            with db_session() as conn:
-                conn.execute("""INSERT INTO hub_ads(name,headline,subheadline,body,cta_label,target_url,style,headline_variants,image_filename,music_enabled,active,sort_order,start_at,end_at,created_at,updated_at)
-                    VALUES(:name,:headline,:subheadline,:body,:cta_label,:target_url,:style,:headline_variants,:image_filename,:music_enabled,:active,:sort_order,:start_at,:end_at,:created_at,:updated_at)""", {**data,"created_at":now,"updated_at":now})
-            flash("Advert created. Publish it when you're ready.", "success")
-            return redirect(url_for("admin_ads"))
-        except (ValueError, sqlite3.Error) as exc: flash(str(exc), "error")
-    return render_template("admin_ad_form.html", title="Create advert", section="ads", ad=None, ad_styles=AD_STYLE_OPTIONS)
-
-
-@app.route("/admin/ads/<int:ad_id>/edit", methods=["GET", "POST"])
-@admin_required
-def admin_ad_edit(ad_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM hub_ads WHERE id=?", (ad_id,)).fetchone()
-    if not row: abort(404)
-    ad = dict(row)
-    if request.method == "POST":
-        try:
-            data = _ad_form_data(request.form, ad)
-            data.update({"id":ad_id,"updated_at":utc_now()})
-            with db_session() as conn:
-                conn.execute("""UPDATE hub_ads SET name=:name,headline=:headline,subheadline=:subheadline,body=:body,cta_label=:cta_label,target_url=:target_url,
-                    style=:style,headline_variants=:headline_variants,image_filename=:image_filename,music_enabled=:music_enabled,active=:active,sort_order=:sort_order,
-                    start_at=:start_at,end_at=:end_at,updated_at=:updated_at WHERE id=:id""", data)
-            flash("Advert updated.", "success")
-            return redirect(url_for("admin_ads"))
-        except (ValueError, sqlite3.Error) as exc: flash(str(exc), "error")
-    return render_template("admin_ad_form.html", title="Edit advert", section="ads", ad=ad, ad_styles=AD_STYLE_OPTIONS)
-
-
-@app.route("/admin/ads/<int:ad_id>/toggle", methods=["POST"])
-@admin_required
-def admin_ad_toggle(ad_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT name,active FROM hub_ads WHERE id=?", (ad_id,)).fetchone()
-        if not row: abort(404)
-        conn.execute("UPDATE hub_ads SET active=?,updated_at=? WHERE id=?", (0 if row["active"] else 1, utc_now(), ad_id))
-    flash(f"{row['name']} is now {'published' if not row['active'] else 'unpublished'}.", "success")
-    return redirect(url_for("admin_ads"))
-
-
-@app.route("/admin/ads/<int:ad_id>/delete", methods=["POST"])
-@admin_required
-def admin_ad_delete(ad_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM hub_ads WHERE id=?", (ad_id,)).fetchone()
-        if not row: abort(404)
-        conn.execute("DELETE FROM hub_ads WHERE id=?", (ad_id,))
-    if row["image_filename"]:
-        try: (AD_UPLOAD_DIR / Path(row["image_filename"]).name).unlink(missing_ok=True)
-        except OSError: pass
-    flash(f"{row['name']} was deleted.", "success")
-    return redirect(url_for("admin_ads"))
-
-
-@app.route("/hub-media/<filename>")
-def hub_media(filename):
-    safe = Path(filename).name
-    if Path(safe).suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}: abort(404)
-    return send_from_directory(AD_UPLOAD_DIR, safe, max_age=86400)
-
-
-@app.route("/admin/downloads", methods=["GET", "POST"])
-@admin_required
-def admin_downloads():
-    if request.method == "POST":
-        upload = request.files.get("download_file")
-        title = request.form.get("title", "").strip()[:120]
-        description = request.form.get("description", "").strip()[:1500]
-        platform = request.form.get("platform", "Android").strip()[:60] or "Other"
-        version = request.form.get("version", "").strip()[:60]
-        keywords = request.form.get("keywords", "").strip()[:1500]
-        external_url = optional_target_url(request.form.get("external_url", ""))
-        if not title or not description or (not (upload and upload.filename) and not external_url):
-            flash("Add a title, description, and either upload a file or provide a direct download URL.", "error")
-        else:
-            stored = ""; original = ""
-            try:
-                if upload and upload.filename:
-                    ext = Path(upload.filename).suffix.lower()
-                    if ext not in DOWNLOAD_EXTENSIONS:
-                        raise ValueError("Allowed files: APK, AAB, ZIP, PDF and common image files.")
-                    if len(upload.read()) > 120 * 1024 * 1024:
-                        raise ValueError("Each download must be 120 MB or smaller.")
-                    upload.stream.seek(0)
-                    original = Path(upload.filename).name[:180]
-                    stored = secrets.token_hex(18) + ext
-                    upload.save(DOWNLOAD_UPLOAD_DIR / stored)
-                slug_base = slugify(title)
-                slug = slug_base
-                with db_session() as conn:
-                    existing = conn.execute("SELECT 1 FROM hub_downloads WHERE slug=?", (slug,)).fetchone()
-                    if existing: slug = f"{slug_base}-{secrets.token_hex(3)}"
-                    conn.execute("""INSERT INTO hub_downloads(title,slug,description,platform,version,keywords,stored_filename,original_filename,external_url,visible,sort_order,downloads_count,created_at,updated_at)
-                        VALUES(?,?,?,?,?,?,?,?,?,1,100,0,?,?)""", (title,slug,description,platform,version,keywords,stored,original,external_url,utc_now(),utc_now()))
-                flash("Download added to the public library.", "success")
-                return redirect(url_for("admin_downloads"))
-            except (ValueError, sqlite3.Error) as exc:
-                if stored: (DOWNLOAD_UPLOAD_DIR / stored).unlink(missing_ok=True)
-                flash(str(exc), "error")
-    with db_session() as conn:
-        items = [dict(r) for r in conn.execute("SELECT * FROM hub_downloads ORDER BY visible DESC, sort_order, created_at DESC").fetchall()]
-    return render_template("admin_downloads.html", title="Downloads library", section="downloads", items=items)
-
-
-@app.route("/admin/downloads/<int:item_id>/visibility", methods=["POST"])
-@admin_required
-def admin_download_visibility(item_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT title,visible FROM hub_downloads WHERE id=?", (item_id,)).fetchone()
-        if not row: abort(404)
-        conn.execute("UPDATE hub_downloads SET visible=?,updated_at=? WHERE id=?", (0 if row["visible"] else 1,utc_now(),item_id))
-    flash(f"{row['title']} is now {'visible' if not row['visible'] else 'hidden'}.", "success")
-    return redirect(url_for("admin_downloads"))
-
-
-@app.route("/admin/downloads/<int:item_id>/delete", methods=["POST"])
-@admin_required
-def admin_download_delete(item_id):
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM hub_downloads WHERE id=?", (item_id,)).fetchone()
-        if not row: abort(404)
-        conn.execute("DELETE FROM hub_downloads WHERE id=?", (item_id,))
-    if row["stored_filename"]:
-        (DOWNLOAD_UPLOAD_DIR / Path(row["stored_filename"]).name).unlink(missing_ok=True)
-    flash(f"{row['title']} was removed.", "success")
-    return redirect(url_for("admin_downloads"))
-
-
-@app.route("/admin/backup", methods=["GET", "POST"])
-@admin_required
-def admin_backup():
-    if request.method == "POST":
-        try:
-            destination = _create_sqlite_backup("manual")
-            flash(f"Backup created: {destination.name}", "success")
-        except Exception:
-            app.logger.exception("Database backup failed")
-            flash("The backup could not be created. Check the server logs and storage permissions.", "error")
-        return redirect(url_for("admin_backup"))
-    backups = []
-    if BACKUP_DIR.exists():
-        for file in sorted(BACKUP_DIR.glob("discovery-hub-*.sqlite3"), key=lambda f: f.stat().st_mtime, reverse=True):
-            try:
-                backups.append({"name": file.name, "size": file.stat().st_size, "modified": datetime.fromtimestamp(file.stat().st_mtime).strftime("%d %b %Y, %H:%M")})
-            except OSError:
-                pass
-    return render_template("admin_backup.html", title="Database backups", section="backup", backups=backups, db_path=str(DB_PATH))
-
-
-@app.route("/admin/backup/restore", methods=["POST"])
-@admin_required
-def admin_backup_restore():
-    upload = request.files.get("backup_file")
-    if not upload or not upload.filename:
-        flash("Choose a .sqlite3 database backup or a full .zip backup.", "error")
-        return redirect(url_for("admin_backup"))
-    suffix = Path(upload.filename).suffix.lower()
-    if suffix not in (".sqlite3", ".db", ".zip"):
-        flash("Only a SQLite database backup or a full ZIP backup can be restored.", "error")
-        return redirect(url_for("admin_backup"))
-    temp_dir = Path(tempfile.mkdtemp(prefix="hub-restore-"))
-    staged_db = temp_dir / "restore.sqlite3"
-    staged_assets = temp_dir / "uploads"
-    staged_ads = staged_assets / "ads"
-    staged_downloads = staged_assets / "downloads"
-    staged_ads.mkdir(parents=True, exist_ok=True)
-    staged_downloads.mkdir(parents=True, exist_ok=True)
-    has_full_assets = False
-    try:
-        if suffix == ".zip":
-            bundle = temp_dir / "upload.zip"
-            upload.save(bundle)
-            with zipfile.ZipFile(bundle, "r") as archive:
-                allowed_total = 0
-                for info in archive.infolist():
-                    path = Path(info.filename)
-                    allowed_total += info.file_size
-                    if allowed_total > 300 * 1024 * 1024:
-                        raise ValueError("The backup archive expands beyond the allowed size.")
-                    if path.is_absolute() or ".." in path.parts or (path.parts and ":" in path.parts[0]):
-                        raise ValueError("The backup contains an unsafe path.")
-                    if info.filename == "BACKUP-INFO.txt":
-                        has_full_assets = True
-                    elif info.filename == "database/discovery-hub.sqlite3":
-                        staged_db.write_bytes(archive.read(info))
-                    elif info.filename.startswith("uploads/ads/") or info.filename.startswith("uploads/downloads/"):
-                        if len(path.parts) < 3 or not path.parts[-1]:
-                            continue
-                        asset_name = Path(path.parts[-1]).name
-                        if asset_name in (".", ".."):
-                            raise ValueError("The backup contains an unsafe media filename.")
-                        target_dir = staged_ads if path.parts[1] == "ads" else staged_downloads
-                        target_dir.mkdir(parents=True, exist_ok=True)
-                        (target_dir / asset_name).write_bytes(archive.read(info))
-            if not staged_db.exists():
-                raise ValueError("The ZIP does not contain database/discovery-hub.sqlite3.")
-        else:
-            upload.save(staged_db)
-        check = sqlite3.connect(str(staged_db))
-        try:
-            integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
-            tables = {r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-            if integrity != "ok" or not {"settings", "sites", "events"}.issubset(tables):
-                raise ValueError("The selected file is not a valid Discovery Hub database backup.")
-        finally:
-            check.close()
-        pre_restore_backup = _create_sqlite_backup("pre-restore")
-        # Full ZIP restores swap the uploaded media as well as the database. The
-        # current database and media stay recoverable if any part of the swap fails.
-        media_rollback = []
-        db_switched = False
-        try:
-            if suffix == ".zip" and has_full_assets:
-                token = secrets.token_hex(6)
-                media_pairs = [(staged_ads, AD_UPLOAD_DIR), (staged_downloads, DOWNLOAD_UPLOAD_DIR)]
-                for staged_dir, live_dir in media_pairs:
-                    live_dir.parent.mkdir(parents=True, exist_ok=True)
-                    stage_on_volume = live_dir.parent / (live_dir.name + ".restore-stage-" + token)
-                    shutil.copytree(staged_dir, stage_on_volume, dirs_exist_ok=True)
-                    old_dir = live_dir.parent / (live_dir.name + ".restore-old-" + token)
-                    had_old = live_dir.exists()
-                    if had_old:
-                        os.replace(live_dir, old_dir)
-                    media_rollback.append((live_dir, old_dir, had_old))
-                    os.replace(stage_on_volume, live_dir)
-            with db_session() as conn:
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            for sidecar in (Path(str(DB_PATH) + "-wal"), Path(str(DB_PATH) + "-shm")):
-                try: sidecar.unlink(missing_ok=True)
-                except OSError: pass
-            staged_live = DB_PATH.with_suffix(".restore-stage.sqlite3")
-            shutil.copy2(staged_db, staged_live)
-            os.replace(staged_live, DB_PATH)
-            db_switched = True
-            initialise_database()
-            with db_session() as conn:
-                secret_row = conn.execute("SELECT value FROM settings WHERE key='app_secret'").fetchone()
-                if secret_row:
-                    app.secret_key = secret_row["value"]
-        except Exception:
-            for live_dir, old_dir, had_old in reversed(media_rollback):
-                if live_dir.exists(): shutil.rmtree(live_dir, ignore_errors=True)
-                if had_old and old_dir.exists(): os.replace(old_dir, live_dir)
-            if db_switched and pre_restore_backup.exists():
-                try:
-                    for sidecar in (Path(str(DB_PATH) + "-wal"), Path(str(DB_PATH) + "-shm")):
-                        sidecar.unlink(missing_ok=True)
-                    rollback_live = DB_PATH.with_suffix(".rollback-stage.sqlite3")
-                    shutil.copy2(pre_restore_backup, rollback_live)
-                    os.replace(rollback_live, DB_PATH)
-                    initialise_database()
-                    with db_session() as conn:
-                        secret_row = conn.execute("SELECT value FROM settings WHERE key='app_secret'").fetchone()
-                        if secret_row:
-                            app.secret_key = secret_row["value"]
-                except Exception:
-                    app.logger.exception("Could not restore the pre-restore database after a failed restore")
-            raise
-        else:
-            for _live_dir, _old_dir, _had_old in media_rollback:
-                if _old_dir.exists(): shutil.rmtree(_old_dir, ignore_errors=True)
-        flash("Backup restored. Existing data was snapshotted first, and the hub refreshed its schema for this version.", "success")
-    except Exception as exc:
-        app.logger.exception("Backup restore failed")
-        flash(f"Restore failed: {str(exc)[:220]}", "error")
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-    return redirect(url_for("admin_backup"))
-
-
-def _create_sqlite_backup(label="manual"):
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
-    destination = BACKUP_DIR / f"discovery-hub-{label}-{stamp}.sqlite3"
-    with db_session() as source:
-        target = sqlite3.connect(str(destination))
-        source.backup(target)
-        target.close()
-    return destination
-
-
-def _auto_backup(force=False):
-    try:
-        now = datetime.utcnow()
-        autos = sorted(BACKUP_DIR.glob("discovery-hub-auto-*.sqlite3"), key=lambda f: f.stat().st_mtime, reverse=True)
-        if not force and autos and now.timestamp() - autos[0].stat().st_mtime < 24 * 3600:
-            return
-        _create_sqlite_backup("auto")
-        autos = sorted(BACKUP_DIR.glob("discovery-hub-auto-*.sqlite3"), key=lambda f: f.stat().st_mtime, reverse=True)
-        for old in autos[12:]:
-            old.unlink(missing_ok=True)
-    except Exception:
-        app.logger.exception("Automatic database snapshot failed")
-
-
-@app.route("/admin/backup/full.zip")
-@admin_required
-def admin_backup_download_full():
-    temp = tempfile.NamedTemporaryFile(prefix="discovery-hub-full-", suffix=".zip", delete=False)
-    zip_path = Path(temp.name)
-    temp.close()
-    temp_db = zip_path.with_suffix(".sqlite3")
-    try:
-        with db_session() as source:
-            target = sqlite3.connect(str(temp_db))
-            source.backup(target)
-            target.close()
-        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.write(temp_db, "database/discovery-hub.sqlite3")
-            for folder, prefix in ((AD_UPLOAD_DIR, "uploads/ads"), (DOWNLOAD_UPLOAD_DIR, "uploads/downloads")):
-                for file in folder.iterdir() if folder.exists() else []:
-                    if file.is_file(): archive.write(file, f"{prefix}/{file.name}")
-            archive.writestr("BACKUP-INFO.txt", "Discovery Hub full data backup\nContains the SQLite database and uploaded ad/download assets. Keep this file outside your hosting provider too.\n")
-        response = send_file(zip_path, mimetype="application/zip", as_attachment=True, download_name=f"discovery-hub-full-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.zip", max_age=0)
-        response.call_on_close(lambda: (zip_path.unlink(missing_ok=True), temp_db.unlink(missing_ok=True)))
-        return response
-    except Exception:
-        zip_path.unlink(missing_ok=True); temp_db.unlink(missing_ok=True)
-        app.logger.exception("Full backup download failed")
-        abort(500)
-
-
-@app.route("/admin/backup/download-current")
-@admin_required
-def admin_backup_download_current():
-    temp = tempfile.NamedTemporaryFile(prefix="discovery-hub-backup-", suffix=".sqlite3", delete=False)
-    temp_path = Path(temp.name)
-    temp.close()
-    try:
-        with db_session() as source:
-            target = sqlite3.connect(str(temp_path))
-            source.backup(target)
-            target.close()
-        response = send_file(temp_path, mimetype="application/vnd.sqlite3", as_attachment=True,
-                             download_name=f"discovery-hub-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.sqlite3",
-                             max_age=0)
-        response.call_on_close(lambda: temp_path.unlink(missing_ok=True))
-        return response
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        app.logger.exception("Database download failed")
-        abort(500)
-
-
-@app.route("/admin/backup/download/<path:filename>")
-@admin_required
-def admin_backup_download(filename):
-    safe_name = Path(filename).name
-    path = BACKUP_DIR / safe_name
-    if not safe_name.startswith("discovery-hub-") or not safe_name.endswith(".sqlite3") or not path.is_file():
-        abort(404)
-    return send_file(path, mimetype="application/vnd.sqlite3", as_attachment=True, download_name=safe_name)
-
-
-@app.after_request
-def secure_response_headers(response):
-    try:
-        if response.status_code < 400 and not request.path.startswith(("/admin/backup", "/admin/login", "/admin/logout", "/admin/ads/render.mp4", "/qaz", "/account/login", "/account/register", "/account/logout", "/service-worker.js", "/static/", "/health", "/api/availability")) and request.path != "/availability":
-            _auto_backup(force=(request.method == "POST"))
-    except Exception:
-        app.logger.exception("Backup lifecycle hook failed")
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
-    if request.path.startswith("/admin") or request.path == "/qaz" or request.path.startswith("/go/"):
-        response.headers["Cache-Control"] = "no-store"
-    if request.is_secure:
-        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    response = send_file(output, mimetype="image/png", max_age=3600, download_name="patamahali-website-qr.png")
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return response
+
+
+@app.route("/icon.svg")
+def icon_svg():
+    return send_from_directory(BASE_DIR / "static" / "img", "icon.svg", mimetype="image/svg+xml")
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    base = public_base()
+    return app.response_class(f"User-agent: *\nDisallow: {ADMIN_ROOT}\nDisallow: /manage-admin/\nDisallow: /partner/\nDisallow: /login\nDisallow: /join\nSitemap: {base}/sitemap.xml\n", mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    from xml.sax.saxutils import escape
+    base = public_base()
+    locs = [base + "/", base + "/homes", base + "/partners", base + "/places"]
+    for county, constituencies in COUNTY_CONSTITUENCIES.items():
+        county_path = url_for("county_page", county_slug=slugify(county))
+        locs.append(base + county_path)
+        for constituency in constituencies:
+            constituency_path = url_for("constituency_page", county_slug=slugify(county), constituency_slug=slugify(constituency))
+            locs.append(base + constituency_path)
+    # Search-intent hubs for rentals, land, sale property, hospitality, commerce and warehouses.
+    for category_slug, category_info in SEO_CATEGORY_PAGES.items():
+        if category_info["category"] in visible_categories():
+            locs.append(base + url_for("property_search_page", category_slug=category_slug))
+    # Submit category/location combinations only when real active inventory supports them.
+    # Broad county and constituency directories remain available regardless of inventory.
+    rows = public_listings(limit=10000)
+    backed_county_categories = set()
+    backed_constituency_categories = set()
+    backed_area_categories = set()
+    for row in rows:
+        if row["category"] in {info["category"] for info in SEO_CATEGORY_PAGES.values()}:
+            cat_slug = next((slug for slug, info in SEO_CATEGORY_PAGES.items() if info["category"] == row["category"]), None)
+            county_name = (row["county"] or "").strip()
+            con_name = (row["constituency"] or "").strip()
+            if cat_slug and county_name in COUNTY_CONSTITUENCIES:
+                backed_county_categories.add((cat_slug, county_name))
+                if con_name in COUNTY_CONSTITUENCIES[county_name]:
+                    backed_constituency_categories.add((cat_slug, county_name, con_name))
+                    exact_area = (row["local_area"] or row["ward"] or "").strip()
+                    if exact_area:
+                        backed_area_categories.add((cat_slug, county_name, con_name, exact_area))
+    for cat_slug, county_name in sorted(backed_county_categories):
+        locs.append(base + url_for("property_search_page", category_slug=cat_slug, county_slug=slugify(county_name)))
+    for cat_slug, county_name, con_name in sorted(backed_constituency_categories):
+        locs.append(base + url_for("property_search_page", category_slug=cat_slug, county_slug=slugify(county_name), constituency_slug=slugify(con_name)))
+    for cat_slug, county_name, con_name, exact_area in sorted(backed_area_categories):
+        locs.append(base + url_for("property_search_page", category_slug=cat_slug, county_slug=slugify(county_name), constituency_slug=slugify(con_name), area_slug=slugify(exact_area)))
+    for row in rows:
+        locs.append(base + url_for("listing_detail", listing_id=row["id"]))
+        county = (row["county"] or "").strip()
+        if county and county in COUNTY_CONSTITUENCIES:
+            exact_area = (row["local_area"] or row["ward"] or "").strip()
+            if exact_area:
+                locs.append(base + url_for("place_area_page", county_slug=slugify(county), area_slug=slugify(exact_area)))
+            ward = (row["ward"] or "").strip()
+            constituency = (row["constituency"] or "").strip()
+            if ward and constituency and ward in ward_map(county).get(constituency, []):
+                locs.append(base + url_for("ward_page", county_slug=slugify(county), constituency_slug=slugify(constituency), ward_slug=slugify(ward)))
+    locs = list(dict.fromkeys(locs))
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "".join(f"<url><loc>{escape(loc)}</loc></url>" for loc in locs) + "</urlset>"
+    return app.response_class(xml, mimetype="application/xml")
+
+
+
+@app.route("/llms.txt")
+def llms_txt():
+    base = public_base()
+    body = [
+        f"# {setting('site_name', 'PataMahali')}",
+        "", setting("site_description", "Kenya property marketplace for houses, rentals, land and commercial space."), "",
+        "## Core pages", f"- Home: {base}/", f"- Search properties: {base}/homes",
+        f"- All counties and place directory: {base}/places", f"- Property partners: {base}/partners",
+        *[f"- {info['label']}: {base}/property-search/{slug}" for slug, info in SEO_CATEGORY_PAGES.items()],
+        "", "## Location coverage", "The directory includes all 47 Kenyan counties and their 290 constituencies, plus curated ward, estate, town, road and locality links where available. Exact localities can also be entered by property owners.",
+        "", "## Listing trust", "A property photo on the home page may be illustrative. A property is advertised as a live listing only after it is submitted by a property partner and passes the platform's payment, identity, location and approval checks.",
+        "", "## Contact", f"- Site: {base}/", f"- Privacy: {base}/privacy", f"- Terms: {base}/terms", ""
+    ]
+    return app.response_class("\n".join(body), mimetype="text/plain")
+
+@app.errorhandler(413)
+def too_large(_error):
+    return render_template("error.html", code=413, message="That upload is too large. Please reduce the file size and try again."), 413
+
+
+@app.errorhandler(403)
+def forbidden(error):
+    return render_template("error.html", code=403, message=getattr(error, "description", "You do not have access to this page.")), 403
+
+
+@app.errorhandler(404)
+def not_found(_error):
+    return render_template("error.html", code=404, message="We could not find that page or the listing is not publicly available."), 404
 
 
 @app.errorhandler(400)
 def bad_request(error):
-    return render_template("error.html", title="Please refresh", error_message=getattr(error, "description", "Your request could not be processed."), code=400), 400
-
-
-@app.errorhandler(404)
-def not_found(error):
-    return render_template("error.html", title="Page not found", error_message="That page may have moved, or it may not be available yet.", code=404), 404
+    return render_template("error.html", code=400, message=getattr(error, "description", "Please refresh and try again.")), 400
 
 
 @app.errorhandler(500)
-def internal_error(error):
-    app.logger.exception("Unhandled internal error")
-    return render_template("error.html", title="Something went wrong", error_message="We could not complete that request. Please try again.", code=500), 500
+def server_error(error):
+    # Log detail for owner/developer, keep internal exception data out of visitor pages.
+    print(f"Internal server error: {error}")
+    return render_template("error.html", code=500, message="Something went wrong. Please try again."), 500
 
 
 if __name__ == "__main__":
-    # Local development only. Production should run through Gunicorn via Procfile.
-    app.config["SESSION_COOKIE_SECURE"] = False
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
