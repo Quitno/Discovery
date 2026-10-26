@@ -95,7 +95,7 @@ app.secret_key = load_secret_key()
 DEFAULT_SETTINGS = {
     "site_name": "PataMahali",
     "tagline": "Find the right place.",
-    "site_description": "House hunting in Kenya made clearer: find houses for rent, apartments, homes for sale, land and plots, shops, offices, warehouses and short stays across all 47 counties. Search by county, constituency, ward and neighbourhood on PataMahali.",
+    "site_description": "House hunting in Kenya made easier: find houses, bedsitters and apartments for rent, homes for sale, land and plots, shops, offices, warehouses and short stays across all 47 counties. Search by county, constituency, ward and neighbourhood on PataMahali.",
     "brand_primary": "#102641",
     "brand_accent": "#C8A45D",
     "site_logo": "",

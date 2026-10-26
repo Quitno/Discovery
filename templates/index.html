@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% block title %}PataMahali Kenya | Houses for Rent, Homes for Sale & Land{% endblock %}
-{% block meta_description %}House hunting in Kenya: find houses for rent, homes for sale, apartments, land and plots by county, constituency, ward and neighbourhood on PataMahali.{% endblock %}
+{% block title %}PataMahali Kenya | House Hunting, Houses for Rent, Homes for Sale & Land{% endblock %}
+{% block meta_description %}House hunting in Kenya made easier. Find houses, bedsitters and apartments for rent, homes for sale, land and plots, shops, offices and warehouses by county, constituency, ward and neighbourhood on PataMahali.{% endblock %}
 {% block head %}
 <meta name="robots" content="index,follow,max-image-preview:large">
 
@@ -18,7 +18,7 @@
     </div>
     <p class="pm-welcome-overline">KENYA, PLACE BY PLACE</p>
     <h1 id="pm-welcome-title">{{ site_settings.get('site_name','PataMahali') }}</h1>
-    <p class="pm-welcome-subtitle">Find your place. Or help someone find theirs.</p>
+    <p class="pm-welcome-subtitle">House hunting in Kenya, made easier.</p>
 
     <div class="pm-welcome-gateways" aria-label="Choose how to enter">
       <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}">

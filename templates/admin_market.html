@@ -1,10 +1,10 @@
 {% extends 'admin_base.html' %}
-{% set page_title = 'Market discoveries' %}
+{% set page_title = 'External property sources' %}
 {% block admin_content %}
 <section class="admin-panel market-admin-intro">
-  <div class="admin-panel-head"><div><h2>Public discovery shelf</h2><p>Show a changing selection of publicly advertised properties while your own partner inventory grows.</p></div><span class="status-pill {% if shelf_enabled %}status-available{% else %}status-removed{% endif %}">{% if shelf_enabled %}Visible on site{% else %}Hidden from site{% endif %}</span></div>
+  <div class="admin-panel-head"><div><h2>External property listings</h2><p>Manage optional external property references while your own partner inventory grows.</p></div><span class="status-pill {% if shelf_enabled %}status-available{% else %}status-removed{% endif %}">{% if shelf_enabled %}Visible on site{% else %}Hidden from site{% endif %}</span></div>
   <p class="market-admin-note">These are external source links, not verified PataMahali homes. Confirm availability before refreshing each source date. You can link directly to a public TikTok, Instagram, Facebook or property listing page; use only images you have permission to display.</p>
-  <form method="post" class="market-shelf-toggle">{{ csrf_field() }}<input type="hidden" name="action" value="toggle_shelf"><label class="checkbox-line"><input type="checkbox" name="enabled" value="1" {% if shelf_enabled %}checked{% endif %}> Show rotating discovery shelf to visitors</label><button class="button button-small button-outline" type="submit">Save visibility</button></form>
+  <form method="post" class="market-shelf-toggle">{{ csrf_field() }}<input type="hidden" name="action" value="toggle_shelf"><label class="checkbox-line"><input type="checkbox" name="enabled" value="1" {% if shelf_enabled %}checked{% endif %}> Show external property references to visitors</label><button class="button button-small button-outline" type="submit">Save visibility</button></form>
 </section>
 <section class="admin-panel market-admin-intro">
   <div class="admin-panel-head"><div><h2>Add a source listing</h2><p>Use this to add another property or a direct social-media post to the rotation.</p></div></div>
@@ -58,6 +58,6 @@
     </form>
     <form method="post" action="{{ url_for('admin_market_discovery_delete', item_id=item['id']) }}" data-confirm="Remove this external listing from the site?" class="market-delete-form">{{ csrf_field() }}<button class="button button-small button-outline danger-outline" type="submit">Delete source listing</button><a href="{{ item['source_url'] }}" target="_blank" rel="noopener noreferrer">Open original source ↗</a></form>
   </details>
-  {% else %}<div class="empty-state"><h3>No source listings yet</h3><p>Add a public source listing above or turn on the discovery shelf after adding records.</p></div>{% endfor %}
+  {% else %}<div class="empty-state"><h3>No source listings yet</h3><p>Add a public source listing above or enable external property references after adding records.</p></div>{% endfor %}
 </section>
 {% endblock %}

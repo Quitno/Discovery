@@ -4,7 +4,7 @@ PataMahali is the main property-search application intended for `https://trorori
 
 ## Search visibility
 
-- The homepage metadata describes house hunting in Kenya, houses for rent, homes for sale, apartments, land and plots, and county/constituency/ward/neighbourhood searches.
+- PataMahali is presented publicly as a Kenya house-hunting and property-search destination. Homepage title/description target house hunting, houses and bedsitters for rent, apartments, homes for sale, land and plots, and county/constituency/ward/neighbourhood searches. The existing two-gate entrance remains intact.
 - A branded 1200 × 630 share image and square PataMahali avatar are included for search/social previews and browser icons.
 - `robots.txt`, `sitemap.xml`, and `llms.txt` are available. Six category hubs cover homes for rent, short stays, commercial property, warehouses/godowns, land/plots for sale, and houses/property for sale.
 - Category pages can extend through county → constituency → ward/neighbourhood. Area/category combinations enter the sitemap when there is real approved, currently published inventory. Empty specific pages stay `noindex` so the domain does not fill its index with thin duplicates.
