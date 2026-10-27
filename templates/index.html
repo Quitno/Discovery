@@ -16,22 +16,28 @@
       {% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="">
       {% else %}<img src="{{ url_for('icon_svg') }}" alt="">{% endif %}
     </div>
-    <p class="pm-welcome-overline">KENYA, PLACE BY PLACE</p>
-    <h1 id="pm-welcome-title">{{ site_settings.get('site_name','PataMahali') }}</h1>
+    <p class="pm-welcome-overline">WELCOME TO PATA MAHALI</p>
+    <h1 id="pm-welcome-title" aria-label="{{ site_settings.get('site_name','PataMahali') }}"><span class="pm-letter-mark" aria-hidden="true">{% for letter in site_settings.get('site_name','PataMahali') %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ '&nbsp;'|safe if letter == ' ' else letter }}</span>{% endfor %}</span></h1>
     <p class="pm-welcome-subtitle">House hunting in Kenya, made easier.</p>
 
     <div class="pm-welcome-gateways" aria-label="Choose how to enter">
       <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}">
         <span class="pm-gateway-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-        <span>Find a place</span>
+        <span>Find a property</span>
       </a>
       <a class="pm-gateway pm-gateway-list" href="{{ url_for('partner_dashboard') if current_user and current_user['role'] in ['owner','agent','host','business'] else url_for('partner_register') }}">
         <span class="pm-gateway-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3.8v16.4M3.8 12h16.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-        <span>List a property</span>
+        <span>Post a property</span>
       </a>
     </div>
     <a class="pm-scroll-down" href="#pm-site-qr"><span class="pm-scroll-line" aria-hidden="true"></span><span>Scroll to scan and share</span><span class="pm-scroll-chevron" aria-hidden="true">⌄</span></a>
   </div>
+</section>
+
+<section class="pm-showcase" aria-labelledby="pm-showcase-title">
+  <div class="pm-showcase-heading"><div><p class="pm-welcome-overline">A FIRST LOOK</p><h2 id="pm-showcase-title">Explore places on Pata Mahali</h2><p>Browse the kinds of homes, stays and spaces you can discover here.</p></div><a href="{{ url_for('homes') }}">Explore all listings</a></div>
+  {% if showcase_listings %}<div class="property-grid pm-showcase-grid">{% for item in showcase_listings %}{% include '_listing_card.html' %}{% endfor %}</div>{% endif %}
+  <p class="pm-showcase-disclaimer">Illustrative examples are shown for preview only. Confirm availability and details directly on genuine listings.</p>
 </section>
 
 <section class="pm-qr-section" id="pm-site-qr" aria-labelledby="pm-qr-title">
@@ -42,7 +48,7 @@
     <a class="pm-qr-image-link" href="{{ url_for('site_qr') }}" target="_blank" rel="noopener" aria-label="Open the scannable website QR code">
       <img src="{{ url_for('site_qr') }}" alt="Scannable QR code that opens the PataMahali website" width="164" height="164" loading="lazy">
     </a>
-    <a class="pm-qr-open" href="{{ invite_url }}">Open website <span aria-hidden="true">↗</span></a>
+    <a class="pm-qr-open" href="{{ invite_url }}">Open website</a>
   </div>
 </section>
 {% endblock %}

@@ -98,6 +98,7 @@ DEFAULT_SETTINGS = {
     "site_description": "House hunting in Kenya made easier: find houses, bedsitters and apartments for rent, homes for sale, land and plots, shops, offices, warehouses and short stays across all 47 counties. Search by county, constituency, ward and neighbourhood on PataMahali.",
     "brand_primary": "#102641",
     "brand_accent": "#C8A45D",
+    "public_theme": "signature",
     "site_logo": "",
     "show_landing_qr_enabled": "1",
     "show_visitor_counter_enabled": "1",
@@ -247,6 +248,8 @@ CREATE TABLE IF NOT EXISTS listings (
     renewal_submitted_at TEXT NOT NULL DEFAULT '',
     renewal_count INTEGER NOT NULL DEFAULT 0,
     archived_at TEXT NOT NULL DEFAULT '',
+    is_sample INTEGER NOT NULL DEFAULT 0,
+    admin_rank INTEGER NOT NULL DEFAULT 0,
     views INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(owner_id) REFERENCES users(id)
 );
@@ -408,6 +411,8 @@ def init_db() -> None:
                 "renewal_submitted_at": "TEXT NOT NULL DEFAULT ''",
                 "renewal_count": "INTEGER NOT NULL DEFAULT 0",
                 "archived_at": "TEXT NOT NULL DEFAULT ''",
+                "is_sample": "INTEGER NOT NULL DEFAULT 0",
+                "admin_rank": "INTEGER NOT NULL DEFAULT 0",
             },
             "visitor_sessions": {
                 "visit_count": "INTEGER NOT NULL DEFAULT 1",
@@ -482,6 +487,77 @@ def init_db() -> None:
                 print(f"Username: {username}")
                 print(f"Password (copy now; stored as a hash): {password}")
                 print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
+
+        # A small, clearly labelled illustrative inventory gives first-time visitors
+        # something useful to browse until genuine owners publish listings.
+        # These rows are never verified and are always ranked below real listings
+        # unless an administrator explicitly promotes them.
+        sample_email = "illustrative-listings@patamahali.invalid"
+        sample_owner = conn.execute("SELECT id FROM users WHERE email=?", (sample_email,)).fetchone()
+        if not sample_owner:
+            cur = conn.execute(
+                """INSERT INTO users(role,account_type,full_name,business_name,email,phone,password_hash,
+                   identity_type,verified,suspended,created_at)
+                   VALUES('owner','owner','Pata Mahali Illustrative Collection','Illustrative collection',?,?,?, 'none',0,0,?)""",
+                (sample_email, "", generate_password_hash(secrets.token_urlsafe(32)), now_iso()),
+            )
+            sample_owner_id = cur.lastrowid
+        else:
+            sample_owner_id = sample_owner["id"]
+        scene_dir = BASE_DIR / "static" / "img" / "property-scenes"
+        sample_specs = [
+            ("residential","2-bedroom apartment","Sunlit two-bedroom apartment near the heart of Kilimani",
+             "Illustrative example listing. This is a design sample, not a confirmed available property. Use it to preview the kind of details owners can publish on Pata Mahali.",
+             38000,"per month",2,1,"Kilimani, Nairobi","neighbourhood-hero.webp"),
+            ("residential","3+ bedroom house","Quiet family home with a private garden in Ruiru",
+             "Illustrative example listing with a family-friendly layout and outdoor space. Availability and price are examples only.",
+             65000,"per month",3,2,"Ruiru, Kiambu","modern-interior.webp"),
+            ("short_stay","Serviced apartment","A calm furnished stay for a Nairobi weekend",
+             "Illustrative short-stay example. Nightly price and availability are not a live offer; this listing demonstrates the dedicated stays category.",
+             6500,"per night",1,1,"Westlands, Nairobi","apartment-building.webp"),
+            ("land_sale","Residential plot","Residential plot in a growing Kiambu neighbourhood",
+             "Illustrative land listing. The location and price are examples only; no title or availability claim is made.",
+             1850000,"total price",None,None,"Kikuyu, Kiambu","residential-land.webp"),
+            ("commercial","Shop","Street-facing retail space for a growing business",
+             "Illustrative commercial-space example. Confirm actual availability, lease terms and permitted use before making any commitment.",
+             28000,"per month",None,None,"Rongai, Kajiado","modern-interior.webp"),
+            ("industrial","Warehouse / godown","Practical storage and distribution space",
+             "Illustrative warehouse example. Floor area, price and availability are placeholders for preview only.",
+             120000,"per month",None,None,"Athi River, Machakos","apartment-building.webp"),
+            ("property_sale","House for sale","Contemporary family home with generous natural light",
+             "Illustrative property-for-sale example. This is not a verified offer and must not be treated as an available home.",
+             18500000,"total price",4,3,"Syokimau, Machakos","neighbourhood-hero.webp"),
+        ]
+        for i, spec in enumerate(sample_specs, 1):
+            category, typ, title, description, price, period, beds, baths, location, image_name = spec
+            exists = conn.execute("SELECT id FROM listings WHERE is_sample=1 AND title=?", (title,)).fetchone()
+            if exists:
+                continue
+            source_image = scene_dir / image_name
+            image_filename = f"illustrative-{i}-{image_name}"
+            target_image = LISTING_UPLOAD_DIR / image_filename
+            if source_image.is_file() and not target_image.exists():
+                try:
+                    with Image.open(source_image) as opened:
+                        optimized = ImageOps.exif_transpose(opened).convert("RGB")
+                        optimized.thumbnail((1400, 1100), Image.Resampling.LANCZOS)
+                        optimized.save(target_image, "WEBP", quality=82, method=5)
+                        optimized.close()
+                except (OSError, ValueError):
+                    shutil.copy2(source_image, target_image)
+            if not target_image.exists():
+                continue
+            now = now_iso()
+            expiry = (datetime.now(timezone.utc) + timedelta(days=3650)).replace(microsecond=0).isoformat()
+            conn.execute(
+                """INSERT INTO listings(owner_id,category,property_type,title,description,price_amount,price_period,
+                   bedrooms,bathrooms,location_name,county,images,status,approval_status,payment_status,
+                   property_verified,posted_at,updated_at,expires_at,is_sample,admin_rank)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'available','approved','paid',0,?,?,?,1,0)""",
+                (sample_owner_id, category, typ, title, description, price, period, beds, baths, location,
+                 location.split(",")[-1].strip(), json.dumps([image_filename]), now, now, expiry),
+            )
+
         conn.execute("PRAGMA journal_mode = WAL")
 
 
@@ -845,7 +921,8 @@ def is_public_listing(row) -> bool:
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=?", (row["owner_id"],)).fetchone()
     expiry = row["expires_at"] if "expires_at" in row.keys() else ""
     still_in_term = bool(expiry and expiry > now_iso())
-    return bool(owner and owner["verified"] and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["property_verified"] and row["status"] == "available" and still_in_term)
+    sample = bool("is_sample" in row.keys() and row["is_sample"])
+    return bool(owner and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["status"] == "available" and still_in_term and (sample or (owner["verified"] and row["property_verified"])))
 
 
 def log_event(event_type: str, path: str, details: str = "") -> None:
@@ -1064,12 +1141,15 @@ def public_listings(where: str = "", params: tuple = (), limit: int = 100):
                (SELECT COUNT(*) FROM ratings r WHERE r.listing_id=l.id) AS rating_count
         FROM listings l JOIN users u ON u.id=l.owner_id
         WHERE l.status='available' AND l.approval_status='approved' AND l.payment_status='paid'
-          AND l.property_verified=1 AND u.verified=1 AND u.suspended=0
+          AND u.suspended=0
+          AND ((COALESCE(l.is_sample,0)=1) OR (l.property_verified=1 AND u.verified=1))
     """
     if where:
         sql += " AND " + where
     sql += " AND l.expires_at <> '' AND l.expires_at > ?"
-    sql += " ORDER BY CASE WHEN l.featured_until > ? AND lower(l.boost_tier)='vvip' THEN 0 WHEN l.featured_until > ? AND lower(l.boost_tier)='vip' THEN 1 WHEN l.featured_until > ? THEN 2 ELSE 3 END, l.posted_at DESC LIMIT ?"
+    sql += """ ORDER BY CASE WHEN COALESCE(l.admin_rank,0)>0 THEN 0 ELSE 1 END,
+                 CASE WHEN l.featured_until > ? AND lower(l.boost_tier)='vvip' THEN 0 WHEN l.featured_until > ? AND lower(l.boost_tier)='vip' THEN 1 WHEN l.featured_until > ? THEN 2 ELSE 3 END,
+                 CASE WHEN COALESCE(l.is_sample,0)=1 THEN 1 ELSE 0 END, l.posted_at DESC LIMIT ?"""
     now = now_iso()
     return get_db().execute(sql, (*params, now, now, now, now, limit)).fetchall()
 
@@ -1087,7 +1167,8 @@ def index():
     focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
     featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
-    return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties)
+    return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
+                           showcase_listings=public_listings("COALESCE(l.is_sample,0)=1", (), 6))
 
 
 def build_listing_location(form, existing=None):
@@ -1653,10 +1734,11 @@ def partner_register():
         password = request.form.get("password", "")
         recovery_question = request.form.get("recovery_question", "").strip()
         recovery_answer = normalized_recovery_answer(request.form.get("recovery_answer", ""))
-        identity_type = request.form.get("identity_type", "national_id").strip()
+        # Identity-card uploads are optional and are not required to create a partner account.
+        identity_type = "none"
         if contact_preference not in {"whatsapp", "call", "email", "website"}: contact_preference = "whatsapp"
-        front_file = request.files.get("identity_front")
-        back_file = request.files.get("identity_back")
+        front = ""
+        back = ""
         if role not in {"owner", "agent", "host", "business"}:
             role = "owner"
         if not full_name or not phone or not password or len(password) < 10:
@@ -1665,15 +1747,7 @@ def partner_register():
         if recovery_question not in RECOVERY_QUESTIONS or len(recovery_answer) < 3:
             flash("Choose a private account-recovery question and enter an answer you can remember. The answer is stored as a password hash.", "error")
             return render_template("partner_register.html", form=request.form)
-        if not front_file or not front_file.filename or not back_file or not back_file.filename:
-            flash("Upload both sides of the identity document to request partner verification.", "error")
-            return render_template("partner_register.html", form=request.form)
-        try:
-            front = save_upload(front_file, PRIVATE_DOC_DIR, ALLOWED_DOC_EXTENSIONS)
-            back = save_upload(back_file, PRIVATE_DOC_DIR, ALLOWED_DOC_EXTENSIONS)
-        except ValueError as exc:
-            flash(str(exc), "error")
-            return render_template("partner_register.html", form=request.form)
+        # New accounts remain unverified until an administrator reviews contact and property evidence.
         try:
             cur = get_db().execute("INSERT INTO users(role,account_type,full_name,business_name,email,phone,contact_preference,website_url,social_url,password_hash,identity_type,identity_front,identity_back,created_at,recovery_question,recovery_answer_hash,recovery_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (role, role, full_name, business_name, email, phone, contact_preference, website_url, social_url, generate_password_hash(password), identity_type, front, back, now_iso(), recovery_question, generate_password_hash(recovery_answer), now_iso()))
         except sqlite3.IntegrityError:
@@ -2294,8 +2368,9 @@ def admin_edit_listing(listing_id):
         payment_status = "pending" if changed_category else row["payment_status"]
         payment_reference = "" if changed_category else row["payment_reference"]
         fee_amount = fee_for_category(category) if changed_category else float(row["fee_amount"])
-        get_db().execute("""UPDATE listings SET category=?,property_type=?,title=?,description=?,price_amount=?,price_period=?,deposit_amount=?,bedrooms=?,bathrooms=?,floor_area=?,amenities=?,water_quality=?,location_name=?,landmarks=?,latitude=?,longitude=?,property_condition=?,images=?,status='pending',approval_status='pending',payment_status=?,payment_reference=?,fee_amount=?,property_verified=0,last_confirmed_at='',updated_at=? WHERE id=?""",
-            (category,property_type,title,description,price_amount,price_period,deposit_amount,bedrooms,bathrooms,request.form.get("floor_area", "").strip()[:80],request.form.get("amenities", "").strip()[:1200],water_quality,location_name,landmarks,latitude,longitude,condition,json.dumps(images),payment_status,payment_reference,fee_amount,now_iso(),listing_id))
+        admin_rank = int(row["admin_rank"] or 0)
+        get_db().execute("""UPDATE listings SET category=?,property_type=?,title=?,description=?,price_amount=?,price_period=?,deposit_amount=?,bedrooms=?,bathrooms=?,floor_area=?,amenities=?,water_quality=?,location_name=?,landmarks=?,latitude=?,longitude=?,property_condition=?,images=?,status='pending',approval_status='pending',payment_status=?,payment_reference=?,fee_amount=?,property_verified=0,admin_rank=?,last_confirmed_at='',updated_at=? WHERE id=?""",
+            (category,property_type,title,description,price_amount,price_period,deposit_amount,bedrooms,bathrooms,request.form.get("floor_area", "").strip()[:80],request.form.get("amenities", "").strip()[:1200],water_quality,location_name,landmarks,latitude,longitude,condition,json.dumps(images),payment_status,payment_reference,fee_amount,admin_rank,now_iso(),listing_id))
         audit("admin_edited_listing", "listing", listing_id, "Listing returned to verification after admin edit")
         flash("Property updated. It is in the review queue and will be republished only after the required checks pass.", "success")
         return redirect(url_for("admin_listings"))
@@ -2357,6 +2432,11 @@ def admin_listing_action(listing_id):
         get_db().execute("UPDATE listings SET approval_status='rejected',status='rejected',updated_at=? WHERE id=?", (now_iso(), listing_id))
         audit("listing_rejected", "listing", listing_id, request.form.get("reason", "")[:500])
         flash("Listing rejected and kept out of public search.", "success")
+    elif action in {"pin", "unpin"}:
+        rank = 1 if action == "pin" else 0
+        get_db().execute("UPDATE listings SET admin_rank=?,updated_at=? WHERE id=?", (rank, now_iso(), listing_id))
+        audit("admin_priority_changed", "listing", listing_id, "Private priority enabled" if rank else "Private priority removed")
+        flash("Private listing priority updated.", "success")
     elif action == "mark_taken":
         get_db().execute("UPDATE listings SET status='occupied',updated_at=? WHERE id=?", (now_iso(), listing_id))
         audit("admin_marked_taken", "listing", listing_id)
@@ -2400,12 +2480,12 @@ def admin_partner_action(user_id):
     if not user: abort(404)
     action = request.form.get("action", "")
     if action == "verify":
-        if not user["identity_front"] or not user["identity_back"]:
-            flash("Cannot verify this partner: both identity document sides are missing.", "error")
+        if not user["phone"]:
+            flash("A working contact number is required before verification.", "error")
         else:
             get_db().execute("UPDATE users SET verified=1,suspended=0 WHERE id=?", (user_id,))
-            audit("partner_identity_verified", "user", user_id)
-            flash("Partner verified. Property listings still require their own checks and confirmed payment.", "success")
+            audit("partner_contact_reviewed", "user", user_id, "Admin confirmed contact details and reviewed available account/listing evidence; no ID image required.")
+            flash("Partner account verified after administrator review. Check each property separately before marking it as checked.", "success")
     elif action == "unverify":
         get_db().execute("UPDATE users SET verified=0 WHERE id=?", (user_id,))
         audit("partner_verification_revoked", "user", user_id)
@@ -2645,6 +2725,9 @@ def admin_settings():
             if key in {"brand_primary", "brand_accent"} and not (len(value) == 7 and value.startswith("#") and all(c in "0123456789abcdefABCDEF" for c in value[1:])):
                 flash(f"{key.replace('_',' ').title()} must be a valid hex color.", "error")
                 return redirect(url_for("admin_settings"))
+            if key == "public_theme" and value not in {"signature", "festive", "warm", "contrast"}:
+                flash("Choose one of the available public themes.", "error")
+                return redirect(url_for("admin_settings"))
             if key == "management_url" and value and not safe_external_url(value):
                 flash("Management URL must begin with https:// or http:// and include a valid host.", "error")
                 return redirect(url_for("admin_settings"))
@@ -2849,12 +2932,13 @@ def admin_restore_backup():
 def listing_media(filename):
     if Path(filename).name != filename or Path(filename).suffix.lower().lstrip(".") not in ALLOWED_IMAGE_EXTENSIONS:
         abort(404)
-    row = get_db().execute("SELECT id,images,status,approval_status,payment_status,property_verified FROM listings WHERE images LIKE ? LIMIT 1", (f"%{filename}%",)).fetchone()
+    row = get_db().execute("SELECT id,images,status,approval_status,payment_status,property_verified,is_sample FROM listings WHERE images LIKE ? LIMIT 1", (f"%{filename}%",)).fetchone()
     if not row:
         abort(404)
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=(SELECT owner_id FROM listings WHERE id=?)", (row["id"],)).fetchone()
     # Photos for unapproved listings are visible only to the owning partner or admin.
-    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and row["property_verified"] and owner and owner["verified"] and not owner["suspended"]):
+    is_sample = bool("is_sample" in row.keys() and row["is_sample"])
+    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and not (owner and owner["suspended"]) and (is_sample or (row["property_verified"] and owner and owner["verified"]))):
         user = get_current_user()
         listing_owner = get_db().execute("SELECT owner_id FROM listings WHERE id=?", (row["id"],)).fetchone()
         if not user or (user["role"] != "admin" and user["id"] != listing_owner["owner_id"]):

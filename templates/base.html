@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0C1B2D">
+  <meta name="theme-color" content="#102641">
   <meta name="description" content="{% block meta_description %}{{ site_settings.get('site_description', 'Find houses for rent, property for sale and land across Kenya with PataMahali.') }}{% endblock %}">
   <link rel="canonical" href="{{ public_base() }}{{ request.path }}">
   <meta property="og:site_name" content="{{ site_settings.get('site_name','PataMahali') }}">
@@ -19,12 +19,12 @@
   {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
   <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261020j') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261027-pm-polish') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
   <style>:root{--brand:{{ site_settings.get('brand_primary','#102641') }};--accent:{{ site_settings.get('brand_accent','#C8A45D') }};}</style>
   {% block head %}{% endblock %}
 </head>
-<body class="{{ 'landing-body' if request.endpoint == 'index' else ('admin-body' if (request.endpoint or '').startswith('admin_') else 'app-body') }}">
+<body class="{{ 'landing-body' if request.endpoint == 'index' else ('admin-body' if (request.endpoint or '').startswith('admin_') else 'app-body') }} theme-{{ site_settings.get('public_theme','signature') }}">
   {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}<div class="offline-banner" id="offlineBanner" hidden>You are offline. Saved details may be out of date. Confirm availability when connected.</div>{% endif %}
   {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
   <header class="site-header">
