@@ -513,74 +513,24 @@ def init_db() -> None:
                 print(f"Password (copy now; stored as a hash): {password}")
                 print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
 
-        # A small, clearly labelled illustrative inventory gives first-time visitors
-        # something useful to browse until genuine owners publish listings.
-        # These rows are never verified and are always ranked below real listings
-        # unless an administrator explicitly promotes them.
-        sample_email = "illustrative-listings@patamahali.invalid"
-        sample_owner = conn.execute("SELECT id FROM users WHERE email=?", (sample_email,)).fetchone()
-        if not sample_owner:
-            cur = conn.execute(
-                """INSERT INTO users(role,account_type,full_name,business_name,email,phone,password_hash,
-                   identity_type,verified,suspended,created_at)
-                   VALUES('owner','owner','Pata Mahali Illustrative Collection','Illustrative collection',?,?,?, 'none',0,0,?)""",
-                (sample_email, "", generate_password_hash(secrets.token_urlsafe(32)), now_iso()),
-            )
-            sample_owner_id = cur.lastrowid
-        else:
-            sample_owner_id = sample_owner["id"]
-        scene_dir = BASE_DIR / "static" / "img" / "property-scenes"
-        sample_specs = [
-            ("residential","2-bedroom apartment","Sunlit two-bedroom apartment near the heart of Kilimani",
-             "Illustrative example listing. This is a design sample, not a confirmed available property. Use it to preview the kind of details owners can publish on Pata Mahali.",
-             38000,"per month",2,1,"Kilimani, Nairobi","neighbourhood-hero.webp"),
-            ("residential","3+ bedroom house","Quiet family home with a private garden in Ruiru",
-             "Illustrative example listing with a family-friendly layout and outdoor space. Availability and price are examples only.",
-             65000,"per month",3,2,"Ruiru, Kiambu","modern-interior.webp"),
-            ("short_stay","Serviced apartment","A calm furnished stay for a Nairobi weekend",
-             "Illustrative short-stay example. Nightly price and availability are not a live offer; this listing demonstrates the dedicated stays category.",
-             6500,"per night",1,1,"Westlands, Nairobi","apartment-building.webp"),
-            ("land_sale","Residential plot","Residential plot in a growing Kiambu neighbourhood",
-             "Illustrative land listing. The location and price are examples only; no title or availability claim is made.",
-             1850000,"total price",None,None,"Kikuyu, Kiambu","residential-land.webp"),
-            ("commercial","Shop","Street-facing retail space for a growing business",
-             "Illustrative commercial-space example. Confirm actual availability, lease terms and permitted use before making any commitment.",
-             28000,"per month",None,None,"Rongai, Kajiado","modern-interior.webp"),
-            ("industrial","Warehouse / godown","Practical storage and distribution space",
-             "Illustrative warehouse example. Floor area, price and availability are placeholders for preview only.",
-             120000,"per month",None,None,"Athi River, Machakos","apartment-building.webp"),
-            ("property_sale","House for sale","Contemporary family home with generous natural light",
-             "Illustrative property-for-sale example. This is not a verified offer and must not be treated as an available home.",
-             18500000,"total price",4,3,"Syokimau, Machakos","neighbourhood-hero.webp"),
-        ]
-        for i, spec in enumerate(sample_specs, 1):
-            category, typ, title, description, price, period, beds, baths, location, image_name = spec
-            exists = conn.execute("SELECT id FROM listings WHERE is_sample=1 AND title=?", (title,)).fetchone()
-            if exists:
-                continue
-            source_image = scene_dir / image_name
-            image_filename = f"illustrative-{i}-{image_name}"
-            target_image = LISTING_UPLOAD_DIR / image_filename
-            if source_image.is_file() and not target_image.exists():
+        # Keep the public homepage photo-rich with real photography from the image CDN,
+        # not generated demo properties. Retire any illustrative listings created by
+        # older releases so they cannot be mistaken for available homes. Preserve the
+        # rows for audit/history, but remove their temporary image files to save storage.
+        old_samples = conn.execute("SELECT id, images FROM listings WHERE COALESCE(is_sample,0)=1").fetchall()
+        if old_samples:
+            for sample_row in old_samples:
                 try:
-                    with Image.open(source_image) as opened:
-                        optimized = ImageOps.exif_transpose(opened).convert("RGB")
-                        optimized.thumbnail((1400, 1100), Image.Resampling.LANCZOS)
-                        optimized.save(target_image, "WEBP", quality=82, method=5)
-                        optimized.close()
-                except (OSError, ValueError):
-                    shutil.copy2(source_image, target_image)
-            if not target_image.exists():
-                continue
-            now = now_iso()
-            expiry = (datetime.now(timezone.utc) + timedelta(days=3650)).replace(microsecond=0).isoformat()
+                    names = json.loads(sample_row["images"] or "[]")
+                except (TypeError, json.JSONDecodeError):
+                    names = []
+                for name in names if isinstance(names, list) else []:
+                    filename = Path(str(name)).name
+                    if filename.startswith("illustrative-"):
+                        (LISTING_UPLOAD_DIR / filename).unlink(missing_ok=True)
             conn.execute(
-                """INSERT INTO listings(owner_id,category,property_type,title,description,price_amount,price_period,
-                   bedrooms,bathrooms,location_name,county,images,status,approval_status,payment_status,
-                   property_verified,posted_at,updated_at,expires_at,is_sample,admin_rank)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'available','approved','paid',0,?,?,?,1,0)""",
-                (sample_owner_id, category, typ, title, description, price, period, beds, baths, location,
-                 location.split(",")[-1].strip(), json.dumps([image_filename]), now, now, expiry),
+                "UPDATE listings SET status='archived', approval_status='rejected', updated_at=? WHERE COALESCE(is_sample,0)=1",
+                (now_iso(),),
             )
 
         conn.execute("PRAGMA journal_mode = WAL")

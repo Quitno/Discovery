@@ -1,0 +1,15 @@
+PATA MAHALI — GITHUB PATCH (FILES TO OVERLAY)
+
+HOW TO USE
+1. Extract this ZIP. Its file/folder paths are relative to the ROOT of your existing GitHub repository.
+2. Upload/replace the files while preserving their folder paths. New files such as photo_rails.py and the new templates must be added too.
+3. Commit the changes and let Render redeploy from GitHub. Do NOT replace your production database or delete your existing uploads.
+
+PHOTOGRAPHY
+The homepage's 25 Homes & Rentals photos, 25 Hotels & Short Stays photos, and three photos for each of the four other categories are real-photo image URLs from the Unsplash image CDN, sized to 420x300 at low quality for fast loading. They are not shipped as 62 local files, so they do not fill Render's disk. The images are category discovery photography, not claims that any specific pictured property is available.
+
+DEMO INVENTORY FIX
+The app no longer creates generic sample/demo property listings on startup. On first startup after this patch, any previously created `is_sample=1` listings are archived and their temporary `illustrative-*` upload files are removed. Real owner listings and their photos are not targeted. Make your usual database/media backup before deploy.
+
+NOTE
+This is an overlay patch for the existing repo, not a complete standalone project. Only the files included here are intended to be uploaded.
