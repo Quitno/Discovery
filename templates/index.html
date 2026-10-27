@@ -1,54 +1,45 @@
 {% extends 'base.html' %}
-{% block title %}PataMahali Kenya | House Hunting, Houses for Rent, Homes for Sale & Land{% endblock %}
-{% block meta_description %}House hunting in Kenya made easier. Find houses, bedsitters and apartments for rent, homes for sale, land and plots, shops, offices and warehouses by county, constituency, ward and neighbourhood on PataMahali.{% endblock %}
+{% block title %}PataMahali Kenya | Find homes, stays, land & commercial spaces{% endblock %}
+{% block meta_description %}Find houses, rentals, hotels, land, shops, offices and warehouses across Kenya by county, constituency, ward and locality on PataMahali.{% endblock %}
 {% block head %}
 <meta name="robots" content="index,follow,max-image-preview:large">
-
-
-
-<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'WebSite','name':'PataMahali','description':'Find houses for rent, homes for sale, land and property across Kenya.','url':public_base() + '/','image':public_base() + url_for('static',filename='img/patamahali-share-card.jpg'),'potentialAction':{'@type':'SearchAction','target':public_base() ~ url_for('homes') ~ '?q={search_term_string}','query-input':'required name=search_term_string'}}|tojson }}</script>
+<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'WebSite','name':'PataMahali','description':'Find places to live, stay, work and invest across Kenya.','url':public_base() + '/','potentialAction':{'@type':'SearchAction','target':public_base() ~ url_for('homes') ~ '?q={search_term_string}','query-input':'required name=search_term_string'}}|tojson }}</script>
 {% endblock %}
 {% block content %}
 <section class="pm-welcome" aria-labelledby="pm-welcome-title">
   <div class="pm-welcome-glow" aria-hidden="true"></div>
   <div class="pm-welcome-inner">
-    <div class="pm-welcome-mark" aria-hidden="true">
-      {% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="">
-      {% else %}<img src="{{ url_for('icon_svg') }}" alt="">{% endif %}
-    </div>
-    <p class="pm-welcome-overline">WELCOME TO PATA MAHALI</p>
-    <h1 id="pm-welcome-title" aria-label="{{ site_settings.get('site_name','PataMahali') }}"><span class="pm-letter-mark" aria-hidden="true">{% for letter in site_settings.get('site_name','PataMahali') %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ '&nbsp;'|safe if letter == ' ' else letter }}</span>{% endfor %}</span></h1>
-    <p class="pm-welcome-subtitle">House hunting in Kenya, made easier.</p>
-
+    <div class="pm-welcome-mark" aria-hidden="true">{% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="">{% else %}<img src="{{ url_for('icon_svg') }}" alt="">{% endif %}</div>
+    <h1 id="pm-welcome-title" aria-label="Pata Mahali"><span class="pm-letter-mark" aria-hidden="true">{% for letter in 'Pata Mahali' %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ '&nbsp;'|safe if letter == ' ' else letter }}</span>{% endfor %}</span></h1>
+    <div class="pm-title-underline" aria-hidden="true"></div>
     <div class="pm-welcome-gateways" aria-label="Choose how to enter">
-      <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}">
-        <span class="pm-gateway-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-        <span>Find a property</span>
-      </a>
-      <a class="pm-gateway pm-gateway-list" href="{{ url_for('partner_dashboard') if current_user and current_user['role'] in ['owner','agent','host','business'] else url_for('partner_register') }}">
-        <span class="pm-gateway-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3.8v16.4M3.8 12h16.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-        <span>Post a property</span>
-      </a>
+      <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}"><span>Find</span></a>
+      <a class="pm-gateway pm-gateway-list" href="{{ url_for('partner_dashboard') if current_user and current_user['role'] in ['owner','agent','host','business'] else url_for('partner_register') }}"><span>Post</span></a>
     </div>
-    <a class="pm-scroll-down" href="#pm-site-qr"><span class="pm-scroll-line" aria-hidden="true"></span><span>Scroll to scan and share</span><span class="pm-scroll-chevron" aria-hidden="true">⌄</span></a>
   </div>
 </section>
-
-<section class="pm-showcase" aria-labelledby="pm-showcase-title">
-  <div class="pm-showcase-heading"><div><p class="pm-welcome-overline">A FIRST LOOK</p><h2 id="pm-showcase-title">Explore places on Pata Mahali</h2><p>Browse the kinds of homes, stays and spaces you can discover here.</p></div><a href="{{ url_for('homes') }}">Explore all listings</a></div>
-  {% if showcase_listings %}<div class="property-grid pm-showcase-grid">{% for item in showcase_listings %}{% include '_listing_card.html' %}{% endfor %}</div>{% endif %}
-  <p class="pm-showcase-disclaimer">Illustrative examples are shown for preview only. Confirm availability and details directly on genuine listings.</p>
+<section class="pm-popular-shell page-shell" aria-label="Popular places and searches">
+  <div class="pm-popular-top"><span>People are exploring</span><a href="{{ url_for('homes') }}">View all categories</a></div>
+  <nav class="pm-popular-buttons">{% for item in popular_categories %}<a href="{{ item.url }}" title="{{ item.label }}{% if item.searches %} · {{ item.searches }} recorded searches{% endif %}">{{ item.label }}</a>{% endfor %}</nav>
 </section>
-
+<section class="pm-photo-discovery" aria-label="Explore property categories">
+  <div class="pm-photo-intro page-shell"><span class="eyebrow">Explore by type</span><h2>Find a place that fits your next move.</h2><p>Browse photos, then narrow results by county, constituency, ward and neighbourhood. Availability and prices are shown on published owner listings.</p></div>
+  {% for section in photo_sections %}
+  <section class="pm-photo-rail-block" aria-labelledby="pm-photo-title-{{ loop.index }}">
+    <div class="pm-photo-rail-heading page-shell"><div><h3 id="pm-photo-title-{{ loop.index }}">{{ section.title }}</h3><p>{{ section.subtitle }}</p></div><a class="pm-rail-link" href="{{ url_for('homes', category=section.category) }}">Browse {{ section.title|lower }} <span aria-hidden="true">↗</span></a></div>
+    <div class="pm-photo-rail" role="list" aria-label="{{ section.title }} photos">
+      {% for card in section.cards %}<a class="pm-photo-card" role="listitem" href="{{ url_for('homes', category=section.category) }}" aria-label="Browse {{ section.title|lower }} — {{ card.label }}"><img src="{{ card.src }}" alt="{{ card.alt }}" width="420" height="300" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span>{{ card.label }}</span></a>{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <p class="pm-photo-note page-shell">Photos are discovery imagery, not claims that a particular pictured property is available. Only approved property listings display as live inventory. Photos load from the Unsplash image CDN in compressed sizes to avoid filling your hosting disk.</p>
+</section>
 <section class="pm-qr-section" id="pm-site-qr" aria-labelledby="pm-qr-title">
-  <div class="pm-qr-wrap">
-    <p class="pm-qr-overline">TAKE US WITH YOU</p>
-    <h2 id="pm-qr-title">Scan to open PataMahali</h2>
-    <p>Open the website on your phone or share it with someone looking for a place.</p>
-    <a class="pm-qr-image-link" href="{{ url_for('site_qr') }}" target="_blank" rel="noopener" aria-label="Open the scannable website QR code">
-      <img src="{{ url_for('site_qr') }}" alt="Scannable QR code that opens the PataMahali website" width="164" height="164" loading="lazy">
-    </a>
-    <a class="pm-qr-open" href="{{ invite_url }}">Open website</a>
-  </div>
+  <div class="pm-qr-wrap"><p class="pm-qr-overline">TAKE PATA MAHALI WITH YOU</p><h2 id="pm-qr-title">Scan to open PataMahali</h2><p>Print this QR or share it with someone looking for a place.</p><a class="pm-qr-image-link" href="{{ url_for('site_qr') }}" target="_blank" rel="noopener" aria-label="Open the website QR code"><img src="{{ url_for('site_qr') }}" alt="Scannable QR code for PataMahali" width="184" height="184" loading="lazy"></a><a class="pm-qr-open" href="{{ invite_url }}">Open website</a></div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+(()=>{const letters=[...document.querySelectorAll('.pm-title-letter')];const palette=['#f2c879','#f08f98','#8fd6cb','#c9adff','#f5b56e','#f7eee7','#91c6e8','#e6a7c8'];for(const el of letters){if(el.textContent.trim()){el.style.setProperty('--letter-color',palette[Math.floor(Math.random()*palette.length)]);}}})();
+</script>
 {% endblock %}
