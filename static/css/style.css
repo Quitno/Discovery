@@ -2234,3 +2234,16 @@ body.app-body{--brand:var(--pm-maroon)!important;--accent:var(--pm-blush)!import
 .pm-review-list article p{line-height:1.65;color:#695c62}
 .pm-review-list article small{color:#8e8186}
 @media(max-width:650px){.pm-info-page{padding-top:25px}.pm-guide-steps{grid-template-columns:1fr}.pm-contact-row{display:grid;gap:5px}.pm-review-head{align-items:flex-start;flex-direction:column}}
+
+
+/* Four dynamic, search-ranked property shortcuts on every in-app visitor page. */
+.pm-top-category-nav{position:sticky;top:0;z-index:80;background:#6A1B35;border-top:1px solid rgba(255,255,255,.12);box-shadow:0 5px 14px rgba(44,9,23,.10)}
+.pm-top-category-inner{max-width:1240px;margin:0 auto;padding:8px 18px;display:flex;align-items:center;justify-content:center;gap:9px;overflow-x:auto;scrollbar-width:none}
+.pm-top-category-inner::-webkit-scrollbar{display:none}
+.pm-top-category-inner a{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:35px;padding:7px 15px;border:1px solid rgba(255,255,255,.31);border-radius:7px;color:#fff;background:rgba(255,255,255,.075);font-size:.82rem;font-weight:750;text-decoration:none;white-space:nowrap;transition:background .16s ease,border-color .16s ease}
+.pm-top-category-inner a:hover,.pm-top-category-inner a[aria-current="page"]{background:#fff;color:#6A1B35;border-color:#fff}
+/* Keep every sidebar category visible; no accordion affordances. */
+.category-nav{display:flex;flex-direction:column;gap:2px}
+.category-nav-group,.category-nav-group>summary:after{display:none!important}
+.category-nav-link small{display:block;font-size:.72rem;line-height:1.35;font-weight:450;opacity:.78}
+@media(max-width:650px){.pm-top-category-inner{justify-content:flex-start;padding:7px 12px;gap:7px}.pm-top-category-inner a{min-height:36px;padding:8px 13px;font-size:.8rem}.pm-top-category-nav{position:relative}}

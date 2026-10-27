@@ -1,13 +1,15 @@
-# PataMahali latest polish — 27 October 2026
+# Pata Mahali overlay patch — October 28, 2026
 
-This package builds on the earlier project, adding a redesigned animated welcome, compact Find/Post gateways, a dynamically rotating four-item category shortcut strip based on recorded search demand, and six horizontally scrollable photo rails. Homes/rentals and hotels/short stays each have 25 CDN photo tiles; commercial, industrial, land and property-sale rails each have 3. Photos are loaded directly from Unsplash's image CDN at 420px wide and quality 62, so they do not consume Render disk space. They are category discovery imagery, not fabricated live listings. The public listing query now excludes seeded example rows and shows only paid, approved, verified inventory.
+This patch overlays the existing GitHub project; it is not a standalone replacement.
 
-The public app shell, admin sidebar and footer now use a maroon palette, the logo wordmark has per-letter randomized colors plus particle/underline animation, small white Find/Post buttons, larger readable scrolling footers, an install button in the admin shell, and About / How to use / Contact / Rate us pages. A partner account QR links to that account's public profile; a small site-rating average and feedback link now appear in the footer, and signed-in visitors can leave or update one site rating; published listings only appear after account and property verification. If the account is removed or suspended, the profile becomes unavailable.
+## Corrected in this version
+- `templates/homes.html`: category navigation now lists all enabled property categories as visible, direct links. The `<details>/<summary>` accordion groups that produced plus/minus indicators have been removed.
+- `app.py`: added a shared search-ranked category shortcut builder. Search details split `short_stay` into Hotels (Hotel room searches) and Airbnb & stays, where data supports it. The highest-ranked five candidates rotate daily while only four buttons display.
+- `templates/base.html`: places the four compact dynamic category buttons below the maroon header on app pages, not only on the landing page.
+- `static/css/style.css`: styling for the four-button category strip and flat sidebar links.
 
-An admin Site errors page records HTTP 400/403/404/413/500 failures without copying form submissions, shows open/reviewed records and lets an admin mark a failure reviewed. Admin can also enable an optional encrypted GitHub snapshot button. It requires GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_BACKUP_FERNET_KEY, and optionally GITHUB_BACKUP_BRANCH in Render. The target repository must be private; the snapshot is encrypted before upload. This is a backup snapshot, not a live GitHub-hosted SQLite database. The live database must remain on a proper database/attached persistent disk until a safe managed DB migration is planned.
+## Image rails
+`photo_rails.py` defines 62 photo links: 25 homes/rentals, 25 hotels/short stays, and 3 each for commercial, industrial, land, and property sale. Images are served as compressed Unsplash CDN URLs to avoid adding image files to Render. They are category discovery photographs, not actual available listing records.
 
-Images require network access to Unsplash. Photo rails intentionally link to category search instead of pretending every photograph represents a currently available property. User submissions continue to need the current verification and publication requirements.
-
-Still not implemented in this pass: a Web Push notification service with VAPID keys, subscription persistence and server-triggered delivery; a fully personalised, durable recommendation engine across accounts/devices; automatic scheduled GitHub snapshots (the admin button is manual). These need separate reliable server-side pieces and must not be implied by a browser-only notification prompt.
-
-To generate a Fernet key for `GITHUB_BACKUP_FERNET_KEY`, run locally: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Store it in Render environment variables only; do not commit the token or encryption key to GitHub. Use a fine-grained token with the minimum Contents permission needed for the private repository.
+## Safety
+Back up the production database/uploads before deploying. Do not overwrite a live database with a fresh project database. The optional GitHub feature stores backup snapshots; it is not a live concurrent database. Python compilation and Jinja template parsing passed in this working session; the whole Flask application was not runtime-tested here.

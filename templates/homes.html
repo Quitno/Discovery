@@ -7,33 +7,13 @@
   <aside class="category-sidebar" id="homesSidebar" data-homes-sidebar aria-label="Property categories">
     <div class="category-sidebar-title">PROPERTY COLLECTIONS</div>
     <nav class="category-nav" aria-label="Property collections">
-      {% if 'residential' in category_meta %}<a class="category-nav-link {% if category == 'residential' %}is-active{% endif %}" href="{{ url_for('homes', category='residential') }}"><span>Homes &amp; rentals</span><small>Bedsitters · apartments · houses</small></a>{% endif %}
-      {% if 'short_stay' in category_meta %}<details class="category-nav-group" {% if category == 'short_stay' %}open{% endif %}>
-        <summary><span>Hotels &amp; short stays</span><small>Expand stays</small></summary>
-        <div class="category-nav-children">
-          <a class="category-nav-link {% if category == 'short_stay' and not property_type %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay') }}">Airbnb &amp; furnished stays</a>
-          <a class="category-nav-link {% if category == 'short_stay' and property_type == 'Hotel room' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Hotel room') }}">Hotels</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='BnB') }}">BnBs</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Guest house') }}">Guest houses</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Serviced apartment') }}">Serviced apartments</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Holiday home') }}">Holiday homes</a>
-        </div>
-      </details>{% endif %}
-      {% if 'commercial' in category_meta or 'industrial' in category_meta %}<details class="category-nav-group" {% if category in ['commercial','industrial'] %}open{% endif %}>
-        <summary><span>Work &amp; business spaces</span><small>Shops · offices · storage</small></summary>
-        <div class="category-nav-children">
-          {% if 'commercial' in category_meta %}<a class="category-nav-link {% if category == 'commercial' %}is-active{% endif %}" href="{{ url_for('homes', category='commercial') }}">Shops, stalls &amp; offices</a>{% endif %}
-          {% if 'industrial' in category_meta %}<a class="category-nav-link {% if category == 'industrial' %}is-active{% endif %}" href="{{ url_for('homes', category='industrial') }}">Warehouses &amp; godowns</a>{% endif %}
-        </div>
-      </details>{% endif %}
-      {% if 'land_sale' in category_meta or 'property_sale' in category_meta %}<details class="category-nav-group" {% if category in ['land_sale','property_sale'] %}open{% endif %}>
-        <summary><span>Land &amp; property sales</span><small>Buy land or a building</small></summary>
-        <div class="category-nav-children">
-          {% if 'land_sale' in category_meta %}<a class="category-nav-link {% if category == 'land_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='land_sale') }}">Land &amp; plots</a>{% endif %}
-          {% if 'property_sale' in category_meta %}<a class="category-nav-link {% if category == 'property_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='property_sale') }}">Homes &amp; buildings for sale</a>{% endif %}
-        </div>
-      </details>{% endif %}
-      <a class="category-nav-link" href="{{ url_for('places_index') }}"><span>Browse by county</span><small>All 47 counties</small></a>
+      {% if 'residential' in category_meta %}<a class="category-nav-link {% if category == 'residential' %}is-active{% endif %}" href="{{ url_for('homes', category='residential') }}"><span>Rentals &amp; homes</span><small>Bedsitters, apartments and houses</small></a>{% endif %}
+      {% if 'short_stay' in category_meta %}<a class="category-nav-link {% if category == 'short_stay' and property_type == 'Hotel room' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Hotel room') }}"><span>Hotels</span><small>Hotel rooms and suites</small></a><a class="category-nav-link {% if category == 'short_stay' and property_type != 'Hotel room' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay') }}"><span>Airbnb &amp; short stays</span><small>Furnished stays and holiday homes</small></a><a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='BnB') }}"><span>B&amp;Bs and guest houses</span><small>Guest houses and bed &amp; breakfasts</small></a><a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Serviced apartment') }}"><span>Serviced apartments</span><small>Short and extended stays</small></a>{% endif %}
+      {% if 'land_sale' in category_meta %}<a class="category-nav-link {% if category == 'land_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='land_sale') }}"><span>Land &amp; plots</span><small>Plots and development land</small></a>{% endif %}
+      {% if 'property_sale' in category_meta %}<a class="category-nav-link {% if category == 'property_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='property_sale') }}"><span>Property for sale</span><small>Houses and buildings to buy</small></a>{% endif %}
+      {% if 'commercial' in category_meta %}<a class="category-nav-link {% if category == 'commercial' %}is-active{% endif %}" href="{{ url_for('homes', category='commercial') }}"><span>Shops &amp; offices</span><small>Retail, offices and business spaces</small></a>{% endif %}
+      {% if 'industrial' in category_meta %}<a class="category-nav-link {% if category == 'industrial' %}is-active{% endif %}" href="{{ url_for('homes', category='industrial') }}"><span>Warehouses &amp; godowns</span><small>Storage and industrial premises</small></a>{% endif %}
+      <a class="category-nav-link" href="{{ url_for('places_index') }}"><span>Browse by county</span><small>All 47 counties and localities</small></a>
     </nav>
   </aside>
   <button class="category-sidebar-backdrop" type="button" data-sidebar-close aria-label="Close categories" hidden></button>

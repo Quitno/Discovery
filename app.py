@@ -1031,6 +1031,69 @@ def _safe_admin_error_count():
         pass
     return 0
 
+def popular_category_shortcuts(enabled_categories=None):
+    """Return four compact category links ranked by observed property searches.
+
+    The top five candidates are rotated daily so the fifth category also gets
+    occasional visibility while the header remains limited to four buttons.
+    """
+    if enabled_categories is None:
+        enabled_categories = visible_categories()
+    labels = {
+        "residential": "Rentals", "hotels": "Hotels",
+        "stays": "Airbnb & stays", "land_sale": "Land & plots",
+        "property_sale": "Homes for sale", "commercial": "Shops & offices",
+        "industrial": "Warehouses",
+    }
+    routes = {
+        "residential": ("residential", ""),
+        "hotels": ("short_stay", "Hotel room"),
+        "stays": ("short_stay", ""),
+        "land_sale": ("land_sale", ""),
+        "property_sale": ("property_sale", ""),
+        "commercial": ("commercial", ""),
+        "industrial": ("industrial", ""),
+    }
+    fallback = ["residential", "hotels", "stays", "land_sale", "property_sale", "commercial", "industrial"]
+    active = []
+    for key in fallback:
+        category_key = routes[key][0]
+        if category_key in enabled_categories and key not in active:
+            active.append(key)
+    counts = Counter()
+    try:
+        rows = get_db().execute("SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 3000").fetchall()
+        for row in rows:
+            try:
+                data = json.loads(row["details"] or "{}")
+                category = str(data.get("category", "")).strip()
+                prop_type = str(data.get("type") or data.get("property_type") or "").strip().lower()
+                if category == "short_stay":
+                    key = "hotels" if "hotel" in prop_type else "stays"
+                else:
+                    key = category
+                if key in active:
+                    counts[key] += 1
+            except (TypeError, json.JSONDecodeError):
+                continue
+    except Exception:
+        pass
+    ordered = sorted(active, key=lambda key: (-counts.get(key, 0), active.index(key)))
+    if not any(counts.values()):
+        ordered = active[:]
+    if len(ordered) > 1:
+        rotate = datetime.now(timezone.utc).timetuple().tm_yday % len(ordered)
+        ordered = ordered[rotate:] + ordered[:rotate]
+    result = []
+    for key in ordered[:4]:
+        category, prop_type = routes[key]
+        values = {"category": category}
+        if prop_type:
+            values["type"] = prop_type
+        result.append({"key": key, "label": labels[key], "url": url_for("homes", **values), "searches": counts.get(key, 0)})
+    return result
+
+
 @app.context_processor
 def inject_globals():
     user = get_current_user()
@@ -1060,6 +1123,7 @@ def inject_globals():
         "seo_category_pages": SEO_CATEGORY_PAGES,
         "public_base": public_base,
         "public_categories": enabled_categories,
+        "popular_categories": popular_category_shortcuts(enabled_categories),
         "money": money,
         "fee_for_category": fee_for_category,
         "expiry_days_remaining": expiry_days_remaining,
@@ -1154,21 +1218,7 @@ def index():
     focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
     featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
-    category_labels = {"residential": "Rentals", "short_stay": "Hotels & stays", "commercial": "Shops & offices", "industrial": "Warehouses", "land_sale": "Land & plots", "property_sale": "Homes for sale"}
-    category_counts = Counter()
-    for event in get_db().execute("SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 3000").fetchall():
-        try:
-            data = json.loads(event["details"] or "{}")
-            cat = str(data.get("category", "")).strip()
-            if cat in category_labels: category_counts[cat] += 1
-        except (TypeError, json.JSONDecodeError):
-            pass
-    fallback = ["residential", "short_stay", "land_sale", "property_sale", "commercial", "industrial"]
-    ordered = sorted(fallback, key=lambda cat: (-category_counts.get(cat, 0), fallback.index(cat)))[:5]
-    if not any(category_counts.values()): ordered = fallback[:5]
-    rotate = datetime.now(timezone.utc).timetuple().tm_yday % len(ordered) if ordered else 0
-    rolled = ordered[rotate:] + ordered[:rotate]
-    popular_categories = [{"key": cat, "label": category_labels[cat], "url": url_for("homes", category=cat), "searches": category_counts.get(cat, 0)} for cat in rolled[:4]]
+    popular_categories = popular_category_shortcuts(visible_categories())
     return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
                            photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
 

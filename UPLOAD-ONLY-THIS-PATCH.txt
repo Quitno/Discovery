@@ -1,15 +1,17 @@
-PATA MAHALI — GITHUB PATCH (FILES TO OVERLAY)
+PATA MAHALI — GITHUB OVERLAY PATCH (FILES TO ADD/REPLACE)
 
-HOW TO USE
-1. Extract this ZIP. Its file/folder paths are relative to the ROOT of your existing GitHub repository.
-2. Upload/replace the files while preserving their folder paths. New files such as photo_rails.py and the new templates must be added too.
-3. Commit the changes and let Render redeploy from GitHub. Do NOT replace your production database or delete your existing uploads.
+UPLOAD
+1. Download and extract this ZIP.
+2. Copy its contents into the ROOT of your existing Pata Mahali GitHub repository, preserving the folders. Replace files when prompted.
+3. Commit the files and let Render redeploy from GitHub.
+4. Back up your existing production database and uploads first. Do not replace the live database with a fresh copy.
 
-PHOTOGRAPHY
-The homepage's 25 Homes & Rentals photos, 25 Hotels & Short Stays photos, and three photos for each of the four other categories are real-photo image URLs from the Unsplash image CDN, sized to 420x300 at low quality for fast loading. They are not shipped as 62 local files, so they do not fill Render's disk. The images are category discovery photography, not claims that any specific pictured property is available.
+WHAT THIS PATCH COVERS
+- Removes the expandable sidebar category groups that showed + / −. All available categories are listed openly as normal links.
+- Adds a compact strip of exactly four category buttons in the app header. They are ranked using recorded property-search activity, and the top five candidates rotate so the fourth/fifth don't stay permanently hidden.
+- Keeps the landing page's compact Find/Post entry, PataMahali branding and maroon theme.
+- Adds six horizontal discovery photo rails: 25 Homes & Rentals photos, 25 Hotels & Short Stays photos, and 3 photos each for Shops & Commercial, Warehouses, Land & Plots, and Property for Sale. These are compressed Unsplash CDN photo URLs to avoid storing 62 image files on Render. They are discovery photos, not live property adverts.
+- Includes the related admin, error logging, informational pages, QR and styling changes already present in the patch.
 
-DEMO INVENTORY FIX
-The app no longer creates generic sample/demo property listings on startup. On first startup after this patch, any previously created `is_sample=1` listings are archived and their temporary `illustrative-*` upload files are removed. Real owner listings and their photos are not targeted. Make your usual database/media backup before deploy.
-
-NOTE
-This is an overlay patch for the existing repo, not a complete standalone project. Only the files included here are intended to be uploaded.
+IMPORTANT
+This is an overlay patch, not a complete standalone project. Upload every file in the ZIP with the same relative path. Do not delete files from your repository that are not included here. The GitHub backup option is a backup/snapshot workflow, not a live GitHub database. Full Flask runtime/deployment testing still needs to be done in your project environment.
