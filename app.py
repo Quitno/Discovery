@@ -28,6 +28,7 @@ from flask import (
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+from photo_rails import PHOTO_SECTIONS
 from places import (
     COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
     county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
@@ -96,9 +97,10 @@ DEFAULT_SETTINGS = {
     "site_name": "PataMahali",
     "tagline": "Find the right place.",
     "site_description": "House hunting in Kenya made easier: find houses, bedsitters and apartments for rent, homes for sale, land and plots, shops, offices, warehouses and short stays across all 47 counties. Search by county, constituency, ward and neighbourhood on PataMahali.",
-    "brand_primary": "#102641",
-    "brand_accent": "#C8A45D",
+    "brand_primary": "#6A1B35",
+    "brand_accent": "#D6A7B3",
     "public_theme": "signature",
+    "github_backup_enabled": "0",
     "site_logo": "",
     "show_landing_qr_enabled": "1",
     "show_visitor_counter_enabled": "1",
@@ -369,6 +371,29 @@ CREATE INDEX IF NOT EXISTS idx_listings_public ON listings(status, approval_stat
 CREATE INDEX IF NOT EXISTS idx_listings_owner ON listings(owner_id, posted_at);
 CREATE INDEX IF NOT EXISTS idx_interests_listing ON interests(listing_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_visitor_events_time ON visitor_events(created_at);
+CREATE TABLE IF NOT EXISTS site_errors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status_code INTEGER NOT NULL DEFAULT 500,
+    method TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL DEFAULT '',
+    endpoint TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '',
+    user_id INTEGER,
+    user_agent TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    resolved_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_site_errors_status ON site_errors(status, created_at);
+CREATE TABLE IF NOT EXISTS site_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reviewer_id INTEGER NOT NULL UNIQUE,
+    stars INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 5),
+    review TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(reviewer_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_site_reviews_time ON site_reviews(created_at);
 """
 
 
@@ -922,7 +947,7 @@ def is_public_listing(row) -> bool:
     expiry = row["expires_at"] if "expires_at" in row.keys() else ""
     still_in_term = bool(expiry and expiry > now_iso())
     sample = bool("is_sample" in row.keys() and row["is_sample"])
-    return bool(owner and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["status"] == "available" and still_in_term and (sample or (owner["verified"] and row["property_verified"])))
+    return bool(owner and not sample and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["status"] == "available" and still_in_term and owner["verified"] and row["property_verified"])
 
 
 def log_event(event_type: str, path: str, details: str = "") -> None:
@@ -1047,6 +1072,15 @@ def safe_video_embed_url(value: str) -> str:
     return ""
 
 
+def _safe_admin_error_count():
+    try:
+        user = get_current_user()
+        if user and user["role"] == "admin":
+            return int(get_db().execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0])
+    except Exception:
+        pass
+    return 0
+
 @app.context_processor
 def inject_globals():
     user = get_current_user()
@@ -1084,6 +1118,9 @@ def inject_globals():
         "current_year": datetime.now().year,
         "current_date": datetime.now(timezone.utc).date().isoformat(),
         "storage_warning": bool(os.environ.get("RENDER_SERVICE_ID") or os.environ.get("RENDER")) and DATA_DIR.resolve() == (BASE_DIR / "instance").resolve(),
+        "admin_error_count": _safe_admin_error_count(),
+        "site_rating_average": get_db().execute("SELECT ROUND(AVG(stars),1) FROM site_reviews").fetchone()[0] or 0,
+        "site_rating_count": get_db().execute("SELECT COUNT(*) FROM site_reviews").fetchone()[0],
         "place_selector_data": selector_data(),
         "slugify": slugify,
     }
@@ -1142,14 +1179,14 @@ def public_listings(where: str = "", params: tuple = (), limit: int = 100):
         FROM listings l JOIN users u ON u.id=l.owner_id
         WHERE l.status='available' AND l.approval_status='approved' AND l.payment_status='paid'
           AND u.suspended=0
-          AND ((COALESCE(l.is_sample,0)=1) OR (l.property_verified=1 AND u.verified=1))
+          AND COALESCE(l.is_sample,0)=0 AND l.property_verified=1 AND u.verified=1
     """
     if where:
         sql += " AND " + where
     sql += " AND l.expires_at <> '' AND l.expires_at > ?"
     sql += """ ORDER BY CASE WHEN COALESCE(l.admin_rank,0)>0 THEN 0 ELSE 1 END,
                  CASE WHEN l.featured_until > ? AND lower(l.boost_tier)='vvip' THEN 0 WHEN l.featured_until > ? AND lower(l.boost_tier)='vip' THEN 1 WHEN l.featured_until > ? THEN 2 ELSE 3 END,
-                 CASE WHEN COALESCE(l.is_sample,0)=1 THEN 1 ELSE 0 END, l.posted_at DESC LIMIT ?"""
+                 CASE WHEN COALESCE(l.is_sample,0)=1 THEN 1 ELSE 0 END, RANDOM(), l.posted_at DESC LIMIT ?"""
     now = now_iso()
     return get_db().execute(sql, (*params, now, now, now, now, limit)).fetchall()
 
@@ -1167,8 +1204,23 @@ def index():
     focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
     featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
+    category_labels = {"residential": "Rentals", "short_stay": "Hotels & stays", "commercial": "Shops & offices", "industrial": "Warehouses", "land_sale": "Land & plots", "property_sale": "Homes for sale"}
+    category_counts = Counter()
+    for event in get_db().execute("SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 3000").fetchall():
+        try:
+            data = json.loads(event["details"] or "{}")
+            cat = str(data.get("category", "")).strip()
+            if cat in category_labels: category_counts[cat] += 1
+        except (TypeError, json.JSONDecodeError):
+            pass
+    fallback = ["residential", "short_stay", "land_sale", "property_sale", "commercial", "industrial"]
+    ordered = sorted(fallback, key=lambda cat: (-category_counts.get(cat, 0), fallback.index(cat)))[:5]
+    if not any(category_counts.values()): ordered = fallback[:5]
+    rotate = datetime.now(timezone.utc).timetuple().tm_yday % len(ordered) if ordered else 0
+    rolled = ordered[rotate:] + ordered[:rotate]
+    popular_categories = [{"key": cat, "label": category_labels[cat], "url": url_for("homes", category=cat), "searches": category_counts.get(cat, 0)} for cat in rolled[:4]]
     return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
-                           showcase_listings=public_listings("COALESCE(l.is_sample,0)=1", (), 6))
+                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
 
 
 def build_listing_location(form, existing=None):
@@ -1710,6 +1762,44 @@ def privacy_policy():
 def terms_of_use():
     return render_template("terms.html")
 
+
+@app.route("/about")
+def about_patamahali():
+    return render_template("about.html")
+
+@app.route("/how-to-use")
+def how_to_use():
+    return render_template("how_to_use.html")
+
+@app.route("/contact")
+def contact_us():
+    return render_template("contact.html")
+
+@app.route("/rate-us", methods=["GET", "POST"])
+def rate_site():
+    user = get_current_user()
+    if request.method == "POST":
+        if not user:
+            flash("Sign in first so each account can leave or update one site rating.", "warning")
+            return redirect(url_for("login", next=url_for("rate_site")))
+        if user["role"] == "admin":
+            flash("Administrator accounts cannot submit public site ratings.", "warning")
+            return redirect(url_for("rate_site"))
+        try:
+            stars = int(request.form.get("stars", "0"))
+        except (TypeError, ValueError):
+            stars = 0
+        review = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", request.form.get("review", "")).strip()[:600]
+        if stars not in {1,2,3,4,5}:
+            flash("Choose a rating from 1 to 5 stars.", "error")
+            return redirect(url_for("rate_site"))
+        get_db().execute("INSERT INTO site_reviews(reviewer_id,stars,review,created_at) VALUES(?,?,?,?) ON CONFLICT(reviewer_id) DO UPDATE SET stars=excluded.stars,review=excluded.review,created_at=excluded.created_at", (user["id"], stars, review, now_iso()))
+        audit("site_rating_submitted", "site_review", user["id"], f"Stars={stars}")
+        flash("Thanks for rating PataMahali. Your rating is now included in the public site score.", "success")
+        return redirect(url_for("rate_site"))
+    reviews = get_db().execute("SELECT r.stars,r.review,r.created_at,u.full_name,u.business_name FROM site_reviews r JOIN users u ON u.id=r.reviewer_id ORDER BY r.created_at DESC LIMIT 30").fetchall()
+    mine = get_db().execute("SELECT stars,review FROM site_reviews WHERE reviewer_id=?", (user["id"],)).fetchone() if user and user["role"] != "admin" else None
+    return render_template("rate_us.html", reviews=reviews, my_review=mine)
 
 @app.route("/partners")
 def partners_directory():
@@ -2283,6 +2373,7 @@ def admin_dashboard():
         "partners_pending": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business') AND verified=0 AND suspended=0").fetchone()[0],
         "interests": conn.execute("SELECT COUNT(*) FROM interests").fetchone()[0],
         "reports": conn.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0],
+        "site_errors": conn.execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0],
         "visitors_today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
     }
     listings = conn.execute("SELECT l.*,u.full_name AS partner_name,u.business_name FROM listings l JOIN users u ON u.id=l.owner_id ORDER BY l.posted_at DESC LIMIT 8").fetchall()
@@ -2811,12 +2902,68 @@ def admin_settings():
     return render_template("admin_settings.html", settings=settings)
 
 
+
+@app.post("/manage-admin/backups/github")
+@admin_required
+def admin_github_backup():
+    if setting("github_backup_enabled", "0") != "1":
+        flash("Enable GitHub snapshots in Site & fees before using this action.", "warning")
+        return redirect(url_for("admin_backups"))
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip().strip("/")
+    key = os.environ.get("GITHUB_BACKUP_FERNET_KEY", "").strip()
+    branch = os.environ.get("GITHUB_BACKUP_BRANCH", "main").strip() or "main"
+    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or not key:
+        flash("GitHub backup is not configured. Add GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_BACKUP_FERNET_KEY in Render variables.", "error")
+        return redirect(url_for("admin_backups"))
+    try:
+        from cryptography.fernet import Fernet
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError, URLError
+        fernet = Fernet(key.encode("ascii"))
+        api_base = "https://api.github.com/repos/" + repo
+        headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "PataMahali-Backup"}
+        req = Request(api_base, headers=headers, method="GET")
+        with urlopen(req, timeout=20) as response: repo_info = json.loads(response.read().decode("utf-8"))
+        if not repo_info.get("private"):
+            flash("Safety check blocked this upload: the target GitHub repository is not private.", "error")
+            return redirect(url_for("admin_backups"))
+        with tempfile.NamedTemporaryFile(prefix="pm-gh-", suffix=".sqlite3", delete=False) as handle: snap_path = Path(handle.name)
+        try:
+            create_db_snapshot(snap_path)
+            encrypted = fernet.encrypt(snap_path.read_bytes())
+        finally:
+            snap_path.unlink(missing_ok=True)
+        if len(encrypted) > 45 * 1024 * 1024:
+            flash("Encrypted snapshot exceeds the safe GitHub single-file limit. Keep this backup local or use a dedicated object store.", "error")
+            return redirect(url_for("admin_backups"))
+        remote_path = "backups/patamahali/latest.sqlite3.fernet"
+        contents_url = api_base + "/contents/" + remote_path
+        payload = {"message": "Update encrypted PataMahali SQLite snapshot", "content": __import__("base64").b64encode(encrypted).decode("ascii"), "branch": branch}
+        check_req = Request(contents_url + "?ref=" + quote_plus(branch), headers=headers, method="GET")
+        try:
+            with urlopen(check_req, timeout=20) as response: existing = json.loads(response.read().decode("utf-8"))
+            if existing.get("sha"): payload["sha"] = existing["sha"]
+        except HTTPError as exc:
+            if exc.code != 404: raise
+        put_headers = {**headers, "Content-Type": "application/json"}
+        put_req = Request(contents_url, data=json.dumps(payload).encode("utf-8"), headers=put_headers, method="PUT")
+        with urlopen(put_req, timeout=45) as response: result = json.loads(response.read().decode("utf-8"))
+        audit("encrypted_github_backup_created", "backup", remote_path, "Private repo snapshot committed")
+        flash("Encrypted SQLite snapshot committed to the configured private GitHub repository.", "success")
+    except Exception as exc:
+        print(f"GitHub backup failure: {type(exc).__name__}: {exc}")
+        record_site_error(500, f"Encrypted GitHub backup failed: {type(exc).__name__}: {exc}")
+        audit("github_backup_failed", "backup", repo or "unconfigured", type(exc).__name__)
+        flash("GitHub backup failed. Open Site errors / server logs and verify the token, private repo, encryption key and branch. No live database was changed.", "error")
+    return redirect(url_for("admin_backups"))
+
 @app.route("/manage-admin/backups")
 @admin_required
 def admin_backups():
     files = sorted(BACKUP_DIR.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
     backups = [{"name": p.name, "size": p.stat().st_size, "modified": datetime.fromtimestamp(p.stat().st_mtime).strftime("%d %b %Y %H:%M"), "url": url_for("admin_download_backup", filename=p.name)} for p in files[:50]]
-    return render_template("admin_backups.html", backups=backups, db_size=DB_PATH.stat().st_size if DB_PATH.exists() else 0)
+    return render_template("admin_backups.html", backups=backups, db_size=DB_PATH.stat().st_size if DB_PATH.exists() else 0, settings=all_settings())
 
 
 @app.post("/manage-admin/backups/create")
@@ -2938,7 +3085,7 @@ def listing_media(filename):
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=(SELECT owner_id FROM listings WHERE id=?)", (row["id"],)).fetchone()
     # Photos for unapproved listings are visible only to the owning partner or admin.
     is_sample = bool("is_sample" in row.keys() and row["is_sample"])
-    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and not (owner and owner["suspended"]) and (is_sample or (row["property_verified"] and owner and owner["verified"]))):
+    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and not is_sample and not (owner and owner["suspended"]) and row["property_verified"] and owner and owner["verified"]):
         user = get_current_user()
         listing_owner = get_db().execute("SELECT owner_id FROM listings WHERE id=?", (row["id"],)).fetchone()
         if not user or (user["role"] != "admin" and user["id"] != listing_owner["owner_id"]):
@@ -2976,10 +3123,27 @@ def qr_response(url: str, filename: str):
     from io import BytesIO
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
     qr.add_data(url); qr.make(fit=True)
-    image = qr.make_image(fill_color="#102641", back_color="#FFFFFF")
+    image = qr.make_image(fill_color="#6A1B35", back_color="#FFFFFF")
     out = BytesIO(); image.save(out, format="PNG"); out.seek(0)
     return send_file(out, mimetype="image/png", download_name=f"{filename}.png", max_age=3600)
 
+
+
+@app.route("/partner/qr.png")
+@partner_required
+def partner_account_qr():
+    user = get_current_user()
+    if not user or user["suspended"]:
+        flash("This account cannot publish a public QR right now.", "warning")
+        return redirect(url_for("partner_dashboard"))
+    return qr_response(public_base().rstrip("/") + url_for("partner_public_profile", user_id=user["id"]), f"partner-{user['id']}")
+
+@app.route("/partners/<int:user_id>")
+def partner_public_profile(user_id):
+    partner = get_db().execute("SELECT id,full_name,business_name,role,created_at,verified FROM users WHERE id=? AND role IN ('owner','agent','host','business') AND suspended=0", (user_id,)).fetchone()
+    if not partner: abort(404)
+    listings = public_listings("l.owner_id=?", (user_id,), 100)
+    return render_template("partner_public_profile.html", partner=partner, listings=listings)
 
 @app.route("/promo-media/<path:filename>")
 def promo_media(filename):
@@ -3007,7 +3171,7 @@ def manifest():
         "short_name": setting("site_name", "PataMahali")[:12],
         "description": setting("site_description", "Verified property marketplace"),
         "start_url": "/", "scope": "/", "display": "standalone",
-        "background_color": "#F2F4F7", "theme_color": "#0C1B2D",
+        "background_color": "#FBF7F2", "theme_color": "#6A1B35",
         "icons": [{"src": logo_src, "sizes": "512x512" if logo_type == "image/png" else "any", "type": logo_type, "purpose": "any maskable"}],
     }
     return app.response_class(json.dumps(body), mimetype="application/manifest+json")
@@ -3029,7 +3193,7 @@ def site_qr():
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
     qr.add_data(target)
     qr.make(fit=True)
-    image = qr.make_image(fill_color="#102641", back_color="#ffffff").convert("RGB")
+    image = qr.make_image(fill_color="#6A1B35", back_color="#ffffff").convert("RGB")
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     output.seek(0)
@@ -3120,28 +3284,67 @@ def llms_txt():
     ]
     return app.response_class("\n".join(body), mimetype="text/plain")
 
+
+def record_site_error(status_code, error):
+    """Keep a concise private record of failures without copying submitted form data."""
+    try:
+        key = session.get("user_id")
+        detail = (str(error or "Request failed") or "Request failed")[:900]
+        get_db().execute(
+            "INSERT INTO site_errors(status_code,method,path,endpoint,details,user_id,user_agent,created_at,status) VALUES(?,?,?,?,?,?,?,?, 'open')",
+            (int(status_code), request.method[:12], request.path[:500], (request.endpoint or "")[:160], detail, key, request.headers.get("User-Agent", "")[:240], now_iso())
+        )
+    except Exception as logging_error:
+        print(f"Could not persist site error: {logging_error}")
+
+@app.route("/manage-admin/errors")
+@admin_required
+def admin_errors():
+    status = request.args.get("status", "open")
+    if status not in {"open", "resolved", "all"}: status = "open"
+    clauses, params = [], []
+    if status != "all": clauses.append("status=?"); params.append(status)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    conn = get_db()
+    errors = conn.execute("SELECT * FROM site_errors" + where + " ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, id DESC LIMIT 500", tuple(params)).fetchall()
+    counts = {"open": conn.execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0], "all": conn.execute("SELECT COUNT(*) FROM site_errors").fetchone()[0]}
+    return render_template("admin_errors.html", errors=errors, status=status, counts=counts)
+
+@app.post("/manage-admin/errors/<int:error_id>/resolve")
+@admin_required
+def admin_error_resolve(error_id):
+    get_db().execute("UPDATE site_errors SET status='resolved',resolved_at=? WHERE id=?", (now_iso(), error_id))
+    audit("site_error_resolved", "site_error", error_id)
+    flash("Error marked as reviewed. The record is retained for your audit history.", "success")
+    return redirect(url_for("admin_errors", status=request.args.get("status", "open")))
+
 @app.errorhandler(413)
 def too_large(_error):
+    record_site_error(413, _error)
     return render_template("error.html", code=413, message="That upload is too large. Please reduce the file size and try again."), 413
 
 
 @app.errorhandler(403)
 def forbidden(error):
+    record_site_error(403, error)
     return render_template("error.html", code=403, message=getattr(error, "description", "You do not have access to this page.")), 403
 
 
 @app.errorhandler(404)
 def not_found(_error):
+    record_site_error(404, _error)
     return render_template("error.html", code=404, message="We could not find that page or the listing is not publicly available."), 404
 
 
 @app.errorhandler(400)
 def bad_request(error):
+    record_site_error(400, error)
     return render_template("error.html", code=400, message=getattr(error, "description", "Please refresh and try again.")), 400
 
 
 @app.errorhandler(500)
 def server_error(error):
+    record_site_error(500, error)
     # Log detail for owner/developer, keep internal exception data out of visitor pages.
     print(f"Internal server error: {error}")
     return render_template("error.html", code=500, message="Something went wrong. Please try again."), 500
