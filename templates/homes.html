@@ -7,33 +7,27 @@
   <aside class="category-sidebar" id="homesSidebar" data-homes-sidebar aria-label="Property categories">
     <div class="category-sidebar-title">PROPERTY COLLECTIONS</div>
     <nav class="category-nav" aria-label="Property collections">
-      {% if 'residential' in category_meta %}<a class="category-nav-link {% if category == 'residential' %}is-active{% endif %}" href="{{ url_for('homes', category='residential') }}"><span>Homes &amp; rentals</span><small>Bedsitters · apartments · houses</small></a>{% endif %}
-      {% if 'short_stay' in category_meta %}<details class="category-nav-group" {% if category == 'short_stay' %}open{% endif %}>
-        <summary><span>Hotels &amp; short stays</span><small>Expand stays</small></summary>
-        <div class="category-nav-children">
-          <a class="category-nav-link {% if category == 'short_stay' and not property_type %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay') }}">Airbnb &amp; furnished stays</a>
-          <a class="category-nav-link {% if category == 'short_stay' and property_type == 'Hotel room' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Hotel room') }}">Hotels</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='BnB') }}">BnBs</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Guest house') }}">Guest houses</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Serviced apartment') }}">Serviced apartments</a>
-          <a class="category-nav-link" href="{{ url_for('homes', category='short_stay', type='Holiday home') }}">Holiday homes</a>
-        </div>
-      </details>{% endif %}
-      {% if 'commercial' in category_meta or 'industrial' in category_meta %}<details class="category-nav-group" {% if category in ['commercial','industrial'] %}open{% endif %}>
-        <summary><span>Work &amp; business spaces</span><small>Shops · offices · storage</small></summary>
-        <div class="category-nav-children">
-          {% if 'commercial' in category_meta %}<a class="category-nav-link {% if category == 'commercial' %}is-active{% endif %}" href="{{ url_for('homes', category='commercial') }}">Shops, stalls &amp; offices</a>{% endif %}
-          {% if 'industrial' in category_meta %}<a class="category-nav-link {% if category == 'industrial' %}is-active{% endif %}" href="{{ url_for('homes', category='industrial') }}">Warehouses &amp; godowns</a>{% endif %}
-        </div>
-      </details>{% endif %}
-      {% if 'land_sale' in category_meta or 'property_sale' in category_meta %}<details class="category-nav-group" {% if category in ['land_sale','property_sale'] %}open{% endif %}>
-        <summary><span>Land &amp; property sales</span><small>Buy land or a building</small></summary>
-        <div class="category-nav-children">
-          {% if 'land_sale' in category_meta %}<a class="category-nav-link {% if category == 'land_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='land_sale') }}">Land &amp; plots</a>{% endif %}
-          {% if 'property_sale' in category_meta %}<a class="category-nav-link {% if category == 'property_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='property_sale') }}">Homes &amp; buildings for sale</a>{% endif %}
-        </div>
-      </details>{% endif %}
-      <a class="category-nav-link" href="{{ url_for('places_index') }}"><span>Browse by county</span><small>All 47 counties</small></a>
+      {% if 'residential' in category_meta %}<a class="category-nav-link {% if category == 'residential' %}is-active{% endif %}" href="{{ url_for('homes', category='residential') }}"><span>Homes &amp; rentals</span></a>{% endif %}
+      {% if 'short_stay' in category_meta %}
+        <a class="category-nav-link {% if category == 'short_stay' and not property_type %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay') }}"><span>Airbnb &amp; furnished stays</span></a>
+        <a class="category-nav-link {% if category == 'short_stay' and property_type == 'Hotel room' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Hotel room') }}"><span>Hotels</span></a>
+        <a class="category-nav-link {% if category == 'short_stay' and property_type == 'BnB' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='BnB') }}"><span>BnBs</span></a>
+        <a class="category-nav-link {% if category == 'short_stay' and property_type == 'Guest house' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Guest house') }}"><span>Guest houses</span></a>
+        <a class="category-nav-link {% if category == 'short_stay' and property_type == 'Serviced apartment' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Serviced apartment') }}"><span>Serviced apartments</span></a>
+        <a class="category-nav-link {% if category == 'short_stay' and property_type == 'Holiday home' %}is-active{% endif %}" href="{{ url_for('homes', category='short_stay', type='Holiday home') }}"><span>Holiday homes</span></a>
+      {% endif %}
+      {% if 'commercial' in category_meta %}<a class="category-nav-link {% if category == 'commercial' %}is-active{% endif %}" href="{{ url_for('homes', category='commercial') }}"><span>Shops, stalls &amp; offices</span></a>{% endif %}
+      {% if 'industrial' in category_meta %}<a class="category-nav-link {% if category == 'industrial' %}is-active{% endif %}" href="{{ url_for('homes', category='industrial') }}"><span>Warehouses &amp; godowns</span></a>{% endif %}
+      {% if 'land_sale' in category_meta %}<a class="category-nav-link {% if category == 'land_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='land_sale') }}"><span>Land &amp; plots</span></a>{% endif %}
+      {% if 'property_sale' in category_meta %}<a class="category-nav-link {% if category == 'property_sale' %}is-active{% endif %}" href="{{ url_for('homes', category='property_sale') }}"><span>Homes &amp; buildings for sale</span></a>{% endif %}
+      <a class="category-nav-link" href="{{ url_for('places_index') }}"><span>Browse by county</span></a>
+    </nav>
+    <div class="category-nav-section-label">ABOUT &amp; HELP</div>
+    <nav class="category-nav category-nav-utilities" aria-label="About and help">
+      <a class="category-nav-link" href="/about"><span>About PataMahali</span></a>
+      <a class="category-nav-link" href="/how-to-use"><span>How to use the app</span></a>
+      <a class="category-nav-link" href="/contact"><span>Contact us</span></a>
+      <a class="category-nav-link" href="/rate-us"><span>★ Rate the app</span></a>
     </nav>
   </aside>
   <button class="category-sidebar-backdrop" type="button" data-sidebar-close aria-label="Close categories" hidden></button>
@@ -43,11 +37,10 @@
       <div>
         <h1>{% if category == 'residential' %}Rentals{% elif category == 'short_stay' and property_type == 'Hotel room' %}Hotels{% elif category == 'short_stay' %}Airbnb & short stays{% elif category == 'commercial' %}Shops & offices{% elif category == 'industrial' %}Warehouses & godowns{% elif category == 'land_sale' %}Land & plots{% elif category == 'property_sale' %}Property for sale{% else %}Find a place{% endif %}</h1>
       </div>
-      <span class="finder-count">{{ listings|length }} found</span>
     </div>
 
     <section class="finder-search" aria-label="Search properties">
-      <form action="{{ url_for('homes') }}" method="get" id="houseSearchForm">
+      <form action="/homes" method="get" id="houseSearchForm">
         <input type="hidden" name="category" value="{{ category or 'residential' }}">
         <div class="finder-search-row">
           <label class="finder-search-query"><span class="visually-hidden">Search places</span><input type="search" name="q" value="{{ q }}" placeholder="Search homes, features or landmarks" autocomplete="off"></label>
@@ -68,6 +61,24 @@
       <div class="finder-location-tools"><button type="button" data-location-search>Use my location</button><span class="location-status" data-location-status aria-live="polite"></span></div>
     </section>
 
+    <section class="finder-results" aria-label="Property listings and discovery previews">
+      {% if sorted_by_distance or fuzzy_used %}<div class="finder-result-flags">{% if sorted_by_distance %}<span>Nearest first</span>{% endif %}{% if fuzzy_used %}<span>Close matches</span>{% endif %}</div>{% endif %}
+      {% if listings %}
+        <div class="property-grid">{% for item in listings %}{% include '_listing_card.html' %}{% endfor %}</div>
+      {% else %}
+        <div class="unverified-preview-grid" aria-label="Unverified property previews">
+          {% for card in preview_cards %}
+          <article class="unverified-preview-card">
+            <a class="preview-photo" href="{{ url_for('homes', category=category, location=card.area.split(',')[0]) }}" aria-label="Search {{ category }} around {{ card.area }}">
+              <img src="{{ card.src }}" data-fallback-src="{{ card.fallback }}" data-secondary-src="{{ card.fallback2 }}" data-tertiary-src="{{ card.fallback3 }}" alt="{{ card.label }}" width="420" height="300" loading="{{ 'eager' if loop.index <= 6 else 'lazy' }}" fetchpriority="{{ 'high' if loop.index <= 4 else 'auto' }}" decoding="async" onerror="var n=Number(this.dataset.pmFallbackStep||0);var a=[this.dataset.fallbackSrc,this.dataset.secondarySrc,this.dataset.tertiarySrc].filter(Boolean);if(n<a.length){this.dataset.pmFallbackStep=String(n+1);this.src=a[n]}else{this.onerror=null;this.classList.add('image-fallback-exhausted');this.parentElement.classList.add('preview-photo-failed')}">
+              <span class="unverified-chip">UNVERIFIED</span>
+            </a>
+            <div class="preview-card-body"><h2><a href="{{ url_for('homes', category=category, location=card.area.split(',')[0]) }}">{{ card.title }}</a></h2><p class="preview-area"><span aria-hidden="true">⌖</span> {{ card.area }}</p></div>
+          </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
     {% if site_settings.get('promo_enabled','0') == '1' and (site_settings.get('promo_title') or site_settings.get('promo_text') or site_settings.get('promo_image') or promo_embed_url) %}
     <section class="finder-promotion" aria-label="Featured message">
       {% if promo_embed_url %}<div class="finder-promo-media"><iframe src="{{ promo_embed_url }}" title="{{ site_settings.get('promo_title') or 'Featured message' }}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>{% elif site_settings.get('promo_image') %}<div class="finder-promo-media"><img src="{{ url_for('promo_media', filename=site_settings.get('promo_image')) }}" alt="{{ site_settings.get('promo_title') or 'Featured message' }}" loading="lazy"></div>{% endif %}
@@ -75,13 +86,8 @@
     </section>
     {% endif %}
 
-    <section class="finder-results" aria-label="Property listings">
-      {% if sorted_by_distance or fuzzy_used %}<div class="finder-result-flags">{% if sorted_by_distance %}<span>Nearest first</span>{% endif %}{% if fuzzy_used %}<span>Close matches</span>{% endif %}</div>{% endif %}
-      {% if listings %}<div class="property-grid">{% for item in listings %}{% include '_listing_card.html' %}{% endfor %}</div>
-      {% else %}<div class="finder-empty"><h2>No {{ 'rentals' if category == 'residential' else 'places' }} found here yet</h2><p>Try a broader search or explore another area. New properties appear here after an owner or authorised agent submits them and the site approves them.</p><div class="finder-empty-actions"><a class="button button-outline" href="{{ url_for('homes', category=category or 'residential') }}">Clear search</a><a class="button button-primary" href="{{ url_for('places_index') }}">Browse all counties</a><a class="button button-outline" href="{{ url_for('partner_register') }}">List your property</a></div></div>{% endif %}
-    </section>
-    <section class="finder-county-shortcuts"><div><span class="eyebrow">Make your search specific</span><h2>Choose a county</h2><p>Go from a national search to a local market in two clicks.</p></div><div class="finder-county-buttons">{% for item in featured_area_cards %}<a href="{{ url_for('county_page',county_slug=item.slug) }}">{{ item.name }} <span aria-hidden="true">↗</span></a>{% endfor %}<a href="{{ url_for('places_index') }}">All 47 counties ↗</a></div></section>
+    <section class="pm-advertise-strip" aria-label="Advertise with Pata Mahali"><div><h2>Advertise with us</h2></div><a class="button button-primary" href="{{ url_for('partner_register') }}">Get started</a></section>
+    <section class="finder-county-shortcuts"><div><h2>Choose a county</h2></div><div class="finder-county-buttons">{% for item in featured_area_cards %}<a href="{{ url_for('county_page',county_slug=item.slug) }}">{{ item.name }} <span aria-hidden="true">↗</span></a>{% endfor %}<a href="{{ url_for('places_index') }}">All 47 counties ↗</a></div></section>
   </main>
 </div>
-<a class="mobile-home-button" href="{{ url_for('index') }}" aria-label="Go to {{ site_settings.get('site_name','PataMahali') }} home"><span aria-hidden="true">⌂</span></a>
 {% endblock %}
