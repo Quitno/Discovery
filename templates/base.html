@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#F7F9FA">
+  <meta name="theme-color" content="#0C1B2D">
   <meta name="description" content="{% block meta_description %}{{ site_settings.get('site_description', 'Find houses for rent, property for sale and land across Kenya with PataMahali.') }}{% endblock %}">
   <link rel="canonical" href="{{ public_base() }}{{ request.path }}">
   <meta property="og:site_name" content="{{ site_settings.get('site_name','PataMahali') }}">
@@ -19,12 +19,12 @@
   {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
   <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-kenya-photo-fix-r11') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261020j') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
-  <style>:root{--brand:#2F706A;--accent:#C99648;}</style>
+  <style>:root{--brand:{{ site_settings.get('brand_primary','#102641') }};--accent:{{ site_settings.get('brand_accent','#C8A45D') }};}</style>
   {% block head %}{% endblock %}
 </head>
-<body class="{{ 'landing-body' if request.endpoint == 'index' else ('admin-body' if (request.endpoint or '').startswith('admin_') else 'app-body') }} theme-{{ site_settings.get('public_theme','signature') }}">
+<body class="{{ 'landing-body' if request.endpoint == 'index' else ('admin-body' if (request.endpoint or '').startswith('admin_') else 'app-body') }}">
   {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}<div class="offline-banner" id="offlineBanner" hidden>You are offline. Saved details may be out of date. Confirm availability when connected.</div>{% endif %}
   {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
   <header class="site-header">
@@ -57,8 +57,9 @@
         {% endif %}
       </div>
     </div>
+    {% if request.endpoint != 'homes' %}
     <nav class="main-nav" id="mainNav" data-nav aria-label="Site navigation">
-      <div class="drawer-heading"><strong>Categories</strong></div>
+      <div class="drawer-heading"><strong>Explore PataMahali</strong><span>Choose where to go</span></div>
       {% if 'residential' in public_categories %}<a href="{{ url_for('homes', category='residential') }}">Rentals</a>{% endif %}
       {% if 'short_stay' in public_categories %}<a href="{{ url_for('homes', category='short_stay') }}">Airbnb & short stays</a><a href="{{ url_for('homes', category='short_stay', type='Hotel room') }}">Hotels</a>{% endif %}
       {% if 'commercial' in public_categories %}<a href="{{ url_for('homes', category='commercial') }}">Shops & offices</a>{% endif %}
@@ -66,18 +67,10 @@
       {% if 'land_sale' in public_categories %}<a href="{{ url_for('homes', category='land_sale') }}">Land & plots</a>{% endif %}
       {% if 'property_sale' in public_categories %}<a href="{{ url_for('homes', category='property_sale') }}">Property for sale</a>{% endif %}
       {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="{{ url_for('partners_directory') }}">Property partners</a>{% endif %}
-      <a href="{{ url_for('about_patamahali') }}">About PataMahali</a>
-      <a href="{{ url_for('how_to_use') }}">How to use PataMahali</a>
-      <a href="{{ url_for('contact_us') }}">Contact us</a>
-      <a href="{{ url_for('rate_site') }}">Rate PataMahali</a>
       {% if current_user and current_user['role'] != 'admin' %}<form method="post" action="{{ url_for('logout') }}" class="nav-inline">{{ csrf_field() }}<button class="nav-link-button" type="submit">Sign out</button></form>{% endif %}
     </nav>
+    {% endif %}
   </header>
-  {% if header_popular_categories %}
-  <nav class="header-popular-shortcuts" aria-label="Most searched property categories">
-    {% for item in header_popular_categories %}<a href="{{ item.url }}" title="{{ item.label }}{% if item.searches %} · {{ item.searches }} recent searches{% endif %}">{{ item.label }}</a>{% endfor %}
-  </nav>
-  {% endif %}
   {% endif %}
   <main id="main-content">
     {% if request.endpoint != 'index' %}
@@ -87,11 +80,7 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
-  {% if request.endpoint != 'index' %}
   <footer class="site-footer">
-    {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
-    <div class="pm-footer-checkins"><span class="pm-checkin-dot" aria-hidden="true"></span><strong><span data-count-up="{{ public_checkins }}">{{ "{:,}".format(public_checkins) }}</span> Visitors</strong></div>
-    {% endif %}
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
       <div class="footer-brand"><strong>{{ site_settings.get('site_name','PataMahali') }}</strong></div>
@@ -109,13 +98,10 @@
     {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') and (site_settings.get('support_phone') or site_settings.get('support_email')) %}
     <div class="developer-contact-strip"><div><strong>Have a project in mind?</strong><span>Get a platform designed around your business.</span></div><div class="developer-contact-actions">{% if site_settings.get('support_phone') %}<a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">Talk to the developer <span aria-hidden="true">↗</span></a>{% endif %}{% if site_settings.get('support_email') %}<a href="mailto:{{ site_settings.get('support_email') }}">Email <span aria-hidden="true">↗</span></a>{% endif %}</div></div>
     {% endif %}
-    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="{{ url_for('about_patamahali') }}">About</a><a href="{{ url_for('how_to_use') }}">How to use</a><a href="{{ url_for('contact_us') }}">Contact us</a><a href="{{ url_for('rate_site') }}">Rate PataMahali</a><a href="{{ url_for('privacy_policy') }}">Privacy</a></div>{% endif %}
-    <div class="site-rating-footer"><span aria-hidden="true">★</span> {{ '%.1f'|format(site_rating_average|float) }} / 5 · {{ site_rating_count }} site rating{{ '' if site_rating_count == 1 else 's' }} · <a href="{{ url_for('rate_site') }}">Rate PataMahali</a></div>
-    <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovation Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
+    <div class="footer-bottom"><span>© {{ current_year }} {{ site_settings.get('site_name','PataMahali') }}. All rights reserved.</span></div>
   </footer>
-  {% endif %}
   <script>window.APP_CSRF={{ session.get('csrf_token','')|tojson }};</script>
-  <script src="{{ url_for('static', filename='js/app.js', v='20261028-kenya-photo-fix-r11') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js', v='20261020j') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

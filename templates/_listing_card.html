@@ -2,7 +2,6 @@
   <a class="property-image" data-property-preview href="{{ url_for('listing_detail', listing_id=item['id']) }}" aria-label="View {{ item['title'] }}">
     {% set imgs = listing_images(item) %}
     {% if imgs %}<img loading="lazy" src="{{ url_for('listing_media', filename=imgs[0]) }}" alt="{{ item['title'] }} property photo">{% else %}<div class="image-placeholder"><span>Photo unavailable</span></div>{% endif %}
-    {% if item['is_sample'] %}<span class="photo-chip illustrative-chip">Illustrative listing</span>{% endif %}
     {% if item['featured_until'] and item['featured_until'] > current_date %}{% if item['boost_tier']=='vvip' %}<span class="photo-chip boost-tier-pill boost-vvip">VVIP · Top placement</span>{% elif item['boost_tier']=='vip' %}<span class="photo-chip boost-tier-pill boost-vip">VIP · Boosted</span>{% else %}<span class="photo-chip">Featured</span>{% endif %}{% endif %}
   </a>
   <div class="property-card-body">
@@ -11,8 +10,8 @@
       <a class="property-title" data-property-preview href="{{ url_for('listing_detail', listing_id=item['id']) }}">{{ item['title'] }}</a>
       {% if item['rating_count'] %}<div class="listing-rating" aria-label="Rated {{ item['rating_average'] }} out of 5"><span class="rating-star" aria-hidden="true">★</span>{{ item['rating_average'] }} <span class="muted small">({{ item['rating_count'] }})</span></div>{% endif %}
       <div class="property-location">{{ item['location_name'] }}</div>
-      <div class="property-tags">{% if item['partner_verified'] and not item['is_sample'] %}<span class="verified-tag owner-verified-tag"><span aria-hidden="true">✓</span> Verified owner</span>{% endif %}{% if item['property_verified'] and not item['is_sample'] %}<span class="verified-tag">Property checked</span>{% endif %}{% if item['bedrooms'] %}<span>{{ item['bedrooms'] }} bed</span>{% endif %}{% if item['bathrooms'] %}<span>{{ item['bathrooms'] }} bath</span>{% endif %}{% if item['floor_area'] %}<span>{{ item['floor_area'] }}</span>{% endif %}</div>
-      <div class="card-footer"><span class="muted small">{{ item['property_type'] }}</span><a class="text-link" data-property-preview href="{{ url_for('listing_detail', listing_id=item['id']) }}">View place</a></div>
+      <div class="property-tags">{% if item['property_verified'] %}<span class="verified-tag">Property checked</span>{% endif %}{% if item['bedrooms'] %}<span>{{ item['bedrooms'] }} bed</span>{% endif %}{% if item['bathrooms'] %}<span>{{ item['bathrooms'] }} bath</span>{% endif %}{% if item['floor_area'] %}<span>{{ item['floor_area'] }}</span>{% endif %}</div>
+      <div class="card-footer"><span class="muted small">{{ item['property_type'] }}</span><a class="text-link" data-property-preview href="{{ url_for('listing_detail', listing_id=item['id']) }}">View place <span aria-hidden="true">→</span></a></div>
     </div>
   </div>
 </article>

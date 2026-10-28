@@ -28,21 +28,6 @@ from flask import (
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-# Materialize the compressed gallery on services that use dashboard build commands
-# instead of the repository's render.yaml. The regular Render build has already
-# cached the images, so this fallback normally completes immediately. Any source
-# failures are non-fatal and the templates retain image fallbacks.
-import importlib as _pm_importlib
-import photo_rails as _pm_photo_rails
-_pm_gallery_dir = Path(__file__).resolve().parent / "static" / "img" / "gallery"
-if not any(_pm_gallery_dir.glob("*.webp")):
-    try:
-        from cache_gallery_images import run as _pm_run_gallery_cache
-        _pm_run_gallery_cache(only_missing=True)
-        _pm_photo_rails = _pm_importlib.reload(_pm_photo_rails)
-    except Exception as _pm_gallery_exc:
-        print(f"WARNING: PataMahali gallery cache could not be built at startup: {_pm_gallery_exc}")
-PHOTO_SECTIONS = _pm_photo_rails.PHOTO_SECTIONS
 from places import (
     COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
     county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
@@ -111,10 +96,8 @@ DEFAULT_SETTINGS = {
     "site_name": "PataMahali",
     "tagline": "Find the right place.",
     "site_description": "House hunting in Kenya made easier: find houses, bedsitters and apartments for rent, homes for sale, land and plots, shops, offices, warehouses and short stays across all 47 counties. Search by county, constituency, ward and neighbourhood on PataMahali.",
-    "brand_primary": "#6A1B35",
-    "brand_accent": "#D6A7B3",
-    "public_theme": "signature",
-    "github_backup_enabled": "0",
+    "brand_primary": "#102641",
+    "brand_accent": "#C8A45D",
     "site_logo": "",
     "show_landing_qr_enabled": "1",
     "show_visitor_counter_enabled": "1",
@@ -264,8 +247,6 @@ CREATE TABLE IF NOT EXISTS listings (
     renewal_submitted_at TEXT NOT NULL DEFAULT '',
     renewal_count INTEGER NOT NULL DEFAULT 0,
     archived_at TEXT NOT NULL DEFAULT '',
-    is_sample INTEGER NOT NULL DEFAULT 0,
-    admin_rank INTEGER NOT NULL DEFAULT 0,
     views INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(owner_id) REFERENCES users(id)
 );
@@ -385,29 +366,6 @@ CREATE INDEX IF NOT EXISTS idx_listings_public ON listings(status, approval_stat
 CREATE INDEX IF NOT EXISTS idx_listings_owner ON listings(owner_id, posted_at);
 CREATE INDEX IF NOT EXISTS idx_interests_listing ON interests(listing_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_visitor_events_time ON visitor_events(created_at);
-CREATE TABLE IF NOT EXISTS site_errors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    status_code INTEGER NOT NULL DEFAULT 500,
-    method TEXT NOT NULL DEFAULT '',
-    path TEXT NOT NULL DEFAULT '',
-    endpoint TEXT NOT NULL DEFAULT '',
-    details TEXT NOT NULL DEFAULT '',
-    user_id INTEGER,
-    user_agent TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',
-    resolved_at TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_site_errors_status ON site_errors(status, created_at);
-CREATE TABLE IF NOT EXISTS site_reviews (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    reviewer_id INTEGER NOT NULL UNIQUE,
-    stars INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 5),
-    review TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    FOREIGN KEY(reviewer_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_site_reviews_time ON site_reviews(created_at);
 """
 
 
@@ -450,8 +408,6 @@ def init_db() -> None:
                 "renewal_submitted_at": "TEXT NOT NULL DEFAULT ''",
                 "renewal_count": "INTEGER NOT NULL DEFAULT 0",
                 "archived_at": "TEXT NOT NULL DEFAULT ''",
-                "is_sample": "INTEGER NOT NULL DEFAULT 0",
-                "admin_rank": "INTEGER NOT NULL DEFAULT 0",
             },
             "visitor_sessions": {
                 "visit_count": "INTEGER NOT NULL DEFAULT 1",
@@ -526,10 +482,6 @@ def init_db() -> None:
                 print(f"Username: {username}")
                 print(f"Password (copy now; stored as a hash): {password}")
                 print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
-
-        # Do not seed pretend property records or generic demonstration photos.
-        # The homepage photo galleries are discovery imagery only; public inventory
-        # must come from real owner submissions that pass the existing approval rules.
         conn.execute("PRAGMA journal_mode = WAL")
 
 
@@ -893,8 +845,7 @@ def is_public_listing(row) -> bool:
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=?", (row["owner_id"],)).fetchone()
     expiry = row["expires_at"] if "expires_at" in row.keys() else ""
     still_in_term = bool(expiry and expiry > now_iso())
-    sample = bool("is_sample" in row.keys() and row["is_sample"])
-    return bool(owner and not sample and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["status"] == "available" and still_in_term and owner["verified"] and row["property_verified"])
+    return bool(owner and owner["verified"] and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["property_verified"] and row["status"] == "available" and still_in_term)
 
 
 def log_event(event_type: str, path: str, details: str = "") -> None:
@@ -934,16 +885,9 @@ def record_page_view(response):
     response.headers.setdefault("Permissions-Policy", "geolocation=(self), camera=(), microphone=()")
     if request.path.startswith(("/manage-admin", ADMIN_ROOT, "/partner/", "/login", "/join")):
         response.headers["Cache-Control"] = "no-store"
-    admin_root_path = ADMIN_ROOT.rstrip("/") or "/"
-    is_admin_traffic = (
-        request.path == admin_root_path
-        or request.path.startswith(admin_root_path + "/")
-        or request.path == "/manage-admin"
-        or request.path.startswith("/manage-admin/")
-    )
-    if (not is_admin_traffic and request.method == "GET" and response.status_code < 400 and request.endpoint not in {
+    if request.method == "GET" and response.status_code < 400 and request.endpoint not in {
         "static", "manifest", "service_worker", "icon_svg", "robots_txt", "sitemap_xml", "qr_platform", "listing_qr", "promo_media"
-    }):
+    }:
         try:
             user = get_current_user()
             visitor_key = current_visitor_key()
@@ -992,7 +936,7 @@ def record_page_view(response):
     # Retain an anonymous first-party visitor key for 180 days so repeat visits
     # from this browser do not inflate unique-visitor counts. Cookie is HttpOnly.
     stable_key = current_visitor_key()
-    if stable_key and not is_admin_traffic:
+    if stable_key:
         response.set_cookie(
             "pm_visitor", stable_key, max_age=180 * 24 * 60 * 60,
             httponly=True, secure=request.is_secure, samesite="Lax", path="/"
@@ -1026,15 +970,6 @@ def safe_video_embed_url(value: str) -> str:
     return ""
 
 
-def _safe_admin_error_count():
-    try:
-        user = get_current_user()
-        if user and user["role"] == "admin":
-            return int(get_db().execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0])
-    except Exception:
-        pass
-    return 0
-
 @app.context_processor
 def inject_globals():
     user = get_current_user()
@@ -1052,35 +987,9 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
-    # Public counter counts only recorded public browsers. Never seed a fake public
-    # visitor figure, and exclude current/legacy admin routes even if they were
-    # visited before an administrator authenticated.
-    try:
-        public_checkins = int(get_db().execute(
-            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
-            (ADMIN_ROOT.rstrip('/') + '%',)
-        ).fetchone()[0])
-        # Include this public browser on its first response: page-view tracking runs
-        # after the template response is rendered. Admin pages and admins are never
-        # included in this projected public count.
-        path_admin_root = ADMIN_ROOT.rstrip('/') or '/'
-        request_is_admin_path = (request.path == path_admin_root or request.path.startswith(path_admin_root + '/') or request.path == '/manage-admin' or request.path.startswith('/manage-admin/'))
-        active_user = get_current_user()
-        active_key = current_visitor_key()
-        if not request_is_admin_path and not (active_user and active_user['role'] == 'admin') and active_key:
-            known = get_db().execute(
-                "SELECT 1 FROM visitor_sessions WHERE visitor_key=? AND role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
-                (active_key, ADMIN_ROOT.rstrip('/') + '%')
-            ).fetchone()
-            if not known:
-                public_checkins += 1
-    except Exception:
-        public_checkins = 0
     return {
-        "public_checkins": public_checkins,
         "site_settings": settings,
         "header_resource_links": header_resource_links,
-        "header_popular_categories": [] if request.endpoint == "index" or (request.endpoint or "").startswith("admin_") else popular_category_buttons(4),
         "promo_embed_url": safe_video_embed_url(settings.get("promo_video_url", "")),
         "is_competitor_property_portal_url": is_competitor_property_portal_url,
         "current_user": user,
@@ -1098,9 +1007,6 @@ def inject_globals():
         "current_year": datetime.now().year,
         "current_date": datetime.now(timezone.utc).date().isoformat(),
         "storage_warning": bool(os.environ.get("RENDER_SERVICE_ID") or os.environ.get("RENDER")) and DATA_DIR.resolve() == (BASE_DIR / "instance").resolve(),
-        "admin_error_count": _safe_admin_error_count(),
-        "site_rating_average": get_db().execute("SELECT ROUND(AVG(stars),1) FROM site_reviews").fetchone()[0] or 0,
-        "site_rating_count": get_db().execute("SELECT COUNT(*) FROM site_reviews").fetchone()[0],
         "place_selector_data": selector_data(),
         "slugify": slugify,
     }
@@ -1158,15 +1064,12 @@ def public_listings(where: str = "", params: tuple = (), limit: int = 100):
                (SELECT COUNT(*) FROM ratings r WHERE r.listing_id=l.id) AS rating_count
         FROM listings l JOIN users u ON u.id=l.owner_id
         WHERE l.status='available' AND l.approval_status='approved' AND l.payment_status='paid'
-          AND u.suspended=0
-          AND COALESCE(l.is_sample,0)=0 AND l.property_verified=1 AND u.verified=1
+          AND l.property_verified=1 AND u.verified=1 AND u.suspended=0
     """
     if where:
         sql += " AND " + where
     sql += " AND l.expires_at <> '' AND l.expires_at > ?"
-    sql += """ ORDER BY CASE WHEN COALESCE(l.admin_rank,0)>0 THEN 0 ELSE 1 END,
-                 CASE WHEN l.featured_until > ? AND lower(l.boost_tier)='vvip' THEN 0 WHEN l.featured_until > ? AND lower(l.boost_tier)='vip' THEN 1 WHEN l.featured_until > ? THEN 2 ELSE 3 END,
-                 CASE WHEN COALESCE(l.is_sample,0)=1 THEN 1 ELSE 0 END, RANDOM(), l.posted_at DESC LIMIT ?"""
+    sql += " ORDER BY CASE WHEN l.featured_until > ? AND lower(l.boost_tier)='vvip' THEN 0 WHEN l.featured_until > ? AND lower(l.boost_tier)='vip' THEN 1 WHEN l.featured_until > ? THEN 2 ELSE 3 END, l.posted_at DESC LIMIT ?"
     now = now_iso()
     return get_db().execute(sql, (*params, now, now, now, now, limit)).fetchall()
 
@@ -1179,135 +1082,12 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def popular_category_buttons(limit: int = 4):
-    """Rank the four top shortcuts by recorded category/type searches."""
-    enabled = visible_categories()
-    fallback_order = ["residential", "hotels", "short_stay", "land_sale", "property_sale", "commercial", "industrial"]
-    definitions = {
-        "residential": {"label": "Rentals", "url": url_for("homes", category="residential")},
-        "hotels": {"label": "Hotels", "url": url_for("homes", category="short_stay", type="Hotel room")},
-        "short_stay": {"label": "Airbnb & stays", "url": url_for("homes", category="short_stay")},
-        "land_sale": {"label": "Land & plots", "url": url_for("homes", category="land_sale")},
-        "property_sale": {"label": "Homes for sale", "url": url_for("homes", category="property_sale")},
-        "commercial": {"label": "Shops & offices", "url": url_for("homes", category="commercial")},
-        "industrial": {"label": "Warehouses", "url": url_for("homes", category="industrial")},
-    }
-    available = []
-    for key in fallback_order:
-        base_key = "short_stay" if key == "hotels" else key
-        if base_key in enabled:
-            available.append(key)
-    counts = Counter()
-    rows = get_db().execute(
-        "SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 1000"
-    ).fetchall()
-    for row in rows:
-        try:
-            details = json.loads(row["details"] or "{}")
-        except (TypeError, json.JSONDecodeError):
-            continue
-        category = str(details.get("category", "")).strip()
-        property_type = str(details.get("type", "")).strip().casefold()
-        query_text = str(details.get("q", "")).casefold()
-        if category == "short_stay":
-            key = "hotels" if property_type == "hotel room" or "hotel" in query_text else "short_stay"
-        else:
-            key = category
-        if key in definitions:
-            counts[key] += 1
-    ranked = sorted(available, key=lambda key: (-counts.get(key, 0), fallback_order.index(key)))
-    return [{"key": key, "label": definitions[key]["label"], "url": definitions[key]["url"], "searches": counts.get(key, 0)} for key in ranked[:max(1, min(int(limit), 4))]]
-
-
-
-PREVIEW_AREA_GUIDES = [
-    ("Kawangware, Nairobi", "Bedsitter / single room"),
-    ("Githurai 45, Nairobi", "Bedsitter or studio"),
-    ("Pipeline, Embakasi, Nairobi", "Apartment rental"),
-    ("Umoja, Nairobi", "One-bedroom flat"),
-    ("Kayole, Nairobi", "Family apartment"),
-    ("Kahawa West, Nairobi", "Bedsitter or studio"),
-    ("Zimmerman, Nairobi", "Apartment rental"),
-    ("Kasarani, Nairobi", "One-bedroom flat"),
-    ("Roysambu, Nairobi", "Apartment rental"),
-    ("Ruiru, Kiambu", "Family home / apartment"),
-    ("Thika, Kiambu", "Bedsitter or one-bedroom"),
-    ("Kitengela, Kajiado", "Apartment or maisonette"),
-    ("Ongata Rongai, Kajiado", "Apartment rental"),
-    ("Mlolongo, Machakos", "Apartment rental"),
-    ("Syokimau, Machakos", "Family apartment"),
-    ("Nakuru, Nakuru", "Apartment or family home"),
-    ("Kisumu, Kisumu", "Apartment or family home"),
-    ("Mombasa, Mombasa", "Apartment or coastal home"),
-    ("Bamburi, Mombasa", "Apartment rental"),
-    ("Changamwe, Mombasa", "Bedsitter or apartment"),
-]
-PREVIEW_TITLES = {
-    "residential": ["Bedsitter-style rental", "Single-room rental", "Studio apartment", "One-bedroom flat", "Two-bedroom apartment", "Apartment block", "Family rental home", "Simple residential house", "Furnished apartment", "Townhouse-style home"],
-    "short_stay": ["Hotel room", "Guest room", "Short-stay apartment", "Furnished stay", "Family room", "Serviced room", "Holiday apartment"],
-    "commercial": ["Street-front shop", "Small business premises", "Retail unit", "Shop with frontage", "Office space", "Commercial unit"],
-    "industrial": ["Warehouse unit", "Godown / storage space", "Industrial yard", "Small workshop", "Commercial storage"],
-    "land_sale": ["Residential plot", "Open land parcel", "Development plot", "Agricultural land", "Commercial plot"],
-    "property_sale": ["Residential property", "Apartment building", "Family house", "Townhouse-style property", "Property for sale"],
-}
-
-def build_discovery_previews(category="residential", property_type="", limit=None, location_filter=""):
-    """Build clearly UNVERIFIED photo previews without inventing live property listings."""
-    section = None
-    if property_type:
-        section = next((item for item in PHOTO_SECTIONS if item["category"] == category and item.get("type") == property_type), None)
-    if section is None:
-        section = next((item for item in PHOTO_SECTIONS if item["category"] == category and not item.get("type")), None)
-    if section is None:
-        section = next((item for item in PHOTO_SECTIONS if item["category"] == category), None)
-    if not section:
-        section = PHOTO_SECTIONS[0]
-    cards = section.get("cards", [])
-    if limit is not None:
-        cards = cards[:limit]
-
-    titles = PREVIEW_TITLES.get(category, PREVIEW_TITLES["residential"])
-    category_areas = {
-        "residential": ["Kahawa West, Nairobi", "Juja, Kiambu", "Embu Town, Embu", "Ruiru, Kiambu", "Huruma, Nairobi", "Thika, Kiambu"],
-        "short_stay": ["Nairobi, Nairobi", "Mombasa, Mombasa", "Kisumu, Kisumu", "Nakuru, Nakuru", "Naivasha, Nakuru", "Eldoret, Uasin Gishu"],
-        "commercial": ["Parklands, Nairobi", "Nairobi CBD, Nairobi", "Eastleigh, Nairobi", "Thika Town, Kiambu", "Kisumu CBD, Kisumu", "Mombasa CBD, Mombasa"],
-        "industrial": ["Athi River, Machakos", "Industrial Area, Nairobi", "Ruiru, Kiambu", "Mombasa Road, Nairobi", "Changamwe, Mombasa"],
-        "land_sale": ["Kamakis, Ruiru, Kiambu", "Juja, Kiambu", "Juja Farm, Juja, Kiambu", "Murera, Ruiru, Kiambu", "Kitengela, Kajiado", "Nakuru, Nakuru"],
-        "property_sale": ["Kasarani, Nairobi", "Kasarani Mwiki, Nairobi", "Syokimau, Machakos", "Ruiru, Kiambu", "Nakuru, Nakuru", "Mombasa, Mombasa"],
-    }
-    results = []
-    for index, source in enumerate(cards):
-        default_area = category_areas.get(category, category_areas["residential"])[index % len(category_areas.get(category, category_areas["residential"]))]
-        title = source.get("title") or source.get("label") or titles[index % len(titles)]
-        area = source.get("area") or default_area
-        local_type = source.get("local_type") or title
-        fallback3 = source.get("fallback3") or {
-            "residential": "/static/img/property-scenes/apartment-building.webp",
-            "short_stay": "/static/img/property-scenes/modern-interior.webp",
-            "commercial": "/static/img/property-scenes/modern-interior.webp",
-            "industrial": "/static/img/property-scenes/apartment-building.webp",
-            "land_sale": "/static/img/property-scenes/residential-land.webp",
-            "property_sale": "/static/img/property-scenes/apartment-building.webp",
-        }.get(category, "/static/img/property-scenes/neighbourhood-hero.webp")
-        results.append({
-            "title": title, "area": area, "local_type": local_type,
-            "label": source.get("label", title), "src": source.get("src", ""),
-            "fallback": source.get("fallback", ""), "fallback2": source.get("fallback2", ""),
-            "fallback3": fallback3, "unverified": True, "category": category,
-        })
-    requested_area = (location_filter or "").strip().casefold()
-    if requested_area:
-        matching = [item for item in results if requested_area in item["area"].casefold()]
-        if matching:
-            results = matching
-    return results
-
-
 @app.route("/")
 def index():
-    # The root page is intentionally a clean animated gateway only. Discovery
-    # photos, search and categories appear after Find is chosen.
-    return render_template("index.html", invite_url=public_base() + "/")
+    focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
+    featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
+                         for name in focus_order if name in COUNTY_CONSTITUENCIES]
+    return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties)
 
 
 def build_listing_location(form, existing=None):
@@ -1481,12 +1261,11 @@ def homes():
     }
     log_event("property_search", request.path, json.dumps(details))
     return render_template(
-        "homes.html", listings=results, preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=location), q=q, category=category, property_type=property_type,
+        "homes.html", listings=results, q=q, category=category, property_type=property_type,
         location=location, min_price=min_price, max_price=max_price, bedrooms=min_beds,
         types=CATEGORY_META.get(category, {}).get("types", []),
         sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
         category_meta=category_meta,
-        photo_section=(next((section for section in PHOTO_SECTIONS if section["category"] == category and section.get("type") == property_type), None) if property_type else next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)) or next((section for section in PHOTO_SECTIONS if section["category"] == category), None),
         external_searches=external_property_searches(" ".join(x for x in (q, location) if x), category),
         featured_area_cards=[
             {"name":"Nairobi","slug":"nairobi"}, {"name":"Kiambu","slug":"kiambu"},
@@ -1739,8 +1518,6 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
         constituency_cards = [{"name": name, "slug": slugify(name)} for name in COUNTY_CONSTITUENCIES.get(county, [])]
     enabled = visible_categories()
     category_links = [{"slug": slug, "label": item["label"], "count": item["category"]} for slug, item in SEO_CATEGORY_PAGES.items() if slug != category_slug and item["category"] in enabled]
-    photo_section = next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)
-    hero_photo = photo_section["cards"][0] if photo_section and photo_section.get("cards") else None
     canonical_url = public_base() + request.path
     # Don't index empty, nearly-identical category/location combinations. The main
     # county and constituency directory pages remain indexable and discoverable.
@@ -1749,7 +1526,7 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
         constituency=constituency, area_name=area_name, place_name=place_name, listings=listings, seo_title=seo_title,
         description=description, canonical_url=canonical_url, allow_index=allow_index,
         nearby_areas=nearby_areas, wards=wards, constituency_cards=constituency_cards,
-        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()), hero_photo=hero_photo)
+        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()))
 
 
 @app.route("/listing/<int:listing_id>")
@@ -1853,44 +1630,6 @@ def terms_of_use():
     return render_template("terms.html")
 
 
-@app.route("/about")
-def about_patamahali():
-    return render_template("about.html")
-
-@app.route("/how-to-use")
-def how_to_use():
-    return render_template("how_to_use.html")
-
-@app.route("/contact")
-def contact_us():
-    return render_template("contact.html")
-
-@app.route("/rate-us", methods=["GET", "POST"])
-def rate_site():
-    user = get_current_user()
-    if request.method == "POST":
-        if not user:
-            flash("Sign in first so each account can leave or update one site rating.", "warning")
-            return redirect(url_for("login", next=url_for("rate_site")))
-        if user["role"] == "admin":
-            flash("Administrator accounts cannot submit public site ratings.", "warning")
-            return redirect(url_for("rate_site"))
-        try:
-            stars = int(request.form.get("stars", "0"))
-        except (TypeError, ValueError):
-            stars = 0
-        review = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", request.form.get("review", "")).strip()[:600]
-        if stars not in {1,2,3,4,5}:
-            flash("Choose a rating from 1 to 5 stars.", "error")
-            return redirect(url_for("rate_site"))
-        get_db().execute("INSERT INTO site_reviews(reviewer_id,stars,review,created_at) VALUES(?,?,?,?) ON CONFLICT(reviewer_id) DO UPDATE SET stars=excluded.stars,review=excluded.review,created_at=excluded.created_at", (user["id"], stars, review, now_iso()))
-        audit("site_rating_submitted", "site_review", user["id"], f"Stars={stars}")
-        flash("Thanks for rating PataMahali. Your rating is now included in the public site score.", "success")
-        return redirect(url_for("rate_site"))
-    reviews = get_db().execute("SELECT r.stars,r.review,r.created_at,u.full_name,u.business_name FROM site_reviews r JOIN users u ON u.id=r.reviewer_id ORDER BY r.created_at DESC LIMIT 30").fetchall()
-    mine = get_db().execute("SELECT stars,review FROM site_reviews WHERE reviewer_id=?", (user["id"],)).fetchone() if user and user["role"] != "admin" else None
-    return render_template("rate_us.html", reviews=reviews, my_review=mine)
-
 @app.route("/partners")
 def partners_directory():
     rows = get_db().execute("SELECT u.id,u.full_name,u.business_name,u.role,u.created_at,COUNT(l.id) AS listing_count FROM users u LEFT JOIN listings l ON l.owner_id=u.id AND l.status='available' AND l.approval_status='approved' AND l.payment_status='paid' AND l.property_verified=1 WHERE u.role IN ('owner','agent','host','business') AND u.verified=1 AND u.suspended=0 GROUP BY u.id ORDER BY listing_count DESC,u.full_name").fetchall()
@@ -1914,11 +1653,10 @@ def partner_register():
         password = request.form.get("password", "")
         recovery_question = request.form.get("recovery_question", "").strip()
         recovery_answer = normalized_recovery_answer(request.form.get("recovery_answer", ""))
-        # Identity-card uploads are optional and are not required to create a partner account.
-        identity_type = "none"
+        identity_type = request.form.get("identity_type", "national_id").strip()
         if contact_preference not in {"whatsapp", "call", "email", "website"}: contact_preference = "whatsapp"
-        front = ""
-        back = ""
+        front_file = request.files.get("identity_front")
+        back_file = request.files.get("identity_back")
         if role not in {"owner", "agent", "host", "business"}:
             role = "owner"
         if not full_name or not phone or not password or len(password) < 10:
@@ -1927,7 +1665,15 @@ def partner_register():
         if recovery_question not in RECOVERY_QUESTIONS or len(recovery_answer) < 3:
             flash("Choose a private account-recovery question and enter an answer you can remember. The answer is stored as a password hash.", "error")
             return render_template("partner_register.html", form=request.form)
-        # New accounts remain unverified until an administrator reviews contact and property evidence.
+        if not front_file or not front_file.filename or not back_file or not back_file.filename:
+            flash("Upload both sides of the identity document to request partner verification.", "error")
+            return render_template("partner_register.html", form=request.form)
+        try:
+            front = save_upload(front_file, PRIVATE_DOC_DIR, ALLOWED_DOC_EXTENSIONS)
+            back = save_upload(back_file, PRIVATE_DOC_DIR, ALLOWED_DOC_EXTENSIONS)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return render_template("partner_register.html", form=request.form)
         try:
             cur = get_db().execute("INSERT INTO users(role,account_type,full_name,business_name,email,phone,contact_preference,website_url,social_url,password_hash,identity_type,identity_front,identity_back,created_at,recovery_question,recovery_answer_hash,recovery_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (role, role, full_name, business_name, email, phone, contact_preference, website_url, social_url, generate_password_hash(password), identity_type, front, back, now_iso(), recovery_question, generate_password_hash(recovery_answer), now_iso()))
         except sqlite3.IntegrityError:
@@ -2461,10 +2207,8 @@ def admin_dashboard():
         "pending_review": conn.execute("SELECT COUNT(*) FROM listings WHERE payment_status='paid' AND approval_status='pending'").fetchone()[0],
         "partners": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business')").fetchone()[0],
         "partners_pending": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business') AND verified=0 AND suspended=0").fetchone()[0],
-        "visitors_total": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
         "interests": conn.execute("SELECT COUNT(*) FROM interests").fetchone()[0],
         "reports": conn.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0],
-        "site_errors": conn.execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0],
         "visitors_today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
     }
     listings = conn.execute("SELECT l.*,u.full_name AS partner_name,u.business_name FROM listings l JOIN users u ON u.id=l.owner_id ORDER BY l.posted_at DESC LIMIT 8").fetchall()
@@ -2550,9 +2294,8 @@ def admin_edit_listing(listing_id):
         payment_status = "pending" if changed_category else row["payment_status"]
         payment_reference = "" if changed_category else row["payment_reference"]
         fee_amount = fee_for_category(category) if changed_category else float(row["fee_amount"])
-        admin_rank = int(row["admin_rank"] or 0)
-        get_db().execute("""UPDATE listings SET category=?,property_type=?,title=?,description=?,price_amount=?,price_period=?,deposit_amount=?,bedrooms=?,bathrooms=?,floor_area=?,amenities=?,water_quality=?,location_name=?,landmarks=?,latitude=?,longitude=?,property_condition=?,images=?,status='pending',approval_status='pending',payment_status=?,payment_reference=?,fee_amount=?,property_verified=0,admin_rank=?,last_confirmed_at='',updated_at=? WHERE id=?""",
-            (category,property_type,title,description,price_amount,price_period,deposit_amount,bedrooms,bathrooms,request.form.get("floor_area", "").strip()[:80],request.form.get("amenities", "").strip()[:1200],water_quality,location_name,landmarks,latitude,longitude,condition,json.dumps(images),payment_status,payment_reference,fee_amount,admin_rank,now_iso(),listing_id))
+        get_db().execute("""UPDATE listings SET category=?,property_type=?,title=?,description=?,price_amount=?,price_period=?,deposit_amount=?,bedrooms=?,bathrooms=?,floor_area=?,amenities=?,water_quality=?,location_name=?,landmarks=?,latitude=?,longitude=?,property_condition=?,images=?,status='pending',approval_status='pending',payment_status=?,payment_reference=?,fee_amount=?,property_verified=0,last_confirmed_at='',updated_at=? WHERE id=?""",
+            (category,property_type,title,description,price_amount,price_period,deposit_amount,bedrooms,bathrooms,request.form.get("floor_area", "").strip()[:80],request.form.get("amenities", "").strip()[:1200],water_quality,location_name,landmarks,latitude,longitude,condition,json.dumps(images),payment_status,payment_reference,fee_amount,now_iso(),listing_id))
         audit("admin_edited_listing", "listing", listing_id, "Listing returned to verification after admin edit")
         flash("Property updated. It is in the review queue and will be republished only after the required checks pass.", "success")
         return redirect(url_for("admin_listings"))
@@ -2614,11 +2357,6 @@ def admin_listing_action(listing_id):
         get_db().execute("UPDATE listings SET approval_status='rejected',status='rejected',updated_at=? WHERE id=?", (now_iso(), listing_id))
         audit("listing_rejected", "listing", listing_id, request.form.get("reason", "")[:500])
         flash("Listing rejected and kept out of public search.", "success")
-    elif action in {"pin", "unpin"}:
-        rank = 1 if action == "pin" else 0
-        get_db().execute("UPDATE listings SET admin_rank=?,updated_at=? WHERE id=?", (rank, now_iso(), listing_id))
-        audit("admin_priority_changed", "listing", listing_id, "Private priority enabled" if rank else "Private priority removed")
-        flash("Private listing priority updated.", "success")
     elif action == "mark_taken":
         get_db().execute("UPDATE listings SET status='occupied',updated_at=? WHERE id=?", (now_iso(), listing_id))
         audit("admin_marked_taken", "listing", listing_id)
@@ -2662,12 +2400,12 @@ def admin_partner_action(user_id):
     if not user: abort(404)
     action = request.form.get("action", "")
     if action == "verify":
-        if not user["phone"]:
-            flash("A working contact number is required before verification.", "error")
+        if not user["identity_front"] or not user["identity_back"]:
+            flash("Cannot verify this partner: both identity document sides are missing.", "error")
         else:
             get_db().execute("UPDATE users SET verified=1,suspended=0 WHERE id=?", (user_id,))
-            audit("partner_contact_reviewed", "user", user_id, "Admin confirmed contact details and reviewed available account/listing evidence; no ID image required.")
-            flash("Partner account verified after administrator review. Check each property separately before marking it as checked.", "success")
+            audit("partner_identity_verified", "user", user_id)
+            flash("Partner verified. Property listings still require their own checks and confirmed payment.", "success")
     elif action == "unverify":
         get_db().execute("UPDATE users SET verified=0 WHERE id=?", (user_id,))
         audit("partner_verification_revoked", "user", user_id)
@@ -2753,34 +2491,11 @@ def admin_report_action(report_id):
     return redirect(url_for("admin_reports"))
 
 
-@app.post("/manage-admin/analytics/visitors/<visitor_key>/remove")
-@admin_required
-def admin_remove_visitor_record(visitor_key):
-    """Remove one visitor analytics record only; never delete the person's account or listings."""
-    key = (visitor_key or "").strip()
-    if not key or len(key) > 100 or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in key):
-        abort(400)
-    conn = get_db()
-    row = conn.execute(
-        "SELECT visitor_key, role, user_id FROM visitor_sessions WHERE visitor_key=?", (key,)
-    ).fetchone()
-    if not row or row["role"] == "administrator":
-        flash("That public visitor record was not found.", "warning")
-        return redirect(url_for("admin_analytics"))
-    # The account, submitted properties, and enquiries are deliberately untouched.
-    conn.execute("DELETE FROM visitor_events WHERE visitor_key=?", (key,))
-    conn.execute("DELETE FROM visitor_sessions WHERE visitor_key=?", (key,))
-    audit("admin_removed_visitor_analytics_record", "visitor_session", key,
-          "Removed analytics record only; user account and property records retained")
-    flash("Visitor analytics record removed. Any account and property listings were kept.", "success")
-    return redirect(url_for("admin_analytics"))
-
-
 @app.route("/manage-admin/analytics")
 @admin_required
 def admin_analytics():
     conn = get_db()
-    sessions = conn.execute("SELECT v.*,COALESCE(NULLIF(u.full_name,''),NULLIF(v.contact_name,'')) AS full_name,u.business_name,COALESCE(NULLIF(u.phone,''),NULLIF(v.contact_phone,'')) AS account_phone FROM visitor_sessions v LEFT JOIN users u ON v.user_id=u.id WHERE v.role != 'administrator' AND v.last_path NOT LIKE ? AND v.last_path NOT LIKE '/manage-admin%' ORDER BY v.last_seen DESC LIMIT 250", (ADMIN_ROOT.rstrip('/') + '%',)).fetchall()
+    sessions = conn.execute("SELECT v.*,COALESCE(NULLIF(u.full_name,''),NULLIF(v.contact_name,'')) AS full_name,u.business_name,COALESCE(NULLIF(u.phone,''),NULLIF(v.contact_phone,'')) AS account_phone FROM visitor_sessions v LEFT JOIN users u ON v.user_id=u.id WHERE v.role != 'administrator' ORDER BY v.last_seen DESC LIMIT 250").fetchall()
     top_pages = conn.execute("SELECT e.path,COUNT(*) AS hits,COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) AS visitors FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE '/manage-admin%' AND e.path NOT LIKE ? GROUP BY e.path ORDER BY hits DESC LIMIT 15", (ADMIN_ROOT + '%',)).fetchall()
     search_events = conn.execute("SELECT details,created_at FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 1500").fetchall()
     popular_counter, failed_counter = Counter(), Counter()
@@ -2804,12 +2519,12 @@ def admin_analytics():
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     active_after = (now - timedelta(minutes=15)).isoformat()
     totals = {
-        "sessions": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
-        "returning": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions v WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%' AND (visit_count>1 OR (contact_phone != '' AND contact_phone IN (SELECT contact_phone FROM visitor_sessions WHERE contact_phone != '' GROUP BY contact_phone HAVING COUNT(*)>1)) OR (user_id IS NOT NULL AND user_id IN (SELECT user_id FROM visitor_sessions WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(*)>1)))", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
-        "shared": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND location_shared=1 AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
+        "sessions": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator'").fetchone()[0],
+        "returning": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions v WHERE role != 'administrator' AND (visit_count>1 OR (contact_phone != '' AND contact_phone IN (SELECT contact_phone FROM visitor_sessions WHERE contact_phone != '' GROUP BY contact_phone HAVING COUNT(*)>1)) OR (user_id IS NOT NULL AND user_id IN (SELECT user_id FROM visitor_sessions WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(*)>1)))").fetchone()[0],
+        "shared": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND location_shared=1").fetchone()[0],
         "today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
-        "active": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_seen>=? AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (active_after, ADMIN_ROOT.rstrip('/') + '%')).fetchone()[0],
-        "mobile": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%' AND (device LIKE '%phone%' OR device LIKE '%Mobile%' OR device LIKE '%iPhone%' OR device LIKE '%iPad%' OR device LIKE '%Android%')", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
+        "active": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND last_seen>=?", (active_after,)).fetchone()[0],
+        "mobile": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND (device LIKE '%phone%' OR device LIKE '%Mobile%' OR device LIKE '%iPhone%' OR device LIKE '%iPad%' OR device LIKE '%Android%')").fetchone()[0],
         "searches": conn.execute("SELECT COUNT(*) FROM visitor_events WHERE event_type='property_search'").fetchone()[0],
         "no_results": sum(failed_counter.values()),
     }
@@ -2930,9 +2645,6 @@ def admin_settings():
             if key in {"brand_primary", "brand_accent"} and not (len(value) == 7 and value.startswith("#") and all(c in "0123456789abcdefABCDEF" for c in value[1:])):
                 flash(f"{key.replace('_',' ').title()} must be a valid hex color.", "error")
                 return redirect(url_for("admin_settings"))
-            if key == "public_theme" and value not in {"signature", "festive", "warm", "contrast"}:
-                flash("Choose one of the available public themes.", "error")
-                return redirect(url_for("admin_settings"))
             if key == "management_url" and value and not safe_external_url(value):
                 flash("Management URL must begin with https:// or http:// and include a valid host.", "error")
                 return redirect(url_for("admin_settings"))
@@ -3016,68 +2728,12 @@ def admin_settings():
     return render_template("admin_settings.html", settings=settings)
 
 
-
-@app.post("/manage-admin/backups/github")
-@admin_required
-def admin_github_backup():
-    if setting("github_backup_enabled", "0") != "1":
-        flash("Enable GitHub snapshots in Site & fees before using this action.", "warning")
-        return redirect(url_for("admin_backups"))
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    repo = os.environ.get("GITHUB_REPOSITORY", "").strip().strip("/")
-    key = os.environ.get("GITHUB_BACKUP_FERNET_KEY", "").strip()
-    branch = os.environ.get("GITHUB_BACKUP_BRANCH", "main").strip() or "main"
-    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or not key:
-        flash("GitHub backup is not configured. Add GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_BACKUP_FERNET_KEY in Render variables.", "error")
-        return redirect(url_for("admin_backups"))
-    try:
-        from cryptography.fernet import Fernet
-        from urllib.request import Request, urlopen
-        from urllib.error import HTTPError, URLError
-        fernet = Fernet(key.encode("ascii"))
-        api_base = "https://api.github.com/repos/" + repo
-        headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "PataMahali-Backup"}
-        req = Request(api_base, headers=headers, method="GET")
-        with urlopen(req, timeout=20) as response: repo_info = json.loads(response.read().decode("utf-8"))
-        if not repo_info.get("private"):
-            flash("Safety check blocked this upload: the target GitHub repository is not private.", "error")
-            return redirect(url_for("admin_backups"))
-        with tempfile.NamedTemporaryFile(prefix="pm-gh-", suffix=".sqlite3", delete=False) as handle: snap_path = Path(handle.name)
-        try:
-            create_db_snapshot(snap_path)
-            encrypted = fernet.encrypt(snap_path.read_bytes())
-        finally:
-            snap_path.unlink(missing_ok=True)
-        if len(encrypted) > 45 * 1024 * 1024:
-            flash("Encrypted snapshot exceeds the safe GitHub single-file limit. Keep this backup local or use a dedicated object store.", "error")
-            return redirect(url_for("admin_backups"))
-        remote_path = "backups/patamahali/latest.sqlite3.fernet"
-        contents_url = api_base + "/contents/" + remote_path
-        payload = {"message": "Update encrypted PataMahali SQLite snapshot", "content": __import__("base64").b64encode(encrypted).decode("ascii"), "branch": branch}
-        check_req = Request(contents_url + "?ref=" + quote_plus(branch), headers=headers, method="GET")
-        try:
-            with urlopen(check_req, timeout=20) as response: existing = json.loads(response.read().decode("utf-8"))
-            if existing.get("sha"): payload["sha"] = existing["sha"]
-        except HTTPError as exc:
-            if exc.code != 404: raise
-        put_headers = {**headers, "Content-Type": "application/json"}
-        put_req = Request(contents_url, data=json.dumps(payload).encode("utf-8"), headers=put_headers, method="PUT")
-        with urlopen(put_req, timeout=45) as response: result = json.loads(response.read().decode("utf-8"))
-        audit("encrypted_github_backup_created", "backup", remote_path, "Private repo snapshot committed")
-        flash("Encrypted SQLite snapshot committed to the configured private GitHub repository.", "success")
-    except Exception as exc:
-        print(f"GitHub backup failure: {type(exc).__name__}: {exc}")
-        record_site_error(500, f"Encrypted GitHub backup failed: {type(exc).__name__}: {exc}")
-        audit("github_backup_failed", "backup", repo or "unconfigured", type(exc).__name__)
-        flash("GitHub backup failed. Open Site errors / server logs and verify the token, private repo, encryption key and branch. No live database was changed.", "error")
-    return redirect(url_for("admin_backups"))
-
 @app.route("/manage-admin/backups")
 @admin_required
 def admin_backups():
     files = sorted(BACKUP_DIR.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
     backups = [{"name": p.name, "size": p.stat().st_size, "modified": datetime.fromtimestamp(p.stat().st_mtime).strftime("%d %b %Y %H:%M"), "url": url_for("admin_download_backup", filename=p.name)} for p in files[:50]]
-    return render_template("admin_backups.html", backups=backups, db_size=DB_PATH.stat().st_size if DB_PATH.exists() else 0, settings=all_settings())
+    return render_template("admin_backups.html", backups=backups, db_size=DB_PATH.stat().st_size if DB_PATH.exists() else 0)
 
 
 @app.post("/manage-admin/backups/create")
@@ -3193,13 +2849,12 @@ def admin_restore_backup():
 def listing_media(filename):
     if Path(filename).name != filename or Path(filename).suffix.lower().lstrip(".") not in ALLOWED_IMAGE_EXTENSIONS:
         abort(404)
-    row = get_db().execute("SELECT id,images,status,approval_status,payment_status,property_verified,is_sample FROM listings WHERE images LIKE ? LIMIT 1", (f"%{filename}%",)).fetchone()
+    row = get_db().execute("SELECT id,images,status,approval_status,payment_status,property_verified FROM listings WHERE images LIKE ? LIMIT 1", (f"%{filename}%",)).fetchone()
     if not row:
         abort(404)
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=(SELECT owner_id FROM listings WHERE id=?)", (row["id"],)).fetchone()
     # Photos for unapproved listings are visible only to the owning partner or admin.
-    is_sample = bool("is_sample" in row.keys() and row["is_sample"])
-    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and not is_sample and not (owner and owner["suspended"]) and row["property_verified"] and owner and owner["verified"]):
+    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and row["property_verified"] and owner and owner["verified"] and not owner["suspended"]):
         user = get_current_user()
         listing_owner = get_db().execute("SELECT owner_id FROM listings WHERE id=?", (row["id"],)).fetchone()
         if not user or (user["role"] != "admin" and user["id"] != listing_owner["owner_id"]):
@@ -3237,27 +2892,10 @@ def qr_response(url: str, filename: str):
     from io import BytesIO
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
     qr.add_data(url); qr.make(fit=True)
-    image = qr.make_image(fill_color="#6A1B35", back_color="#FFFFFF")
+    image = qr.make_image(fill_color="#102641", back_color="#FFFFFF")
     out = BytesIO(); image.save(out, format="PNG"); out.seek(0)
     return send_file(out, mimetype="image/png", download_name=f"{filename}.png", max_age=3600)
 
-
-
-@app.route("/partner/qr.png")
-@partner_required
-def partner_account_qr():
-    user = get_current_user()
-    if not user or user["suspended"]:
-        flash("This account cannot publish a public QR right now.", "warning")
-        return redirect(url_for("partner_dashboard"))
-    return qr_response(public_base().rstrip("/") + url_for("partner_public_profile", user_id=user["id"]), f"partner-{user['id']}")
-
-@app.route("/partners/<int:user_id>")
-def partner_public_profile(user_id):
-    partner = get_db().execute("SELECT id,full_name,business_name,role,created_at,verified FROM users WHERE id=? AND role IN ('owner','agent','host','business') AND suspended=0", (user_id,)).fetchone()
-    if not partner: abort(404)
-    listings = public_listings("l.owner_id=?", (user_id,), 100)
-    return render_template("partner_public_profile.html", partner=partner, listings=listings)
 
 @app.route("/promo-media/<path:filename>")
 def promo_media(filename):
@@ -3285,7 +2923,7 @@ def manifest():
         "short_name": setting("site_name", "PataMahali")[:12],
         "description": setting("site_description", "Verified property marketplace"),
         "start_url": "/", "scope": "/", "display": "standalone",
-        "background_color": "#FBF7F2", "theme_color": "#6A1B35",
+        "background_color": "#F2F4F7", "theme_color": "#0C1B2D",
         "icons": [{"src": logo_src, "sizes": "512x512" if logo_type == "image/png" else "any", "type": logo_type, "purpose": "any maskable"}],
     }
     return app.response_class(json.dumps(body), mimetype="application/manifest+json")
@@ -3307,7 +2945,7 @@ def site_qr():
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
     qr.add_data(target)
     qr.make(fit=True)
-    image = qr.make_image(fill_color="#6A1B35", back_color="#ffffff").convert("RGB")
+    image = qr.make_image(fill_color="#102641", back_color="#ffffff").convert("RGB")
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     output.seek(0)
@@ -3398,67 +3036,28 @@ def llms_txt():
     ]
     return app.response_class("\n".join(body), mimetype="text/plain")
 
-
-def record_site_error(status_code, error):
-    """Keep a concise private record of failures without copying submitted form data."""
-    try:
-        key = session.get("user_id")
-        detail = (str(error or "Request failed") or "Request failed")[:900]
-        get_db().execute(
-            "INSERT INTO site_errors(status_code,method,path,endpoint,details,user_id,user_agent,created_at,status) VALUES(?,?,?,?,?,?,?,?, 'open')",
-            (int(status_code), request.method[:12], request.path[:500], (request.endpoint or "")[:160], detail, key, request.headers.get("User-Agent", "")[:240], now_iso())
-        )
-    except Exception as logging_error:
-        print(f"Could not persist site error: {logging_error}")
-
-@app.route("/manage-admin/errors")
-@admin_required
-def admin_errors():
-    status = request.args.get("status", "open")
-    if status not in {"open", "resolved", "all"}: status = "open"
-    clauses, params = [], []
-    if status != "all": clauses.append("status=?"); params.append(status)
-    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-    conn = get_db()
-    errors = conn.execute("SELECT * FROM site_errors" + where + " ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, id DESC LIMIT 500", tuple(params)).fetchall()
-    counts = {"open": conn.execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0], "all": conn.execute("SELECT COUNT(*) FROM site_errors").fetchone()[0]}
-    return render_template("admin_errors.html", errors=errors, status=status, counts=counts)
-
-@app.post("/manage-admin/errors/<int:error_id>/resolve")
-@admin_required
-def admin_error_resolve(error_id):
-    get_db().execute("UPDATE site_errors SET status='resolved',resolved_at=? WHERE id=?", (now_iso(), error_id))
-    audit("site_error_resolved", "site_error", error_id)
-    flash("Error marked as reviewed. The record is retained for your audit history.", "success")
-    return redirect(url_for("admin_errors", status=request.args.get("status", "open")))
-
 @app.errorhandler(413)
 def too_large(_error):
-    record_site_error(413, _error)
     return render_template("error.html", code=413, message="That upload is too large. Please reduce the file size and try again."), 413
 
 
 @app.errorhandler(403)
 def forbidden(error):
-    record_site_error(403, error)
     return render_template("error.html", code=403, message=getattr(error, "description", "You do not have access to this page.")), 403
 
 
 @app.errorhandler(404)
 def not_found(_error):
-    record_site_error(404, _error)
     return render_template("error.html", code=404, message="We could not find that page or the listing is not publicly available."), 404
 
 
 @app.errorhandler(400)
 def bad_request(error):
-    record_site_error(400, error)
     return render_template("error.html", code=400, message=getattr(error, "description", "Please refresh and try again.")), 400
 
 
 @app.errorhandler(500)
 def server_error(error):
-    record_site_error(500, error)
     # Log detail for owner/developer, keep internal exception data out of visitor pages.
     print(f"Internal server error: {error}")
     return render_template("error.html", code=500, message="Something went wrong. Please try again."), 500
