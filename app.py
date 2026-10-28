@@ -28,7 +28,21 @@ from flask import (
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from photo_rails import PHOTO_SECTIONS
+# Materialize the compressed gallery on services that use dashboard build commands
+# instead of the repository's render.yaml. The regular Render build has already
+# cached the images, so this fallback normally completes immediately. Any source
+# failures are non-fatal and the templates retain image fallbacks.
+import importlib as _pm_importlib
+import photo_rails as _pm_photo_rails
+_pm_gallery_dir = Path(__file__).resolve().parent / "static" / "img" / "gallery"
+if not any(_pm_gallery_dir.glob("*.webp")):
+    try:
+        from cache_gallery_images import run as _pm_run_gallery_cache
+        _pm_run_gallery_cache(only_missing=True)
+        _pm_photo_rails = _pm_importlib.reload(_pm_photo_rails)
+    except Exception as _pm_gallery_exc:
+        print(f"WARNING: PataMahali gallery cache could not be built at startup: {_pm_gallery_exc}")
+PHOTO_SECTIONS = _pm_photo_rails.PHOTO_SECTIONS
 from places import (
     COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
     county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
@@ -513,76 +527,9 @@ def init_db() -> None:
                 print(f"Password (copy now; stored as a hash): {password}")
                 print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
 
-        # A small, clearly labelled illustrative inventory gives first-time visitors
-        # something useful to browse until genuine owners publish listings.
-        # These rows are never verified and are always ranked below real listings
-        # unless an administrator explicitly promotes them.
-        sample_email = "illustrative-listings@patamahali.invalid"
-        sample_owner = conn.execute("SELECT id FROM users WHERE email=?", (sample_email,)).fetchone()
-        if not sample_owner:
-            cur = conn.execute(
-                """INSERT INTO users(role,account_type,full_name,business_name,email,phone,password_hash,
-                   identity_type,verified,suspended,created_at)
-                   VALUES('owner','owner','Pata Mahali Illustrative Collection','Illustrative collection',?,?,?, 'none',0,0,?)""",
-                (sample_email, "", generate_password_hash(secrets.token_urlsafe(32)), now_iso()),
-            )
-            sample_owner_id = cur.lastrowid
-        else:
-            sample_owner_id = sample_owner["id"]
-        scene_dir = BASE_DIR / "static" / "img" / "property-scenes"
-        sample_specs = [
-            ("residential","2-bedroom apartment","Sunlit two-bedroom apartment near the heart of Kilimani",
-             "Illustrative example listing. This is a design sample, not a confirmed available property. Use it to preview the kind of details owners can publish on Pata Mahali.",
-             38000,"per month",2,1,"Kilimani, Nairobi","neighbourhood-hero.webp"),
-            ("residential","3+ bedroom house","Quiet family home with a private garden in Ruiru",
-             "Illustrative example listing with a family-friendly layout and outdoor space. Availability and price are examples only.",
-             65000,"per month",3,2,"Ruiru, Kiambu","modern-interior.webp"),
-            ("short_stay","Serviced apartment","A calm furnished stay for a Nairobi weekend",
-             "Illustrative short-stay example. Nightly price and availability are not a live offer; this listing demonstrates the dedicated stays category.",
-             6500,"per night",1,1,"Westlands, Nairobi","apartment-building.webp"),
-            ("land_sale","Residential plot","Residential plot in a growing Kiambu neighbourhood",
-             "Illustrative land listing. The location and price are examples only; no title or availability claim is made.",
-             1850000,"total price",None,None,"Kikuyu, Kiambu","residential-land.webp"),
-            ("commercial","Shop","Street-facing retail space for a growing business",
-             "Illustrative commercial-space example. Confirm actual availability, lease terms and permitted use before making any commitment.",
-             28000,"per month",None,None,"Rongai, Kajiado","modern-interior.webp"),
-            ("industrial","Warehouse / godown","Practical storage and distribution space",
-             "Illustrative warehouse example. Floor area, price and availability are placeholders for preview only.",
-             120000,"per month",None,None,"Athi River, Machakos","apartment-building.webp"),
-            ("property_sale","House for sale","Contemporary family home with generous natural light",
-             "Illustrative property-for-sale example. This is not a verified offer and must not be treated as an available home.",
-             18500000,"total price",4,3,"Syokimau, Machakos","neighbourhood-hero.webp"),
-        ]
-        for i, spec in enumerate(sample_specs, 1):
-            category, typ, title, description, price, period, beds, baths, location, image_name = spec
-            exists = conn.execute("SELECT id FROM listings WHERE is_sample=1 AND title=?", (title,)).fetchone()
-            if exists:
-                continue
-            source_image = scene_dir / image_name
-            image_filename = f"illustrative-{i}-{image_name}"
-            target_image = LISTING_UPLOAD_DIR / image_filename
-            if source_image.is_file() and not target_image.exists():
-                try:
-                    with Image.open(source_image) as opened:
-                        optimized = ImageOps.exif_transpose(opened).convert("RGB")
-                        optimized.thumbnail((1400, 1100), Image.Resampling.LANCZOS)
-                        optimized.save(target_image, "WEBP", quality=82, method=5)
-                        optimized.close()
-                except (OSError, ValueError):
-                    shutil.copy2(source_image, target_image)
-            if not target_image.exists():
-                continue
-            now = now_iso()
-            expiry = (datetime.now(timezone.utc) + timedelta(days=3650)).replace(microsecond=0).isoformat()
-            conn.execute(
-                """INSERT INTO listings(owner_id,category,property_type,title,description,price_amount,price_period,
-                   bedrooms,bathrooms,location_name,county,images,status,approval_status,payment_status,
-                   property_verified,posted_at,updated_at,expires_at,is_sample,admin_rank)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'available','approved','paid',0,?,?,?,1,0)""",
-                (sample_owner_id, category, typ, title, description, price, period, beds, baths, location,
-                 location.split(",")[-1].strip(), json.dumps([image_filename]), now, now, expiry),
-            )
-
+        # Do not seed pretend property records or generic demonstration photos.
+        # The homepage photo galleries are discovery imagery only; public inventory
+        # must come from real owner submissions that pass the existing approval rules.
         conn.execute("PRAGMA journal_mode = WAL")
 
 
@@ -1098,9 +1045,19 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
+    # Public counter is based on recorded first-party browser identifiers, excluding admin sessions.
+    # It is not a fabricated seed or a claim of independently verified human identities.
+    try:
+        public_checkins = int(get_db().execute(
+            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator'"
+        ).fetchone()[0])
+    except Exception:
+        public_checkins = 0
     return {
+        "public_checkins": public_checkins,
         "site_settings": settings,
         "header_resource_links": header_resource_links,
+        "header_popular_categories": [] if request.endpoint == "index" or (request.endpoint or "").startswith("admin_") else popular_category_buttons(4),
         "promo_embed_url": safe_video_embed_url(settings.get("promo_video_url", "")),
         "is_competitor_property_portal_url": is_competitor_property_portal_url,
         "current_user": user,
@@ -1199,28 +1156,143 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def popular_category_buttons(limit: int = 4):
+    """Rank the four top shortcuts by recorded category/type searches."""
+    enabled = visible_categories()
+    fallback_order = ["residential", "hotels", "short_stay", "land_sale", "property_sale", "commercial", "industrial"]
+    definitions = {
+        "residential": {"label": "Rentals", "url": url_for("homes", category="residential")},
+        "hotels": {"label": "Hotels", "url": url_for("homes", category="short_stay", type="Hotel room")},
+        "short_stay": {"label": "Airbnb & stays", "url": url_for("homes", category="short_stay")},
+        "land_sale": {"label": "Land & plots", "url": url_for("homes", category="land_sale")},
+        "property_sale": {"label": "Homes for sale", "url": url_for("homes", category="property_sale")},
+        "commercial": {"label": "Shops & offices", "url": url_for("homes", category="commercial")},
+        "industrial": {"label": "Warehouses", "url": url_for("homes", category="industrial")},
+    }
+    available = []
+    for key in fallback_order:
+        base_key = "short_stay" if key == "hotels" else key
+        if base_key in enabled:
+            available.append(key)
+    counts = Counter()
+    rows = get_db().execute(
+        "SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 1000"
+    ).fetchall()
+    for row in rows:
+        try:
+            details = json.loads(row["details"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        category = str(details.get("category", "")).strip()
+        property_type = str(details.get("type", "")).strip().casefold()
+        query_text = str(details.get("q", "")).casefold()
+        if category == "short_stay":
+            key = "hotels" if property_type == "hotel room" or "hotel" in query_text else "short_stay"
+        else:
+            key = category
+        if key in definitions:
+            counts[key] += 1
+    ranked = sorted(available, key=lambda key: (-counts.get(key, 0), fallback_order.index(key)))
+    return [{"key": key, "label": definitions[key]["label"], "url": definitions[key]["url"], "searches": counts.get(key, 0)} for key in ranked[:max(1, min(int(limit), 4))]]
+
+
+
+PREVIEW_AREA_GUIDES = [
+    ("Kawangware, Nairobi", "Bedsitter / single room"),
+    ("Githurai 45, Nairobi", "Bedsitter or studio"),
+    ("Pipeline, Embakasi, Nairobi", "Apartment rental"),
+    ("Umoja, Nairobi", "One-bedroom flat"),
+    ("Kayole, Nairobi", "Family apartment"),
+    ("Kahawa West, Nairobi", "Bedsitter or studio"),
+    ("Zimmerman, Nairobi", "Apartment rental"),
+    ("Kasarani, Nairobi", "One-bedroom flat"),
+    ("Roysambu, Nairobi", "Apartment rental"),
+    ("Ruiru, Kiambu", "Family home / apartment"),
+    ("Thika, Kiambu", "Bedsitter or one-bedroom"),
+    ("Kitengela, Kajiado", "Apartment or maisonette"),
+    ("Ongata Rongai, Kajiado", "Apartment rental"),
+    ("Mlolongo, Machakos", "Apartment rental"),
+    ("Syokimau, Machakos", "Family apartment"),
+    ("Nakuru, Nakuru", "Apartment or family home"),
+    ("Kisumu, Kisumu", "Apartment or family home"),
+    ("Mombasa, Mombasa", "Apartment or coastal home"),
+    ("Bamburi, Mombasa", "Apartment rental"),
+    ("Changamwe, Mombasa", "Bedsitter or apartment"),
+]
+PREVIEW_TITLES = {
+    "residential": ["Bedsitter-style rental", "Single-room rental", "Studio apartment", "One-bedroom flat", "Two-bedroom apartment", "Apartment block", "Family rental home", "Simple residential house", "Furnished apartment", "Townhouse-style home"],
+    "short_stay": ["Hotel room", "Guest room", "Short-stay apartment", "Furnished stay", "Family room", "Serviced room", "Holiday apartment"],
+    "commercial": ["Street-front shop", "Small business premises", "Retail unit", "Shop with frontage", "Office space", "Commercial unit"],
+    "industrial": ["Warehouse unit", "Godown / storage space", "Industrial yard", "Small workshop", "Commercial storage"],
+    "land_sale": ["Residential plot", "Open land parcel", "Development plot", "Agricultural land", "Commercial plot"],
+    "property_sale": ["Residential property", "Apartment building", "Family house", "Townhouse-style property", "Property for sale"],
+}
+
+def build_discovery_previews(category="residential", property_type="", limit=None, location_filter=""):
+    """Build clearly UNVERIFIED UI preview cards without adding fake properties to the database."""
+    section = None
+    if property_type:
+        section = next((s for s in PHOTO_SECTIONS if s["category"] == category and s.get("type") == property_type), None)
+    if section is None:
+        section = next((s for s in PHOTO_SECTIONS if s["category"] == category and not s.get("type")), None)
+    if section is None:
+        section = next((s for s in PHOTO_SECTIONS if s["category"] == category), None)
+    if not section:
+        section = PHOTO_SECTIONS[0]
+    cards = section.get("cards", [])
+    if limit is not None:
+        cards = cards[:limit]
+    titles = PREVIEW_TITLES.get(category, PREVIEW_TITLES["residential"])
+    results = []
+    for index, source in enumerate(cards):
+        area, local_type = PREVIEW_AREA_GUIDES[index % len(PREVIEW_AREA_GUIDES)]
+        title = titles[index % len(titles)]
+        # Rental previews use the actual photo's source label/locality, not a random unrelated area.
+        if category == "residential":
+            area = source.get("area") or area
+            title = source.get("title") or source.get("label") or "Kenyan apartment or family home"
+            local_type = source.get("local_type") or title
+        elif category == "short_stay":
+            if property_type == "Hotel room":
+                title = ["Hotel room", "Budget hotel room", "Guest room", "Family hotel room"][index % 4]
+            else:
+                title = ["Furnished short stay", "Guest house room", "Holiday apartment", "Serviced stay"][index % 4]
+            area = ["Nairobi, Nairobi", "Mombasa, Mombasa", "Kisumu, Kisumu", "Nakuru, Nakuru", "Naivasha, Nakuru", "Eldoret, Uasin Gishu"][index % 6]
+            local_type = title
+        elif category == "commercial":
+            area = ["Eastleigh, Nairobi", "CBD, Nairobi", "Gikomba, Nairobi", "Thika Town, Kiambu", "Kisumu CBD, Kisumu", "Mombasa CBD, Mombasa"][index % 6]
+            local_type = title
+        elif category == "industrial":
+            area = ["Industrial Area, Nairobi", "Athi River, Machakos", "Ruiru, Kiambu", "Mombasa Road, Nairobi", "Changamwe, Mombasa"][index % 5]
+            local_type = title
+        elif category == "land_sale":
+            area = ["Ruiru, Kiambu", "Kitengela, Kajiado", "Juja, Kiambu", "Kiserian, Kajiado", "Nakuru, Nakuru", "Mlolongo, Machakos"][index % 6]
+            local_type = title
+        elif category == "property_sale":
+            area = ["Kasarani, Nairobi", "Ruiru, Kiambu", "Ongata Rongai, Kajiado", "Nakuru, Nakuru", "Mombasa, Mombasa", "Kisumu, Kisumu"][index % 6]
+            local_type = title
+        results.append({
+            "title": title, "area": area, "local_type": local_type,
+            "label": source.get("label", title), "src": source.get("src", ""),
+            "fallback": source.get("fallback", ""), "fallback2": source.get("fallback2", ""),
+            "unverified": True, "category": category,
+        })
+    requested_area = (location_filter or "").strip().casefold()
+    if requested_area:
+        matching = [item for item in results if requested_area in item["area"].casefold()]
+        if matching:
+            results = matching
+    return results
+
+
 @app.route("/")
 def index():
     focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
     featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
-    category_labels = {"residential": "Rentals", "short_stay": "Hotels & stays", "commercial": "Shops & offices", "industrial": "Warehouses", "land_sale": "Land & plots", "property_sale": "Homes for sale"}
-    category_counts = Counter()
-    for event in get_db().execute("SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 3000").fetchall():
-        try:
-            data = json.loads(event["details"] or "{}")
-            cat = str(data.get("category", "")).strip()
-            if cat in category_labels: category_counts[cat] += 1
-        except (TypeError, json.JSONDecodeError):
-            pass
-    fallback = ["residential", "short_stay", "land_sale", "property_sale", "commercial", "industrial"]
-    ordered = sorted(fallback, key=lambda cat: (-category_counts.get(cat, 0), fallback.index(cat)))[:5]
-    if not any(category_counts.values()): ordered = fallback[:5]
-    rotate = datetime.now(timezone.utc).timetuple().tm_yday % len(ordered) if ordered else 0
-    rolled = ordered[rotate:] + ordered[:rotate]
-    popular_categories = [{"key": cat, "label": category_labels[cat], "url": url_for("homes", category=cat), "searches": category_counts.get(cat, 0)} for cat in rolled[:4]]
+    popular_categories = popular_category_buttons(4)
     return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
-                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
+                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories, home_preview_cards=build_discovery_previews("residential", limit=8))
 
 
 def build_listing_location(form, existing=None):
@@ -1394,11 +1466,12 @@ def homes():
     }
     log_event("property_search", request.path, json.dumps(details))
     return render_template(
-        "homes.html", listings=results, q=q, category=category, property_type=property_type,
+        "homes.html", listings=results, preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=location), q=q, category=category, property_type=property_type,
         location=location, min_price=min_price, max_price=max_price, bedrooms=min_beds,
         types=CATEGORY_META.get(category, {}).get("types", []),
         sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
         category_meta=category_meta,
+        photo_section=(next((section for section in PHOTO_SECTIONS if section["category"] == category and section.get("type") == property_type), None) if property_type else next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)) or next((section for section in PHOTO_SECTIONS if section["category"] == category), None),
         external_searches=external_property_searches(" ".join(x for x in (q, location) if x), category),
         featured_area_cards=[
             {"name":"Nairobi","slug":"nairobi"}, {"name":"Kiambu","slug":"kiambu"},
@@ -1651,6 +1724,8 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
         constituency_cards = [{"name": name, "slug": slugify(name)} for name in COUNTY_CONSTITUENCIES.get(county, [])]
     enabled = visible_categories()
     category_links = [{"slug": slug, "label": item["label"], "count": item["category"]} for slug, item in SEO_CATEGORY_PAGES.items() if slug != category_slug and item["category"] in enabled]
+    photo_section = next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)
+    hero_photo = photo_section["cards"][0] if photo_section and photo_section.get("cards") else None
     canonical_url = public_base() + request.path
     # Don't index empty, nearly-identical category/location combinations. The main
     # county and constituency directory pages remain indexable and discoverable.
@@ -1659,7 +1734,7 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
         constituency=constituency, area_name=area_name, place_name=place_name, listings=listings, seo_title=seo_title,
         description=description, canonical_url=canonical_url, allow_index=allow_index,
         nearby_areas=nearby_areas, wards=wards, constituency_cards=constituency_cards,
-        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()))
+        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()), hero_photo=hero_photo)
 
 
 @app.route("/listing/<int:listing_id>")
