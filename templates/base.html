@@ -19,7 +19,7 @@
   {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
   <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-real-photo-rails-r5') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-unverified-preview-r6') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
   <style>:root{--brand:{{ site_settings.get('brand_primary','#6A1B35') }};--accent:{{ site_settings.get('brand_accent','#D6A7B3') }};}</style>
   {% block head %}{% endblock %}
@@ -57,7 +57,6 @@
         {% endif %}
       </div>
     </div>
-    {% if request.endpoint != 'homes' %}
     <nav class="main-nav" id="mainNav" data-nav aria-label="Site navigation">
       <div class="drawer-heading"><strong>Explore PataMahali</strong><span>Choose where to go</span></div>
       {% if 'residential' in public_categories %}<a href="{{ url_for('homes', category='residential') }}">Rentals</a>{% endif %}
@@ -70,9 +69,9 @@
       <a href="{{ url_for('about_patamahali') }}">About PataMahali</a>
       <a href="{{ url_for('how_to_use') }}">How to use PataMahali</a>
       <a href="{{ url_for('contact_us') }}">Contact us</a>
+      <a href="{{ url_for('rate_site') }}">Rate PataMahali</a>
       {% if current_user and current_user['role'] != 'admin' %}<form method="post" action="{{ url_for('logout') }}" class="nav-inline">{{ csrf_field() }}<button class="nav-link-button" type="submit">Sign out</button></form>{% endif %}
     </nav>
-    {% endif %}
   </header>
   {% if header_popular_categories %}
   <nav class="header-popular-shortcuts" aria-label="Most searched property categories">
@@ -89,6 +88,9 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="site-footer">
+    {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
+    <div class="pm-footer-checkins"><span class="pm-checkin-dot" aria-hidden="true"></span><strong><span data-count-up="{{ public_checkins }}">{{ "{:,}".format(public_checkins) }}</span> visitor check-ins</strong><small>Unique browsers recorded · grows with real visits</small></div>
+    {% endif %}
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
       <div class="footer-brand"><strong>{{ site_settings.get('site_name','PataMahali') }}</strong></div>
@@ -106,6 +108,7 @@
     {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') and (site_settings.get('support_phone') or site_settings.get('support_email')) %}
     <div class="developer-contact-strip"><div><strong>Have a project in mind?</strong><span>Get a platform designed around your business.</span></div><div class="developer-contact-actions">{% if site_settings.get('support_phone') %}<a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">Talk to the developer <span aria-hidden="true">↗</span></a>{% endif %}{% if site_settings.get('support_email') %}<a href="mailto:{{ site_settings.get('support_email') }}">Email <span aria-hidden="true">↗</span></a>{% endif %}</div></div>
     {% endif %}
+    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="{{ url_for('about_patamahali') }}">About</a><a href="{{ url_for('how_to_use') }}">How to use</a><a href="{{ url_for('contact_us') }}">Contact us</a><a href="{{ url_for('rate_site') }}">Rate PataMahali</a><a href="{{ url_for('privacy_policy') }}">Privacy</a></div>{% endif %}
     <div class="site-rating-footer"><span aria-hidden="true">★</span> {{ '%.1f'|format(site_rating_average|float) }} / 5 · {{ site_rating_count }} site rating{{ '' if site_rating_count == 1 else 's' }} · <a href="{{ url_for('rate_site') }}">Rate PataMahali</a></div>
     <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovation Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
   </footer>

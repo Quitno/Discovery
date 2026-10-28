@@ -1031,7 +1031,16 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
+    # Public counter is based on recorded first-party browser identifiers, excluding admin sessions.
+    # It is not a fabricated seed or a claim of independently verified human identities.
+    try:
+        public_checkins = int(get_db().execute(
+            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator'"
+        ).fetchone()[0])
+    except Exception:
+        public_checkins = 0
     return {
+        "public_checkins": public_checkins,
         "site_settings": settings,
         "header_resource_links": header_resource_links,
         "header_popular_categories": [] if request.endpoint == "index" or (request.endpoint or "").startswith("admin_") else popular_category_buttons(4),
@@ -1173,6 +1182,104 @@ def popular_category_buttons(limit: int = 4):
     return [{"key": key, "label": definitions[key]["label"], "url": definitions[key]["url"], "searches": counts.get(key, 0)} for key in ranked[:max(1, min(int(limit), 4))]]
 
 
+
+PREVIEW_AREA_GUIDES = [
+    ("Kawangware, Nairobi", "Bedsitter / single room"),
+    ("Githurai 45, Nairobi", "Bedsitter or studio"),
+    ("Pipeline, Embakasi, Nairobi", "Apartment rental"),
+    ("Umoja, Nairobi", "One-bedroom flat"),
+    ("Kayole, Nairobi", "Family apartment"),
+    ("Kahawa West, Nairobi", "Bedsitter or studio"),
+    ("Zimmerman, Nairobi", "Apartment rental"),
+    ("Kasarani, Nairobi", "One-bedroom flat"),
+    ("Roysambu, Nairobi", "Apartment rental"),
+    ("Ruiru, Kiambu", "Family home / apartment"),
+    ("Thika, Kiambu", "Bedsitter or one-bedroom"),
+    ("Kitengela, Kajiado", "Apartment or maisonette"),
+    ("Ongata Rongai, Kajiado", "Apartment rental"),
+    ("Mlolongo, Machakos", "Apartment rental"),
+    ("Syokimau, Machakos", "Family apartment"),
+    ("Nakuru, Nakuru", "Apartment or family home"),
+    ("Kisumu, Kisumu", "Apartment or family home"),
+    ("Mombasa, Mombasa", "Apartment or coastal home"),
+    ("Bamburi, Mombasa", "Apartment rental"),
+    ("Changamwe, Mombasa", "Bedsitter or apartment"),
+]
+PREVIEW_TITLES = {
+    "residential": ["Bedsitter-style rental", "Single-room rental", "Studio apartment", "One-bedroom flat", "Two-bedroom apartment", "Apartment block", "Family rental home", "Simple residential house", "Furnished apartment", "Townhouse-style home"],
+    "short_stay": ["Hotel room", "Guest room", "Short-stay apartment", "Furnished stay", "Family room", "Serviced room", "Holiday apartment"],
+    "commercial": ["Street-front shop", "Small business premises", "Retail unit", "Shop with frontage", "Office space", "Commercial unit"],
+    "industrial": ["Warehouse unit", "Godown / storage space", "Industrial yard", "Small workshop", "Commercial storage"],
+    "land_sale": ["Residential plot", "Open land parcel", "Development plot", "Agricultural land", "Commercial plot"],
+    "property_sale": ["Residential property", "Apartment building", "Family house", "Townhouse-style property", "Property for sale"],
+}
+
+def build_discovery_previews(category="residential", property_type="", limit=None, location_filter=""):
+    """Build clearly UNVERIFIED UI preview cards without adding fake properties to the database."""
+    section = None
+    if property_type:
+        section = next((s for s in PHOTO_SECTIONS if s["category"] == category and s.get("type") == property_type), None)
+    if section is None:
+        section = next((s for s in PHOTO_SECTIONS if s["category"] == category and not s.get("type")), None)
+    if section is None:
+        section = next((s for s in PHOTO_SECTIONS if s["category"] == category), None)
+    if not section:
+        section = PHOTO_SECTIONS[0]
+    cards = section.get("cards", [])
+    if limit is not None:
+        cards = cards[:limit]
+    titles = PREVIEW_TITLES.get(category, PREVIEW_TITLES["residential"])
+    results = []
+    for index, source in enumerate(cards):
+        area, local_type = PREVIEW_AREA_GUIDES[index % len(PREVIEW_AREA_GUIDES)]
+        title = titles[index % len(titles)]
+        # Homes show common Kenyan rental styles and neighbourhoods, not just luxury villas.
+        if category == "residential":
+            area, local_type = PREVIEW_AREA_GUIDES[index % len(PREVIEW_AREA_GUIDES)]
+            if index % 5 == 0:
+                title = "Bedsitter / single-room style"
+            elif index % 5 == 1:
+                title = "Everyday apartment block"
+            elif index % 5 == 2:
+                title = "One-bedroom flat style"
+            elif index % 5 == 3:
+                title = "Family rental home style"
+            else:
+                title = "Studio or compact apartment"
+            local_type = title
+        elif category == "short_stay":
+            if property_type == "Hotel room":
+                title = ["Hotel room", "Budget hotel room", "Guest room", "Family hotel room"][index % 4]
+            else:
+                title = ["Furnished short stay", "Guest house room", "Holiday apartment", "Serviced stay"][index % 4]
+            area = ["Nairobi, Nairobi", "Mombasa, Mombasa", "Kisumu, Kisumu", "Nakuru, Nakuru", "Naivasha, Nakuru", "Eldoret, Uasin Gishu"][index % 6]
+            local_type = title
+        elif category == "commercial":
+            area = ["Eastleigh, Nairobi", "CBD, Nairobi", "Gikomba, Nairobi", "Thika Town, Kiambu", "Kisumu CBD, Kisumu", "Mombasa CBD, Mombasa"][index % 6]
+            local_type = title
+        elif category == "industrial":
+            area = ["Industrial Area, Nairobi", "Athi River, Machakos", "Ruiru, Kiambu", "Mombasa Road, Nairobi", "Changamwe, Mombasa"][index % 5]
+            local_type = title
+        elif category == "land_sale":
+            area = ["Ruiru, Kiambu", "Kitengela, Kajiado", "Juja, Kiambu", "Kiserian, Kajiado", "Nakuru, Nakuru", "Mlolongo, Machakos"][index % 6]
+            local_type = title
+        elif category == "property_sale":
+            area = ["Kasarani, Nairobi", "Ruiru, Kiambu", "Ongata Rongai, Kajiado", "Nakuru, Nakuru", "Mombasa, Mombasa", "Kisumu, Kisumu"][index % 6]
+            local_type = title
+        results.append({
+            "title": title, "area": area, "local_type": local_type,
+            "label": source.get("label", title), "src": source.get("src", ""),
+            "fallback": source.get("fallback", ""), "fallback2": source.get("fallback2", ""),
+            "unverified": True, "category": category,
+        })
+    requested_area = (location_filter or "").strip().casefold()
+    if requested_area:
+        matching = [item for item in results if requested_area in item["area"].casefold()]
+        if matching:
+            results = matching
+    return results
+
+
 @app.route("/")
 def index():
     focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
@@ -1180,7 +1287,7 @@ def index():
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
     popular_categories = popular_category_buttons(4)
     return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
-                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
+                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories, home_preview_cards=build_discovery_previews("residential", limit=8))
 
 
 def build_listing_location(form, existing=None):
@@ -1354,7 +1461,7 @@ def homes():
     }
     log_event("property_search", request.path, json.dumps(details))
     return render_template(
-        "homes.html", listings=results, q=q, category=category, property_type=property_type,
+        "homes.html", listings=results, preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=location), q=q, category=category, property_type=property_type,
         location=location, min_price=min_price, max_price=max_price, bedrooms=min_beds,
         types=CATEGORY_META.get(category, {}).get("types", []),
         sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
