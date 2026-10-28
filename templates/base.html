@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#6A1B35">
+  <meta name="theme-color" content="#F7F9FA">
   <meta name="description" content="{% block meta_description %}{{ site_settings.get('site_description', 'Find houses for rent, property for sale and land across Kenya with PataMahali.') }}{% endblock %}">
   <link rel="canonical" href="{{ public_base() }}{{ request.path }}">
   <meta property="og:site_name" content="{{ site_settings.get('site_name','PataMahali') }}">
@@ -19,9 +19,9 @@
   {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
   <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-unverified-preview-r6') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-natural-scroll-neutral-ui-r8') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
-  <style>:root{--brand:{{ site_settings.get('brand_primary','#6A1B35') }};--accent:{{ site_settings.get('brand_accent','#D6A7B3') }};}</style>
+  <style>:root{--brand:#2F706A;--accent:#C99648;}</style>
   {% block head %}{% endblock %}
 </head>
 <body class="{{ 'landing-body' if request.endpoint == 'index' else ('admin-body' if (request.endpoint or '').startswith('admin_') else 'app-body') }} theme-{{ site_settings.get('public_theme','signature') }}">
@@ -89,7 +89,7 @@
   </main>
   <footer class="site-footer">
     {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
-    <div class="pm-footer-checkins"><span class="pm-checkin-dot" aria-hidden="true"></span><strong><span data-count-up="{{ public_checkins }}">{{ "{:,}".format(public_checkins) }}</span> visitor check-ins</strong><small>Unique browsers recorded · grows with real visits</small></div>
+    <div class="pm-footer-checkins"><span class="pm-checkin-dot" aria-hidden="true"></span><strong><span data-count-up="{{ public_checkins }}">{{ "{:,}".format(public_checkins) }}</span> Visitors</strong></div>
     {% endif %}
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
@@ -113,7 +113,7 @@
     <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovation Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
   </footer>
   <script>window.APP_CSRF={{ session.get('csrf_token','')|tojson }};</script>
-  <script src="{{ url_for('static', filename='js/app.js', v='20261020j') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js', v='20261028-counter-remove-record-r8') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

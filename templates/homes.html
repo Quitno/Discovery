@@ -92,5 +92,4 @@
     <section class="finder-county-shortcuts"><div><span class="eyebrow">Make your search specific</span><h2>Choose a county</h2><p>Go from a national search to a local market in two clicks.</p></div><div class="finder-county-buttons">{% for item in featured_area_cards %}<a href="{{ url_for('county_page',county_slug=item.slug) }}">{{ item.name }} <span aria-hidden="true">↗</span></a>{% endfor %}<a href="{{ url_for('places_index') }}">All 47 counties ↗</a></div></section>
   </main>
 </div>
-<a class="mobile-home-button" href="{{ url_for('index') }}" aria-label="Go to {{ site_settings.get('site_name','PataMahali') }} home"><span aria-hidden="true">⌂</span></a>
 {% endblock %}

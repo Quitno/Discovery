@@ -934,9 +934,16 @@ def record_page_view(response):
     response.headers.setdefault("Permissions-Policy", "geolocation=(self), camera=(), microphone=()")
     if request.path.startswith(("/manage-admin", ADMIN_ROOT, "/partner/", "/login", "/join")):
         response.headers["Cache-Control"] = "no-store"
-    if request.method == "GET" and response.status_code < 400 and request.endpoint not in {
+    admin_root_path = ADMIN_ROOT.rstrip("/") or "/"
+    is_admin_traffic = (
+        request.path == admin_root_path
+        or request.path.startswith(admin_root_path + "/")
+        or request.path == "/manage-admin"
+        or request.path.startswith("/manage-admin/")
+    )
+    if (not is_admin_traffic and request.method == "GET" and response.status_code < 400 and request.endpoint not in {
         "static", "manifest", "service_worker", "icon_svg", "robots_txt", "sitemap_xml", "qr_platform", "listing_qr", "promo_media"
-    }:
+    }):
         try:
             user = get_current_user()
             visitor_key = current_visitor_key()
@@ -985,7 +992,7 @@ def record_page_view(response):
     # Retain an anonymous first-party visitor key for 180 days so repeat visits
     # from this browser do not inflate unique-visitor counts. Cookie is HttpOnly.
     stable_key = current_visitor_key()
-    if stable_key:
+    if stable_key and not is_admin_traffic:
         response.set_cookie(
             "pm_visitor", stable_key, max_age=180 * 24 * 60 * 60,
             httponly=True, secure=request.is_secure, samesite="Lax", path="/"
@@ -1045,12 +1052,28 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
-    # Public counter is based on recorded first-party browser identifiers, excluding admin sessions.
-    # It is not a fabricated seed or a claim of independently verified human identities.
+    # Public counter counts only recorded public browsers. Never seed a fake public
+    # visitor figure, and exclude current/legacy admin routes even if they were
+    # visited before an administrator authenticated.
     try:
         public_checkins = int(get_db().execute(
-            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator'"
+            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
+            (ADMIN_ROOT.rstrip('/') + '%',)
         ).fetchone()[0])
+        # Include this public browser on its first response: page-view tracking runs
+        # after the template response is rendered. Admin pages and admins are never
+        # included in this projected public count.
+        path_admin_root = ADMIN_ROOT.rstrip('/') or '/'
+        request_is_admin_path = (request.path == path_admin_root or request.path.startswith(path_admin_root + '/') or request.path == '/manage-admin' or request.path.startswith('/manage-admin/'))
+        active_user = get_current_user()
+        active_key = current_visitor_key()
+        if not request_is_admin_path and not (active_user and active_user['role'] == 'admin') and active_key:
+            known = get_db().execute(
+                "SELECT 1 FROM visitor_sessions WHERE visitor_key=? AND role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
+                (active_key, ADMIN_ROOT.rstrip('/') + '%')
+            ).fetchone()
+            if not known:
+                public_checkins += 1
     except Exception:
         public_checkins = 0
     return {
@@ -1275,6 +1298,17 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
             "title": title, "area": area, "local_type": local_type,
             "label": source.get("label", title), "src": source.get("src", ""),
             "fallback": source.get("fallback", ""), "fallback2": source.get("fallback2", ""),
+            # Third fallback is a bundled local asset, so cards never disappear when
+            # a CDN/source host is unreachable. Preferred sources remain real Kenyan
+            # photos when the Render gallery cache has populated them.
+            "fallback3": source.get("fallback3") or {
+                "residential": "/static/img/property-scenes/apartment-building.webp",
+                "short_stay": "/static/img/property-scenes/modern-interior.webp",
+                "commercial": "/static/img/property-scenes/modern-interior.webp",
+                "industrial": "/static/img/property-scenes/apartment-building.webp",
+                "land_sale": "/static/img/property-scenes/residential-land.webp",
+                "property_sale": "/static/img/property-scenes/apartment-building.webp",
+            }.get(category, "/static/img/property-scenes/neighbourhood-hero.webp"),
             "unverified": True, "category": category,
         })
     requested_area = (location_filter or "").strip().casefold()
@@ -2446,6 +2480,7 @@ def admin_dashboard():
         "pending_review": conn.execute("SELECT COUNT(*) FROM listings WHERE payment_status='paid' AND approval_status='pending'").fetchone()[0],
         "partners": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business')").fetchone()[0],
         "partners_pending": conn.execute("SELECT COUNT(*) FROM users WHERE role IN ('owner','agent','host','business') AND verified=0 AND suspended=0").fetchone()[0],
+        "visitors_total": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
         "interests": conn.execute("SELECT COUNT(*) FROM interests").fetchone()[0],
         "reports": conn.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0],
         "site_errors": conn.execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0],
@@ -2737,11 +2772,34 @@ def admin_report_action(report_id):
     return redirect(url_for("admin_reports"))
 
 
+@app.post("/manage-admin/analytics/visitors/<visitor_key>/remove")
+@admin_required
+def admin_remove_visitor_record(visitor_key):
+    """Remove one visitor analytics record only; never delete the person's account or listings."""
+    key = (visitor_key or "").strip()
+    if not key or len(key) > 100 or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in key):
+        abort(400)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT visitor_key, role, user_id FROM visitor_sessions WHERE visitor_key=?", (key,)
+    ).fetchone()
+    if not row or row["role"] == "administrator":
+        flash("That public visitor record was not found.", "warning")
+        return redirect(url_for("admin_analytics"))
+    # The account, submitted properties, and enquiries are deliberately untouched.
+    conn.execute("DELETE FROM visitor_events WHERE visitor_key=?", (key,))
+    conn.execute("DELETE FROM visitor_sessions WHERE visitor_key=?", (key,))
+    audit("admin_removed_visitor_analytics_record", "visitor_session", key,
+          "Removed analytics record only; user account and property records retained")
+    flash("Visitor analytics record removed. Any account and property listings were kept.", "success")
+    return redirect(url_for("admin_analytics"))
+
+
 @app.route("/manage-admin/analytics")
 @admin_required
 def admin_analytics():
     conn = get_db()
-    sessions = conn.execute("SELECT v.*,COALESCE(NULLIF(u.full_name,''),NULLIF(v.contact_name,'')) AS full_name,u.business_name,COALESCE(NULLIF(u.phone,''),NULLIF(v.contact_phone,'')) AS account_phone FROM visitor_sessions v LEFT JOIN users u ON v.user_id=u.id WHERE v.role != 'administrator' ORDER BY v.last_seen DESC LIMIT 250").fetchall()
+    sessions = conn.execute("SELECT v.*,COALESCE(NULLIF(u.full_name,''),NULLIF(v.contact_name,'')) AS full_name,u.business_name,COALESCE(NULLIF(u.phone,''),NULLIF(v.contact_phone,'')) AS account_phone FROM visitor_sessions v LEFT JOIN users u ON v.user_id=u.id WHERE v.role != 'administrator' AND v.last_path NOT LIKE ? AND v.last_path NOT LIKE '/manage-admin%' ORDER BY v.last_seen DESC LIMIT 250", (ADMIN_ROOT.rstrip('/') + '%',)).fetchall()
     top_pages = conn.execute("SELECT e.path,COUNT(*) AS hits,COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) AS visitors FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE '/manage-admin%' AND e.path NOT LIKE ? GROUP BY e.path ORDER BY hits DESC LIMIT 15", (ADMIN_ROOT + '%',)).fetchall()
     search_events = conn.execute("SELECT details,created_at FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 1500").fetchall()
     popular_counter, failed_counter = Counter(), Counter()
@@ -2765,12 +2823,12 @@ def admin_analytics():
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     active_after = (now - timedelta(minutes=15)).isoformat()
     totals = {
-        "sessions": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator'").fetchone()[0],
-        "returning": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions v WHERE role != 'administrator' AND (visit_count>1 OR (contact_phone != '' AND contact_phone IN (SELECT contact_phone FROM visitor_sessions WHERE contact_phone != '' GROUP BY contact_phone HAVING COUNT(*)>1)) OR (user_id IS NOT NULL AND user_id IN (SELECT user_id FROM visitor_sessions WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(*)>1)))").fetchone()[0],
-        "shared": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND location_shared=1").fetchone()[0],
+        "sessions": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
+        "returning": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions v WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%' AND (visit_count>1 OR (contact_phone != '' AND contact_phone IN (SELECT contact_phone FROM visitor_sessions WHERE contact_phone != '' GROUP BY contact_phone HAVING COUNT(*)>1)) OR (user_id IS NOT NULL AND user_id IN (SELECT user_id FROM visitor_sessions WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(*)>1)))", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
+        "shared": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND location_shared=1 AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
         "today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
-        "active": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND last_seen>=?", (active_after,)).fetchone()[0],
-        "mobile": conn.execute("SELECT COUNT(DISTINCT CASE WHEN contact_phone != '' THEN 'phone:' || contact_phone WHEN user_id IS NOT NULL THEN 'account:' || user_id ELSE 'browser:' || visitor_key END) FROM visitor_sessions WHERE role != 'administrator' AND (device LIKE '%phone%' OR device LIKE '%Mobile%' OR device LIKE '%iPhone%' OR device LIKE '%iPad%' OR device LIKE '%Android%')").fetchone()[0],
+        "active": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_seen>=? AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'", (active_after, ADMIN_ROOT.rstrip('/') + '%')).fetchone()[0],
+        "mobile": conn.execute("SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%' AND (device LIKE '%phone%' OR device LIKE '%Mobile%' OR device LIKE '%iPhone%' OR device LIKE '%iPad%' OR device LIKE '%Android%')", (ADMIN_ROOT.rstrip('/') + '%',)).fetchone()[0],
         "searches": conn.execute("SELECT COUNT(*) FROM visitor_events WHERE event_type='property_search'").fetchone()[0],
         "no_results": sum(failed_counter.values()),
     }
