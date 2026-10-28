@@ -1,7 +1,7 @@
-const CACHE_NAME = 'patamahali-shell-v13-mobile-photo-dedup';
+const CACHE_NAME = 'patamahali-shell-v12';
 const SHELL_ASSETS = [
-  '/static/css/style.css?v=20261028-mobile-photo-dedup-r10',
-  '/static/js/app.js?v=20261028-mobile-photo-dedup-r10',
+  '/static/css/style.css?v=20261020h',
+  '/static/js/app.js?v=20261020h',
   '/icon.svg',
   '/static/img/property-scenes/neighbourhood-hero.webp',
   '/static/img/property-scenes/modern-interior.webp',

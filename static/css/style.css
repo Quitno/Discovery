@@ -2480,49 +2480,77 @@ body.landing-body .pm-checkin-strip {margin-top:12px !important; margin-bottom:1
   body.landing-body .site-footer {display:block !important; height:auto !important; min-height:0 !important; padding:15px 12px !important;}
 }
 
-/* 2026-10-28 mobile landing cleanup: keep the logo animation, but don't make
-   visitors scroll through a mostly empty viewport before seeing photographs. */
-body.landing-body .pm-welcome {
-  min-height: clamp(330px, 54svh, 490px) !important;
-  padding: 22px 16px 25px !important;
+
+/* 2026-10-28: gateway stays separate; category browsing starts with photos, not empty space. */
+body.landing-body {height:100svh !important; min-height:100svh !important; max-height:100svh !important; overflow:hidden !important; padding:0 !important;}
+body.landing-body #main-content {height:100svh !important; min-height:100svh !important; overflow:hidden !important; display:block !important;}
+body.landing-body .pm-welcome {height:100svh !important; min-height:100svh !important; max-height:100svh !important; padding:18px 14px !important; margin:0 !important;}
+body.landing-body .pm-welcome-inner {gap:0 !important;}
+body.landing-body .pm-welcome-mark {margin-bottom:15px !important;}
+body.landing-body .pm-welcome-gateways {margin-top:26px !important;}
+body.landing-body .site-footer {display:none !important;}
+
+body.app-body .browse-layout {padding-top:10px !important; padding-bottom:16px !important; gap:18px !important;}
+body.app-body .finder-main {min-width:0 !important;}
+body.app-body .finder-heading {margin:0 0 8px !important; min-height:0 !important;}
+body.app-body .finder-heading h1 {font-size:clamp(1.55rem,3.2vw,2.1rem) !important;}
+body.app-body .finder-search {padding:8px 9px 6px !important; margin:0 !important; border-radius:11px !important; box-shadow:none !important;}
+body.app-body .finder-search-row {gap:7px !important;}
+body.app-body .finder-search-query,body.app-body .finder-search-location {min-height:41px !important; border-radius:8px !important;}
+body.app-body .finder-search-button {min-height:41px !important; box-shadow:none !important;}
+body.app-body .finder-filters {margin-top:5px !important;}
+body.app-body .finder-location-tools {padding-top:4px !important; margin-top:0 !important;}
+body.app-body .finder-results {padding-top:9px !important;}
+body.app-body .unverified-preview-grid {margin:8px 0 18px !important; gap:10px !important;}
+body.app-body .unverified-preview-card .preview-photo {background:#e9eeee !important; aspect-ratio:1.28/1 !important;}
+body.app-body .unverified-preview-card .preview-photo img {display:block !important; width:100% !important; height:100% !important; min-height:100% !important; object-fit:cover !important; background:#e9eeee !important;}
+body.app-body .unverified-preview-card .preview-card-body {padding:9px 10px 10px !important;}
+body.app-body .unverified-preview-card .preview-card-body h2 {font-size:.9rem !important; margin:0 0 5px !important; line-height:1.25 !important;}
+body.app-body .unverified-preview-card .preview-card-body h2 a {color:inherit !important; text-decoration:none !important;}
+body.app-body .unverified-preview-card .preview-area {margin:0 !important; font-size:.75rem !important; line-height:1.35 !important;}
+body.app-body .preview-inline-note {display:none !important;}
+body.app-body .finder-county-shortcuts {margin-top:18px !important;}
+@media(max-width:680px) {
+  body.app-body .browse-layout {width:calc(100% - 16px) !important; padding-top:7px !important; gap:7px !important;}
+  body.app-body .finder-heading {margin-bottom:7px !important;}
+  body.app-body .finder-search {padding:7px !important;}
+  body.app-body .finder-search-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;}
+  body.app-body .finder-search-button {grid-column:1/-1 !important; min-height:38px !important;}
+  body.app-body .finder-search-query,body.app-body .finder-search-location {min-height:39px !important;}
+  body.app-body .finder-results {padding-top:7px !important;}
+  body.app-body .unverified-preview-grid {grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:8px !important; margin-top:7px !important;}
+  body.app-body .unverified-preview-card .preview-photo {aspect-ratio:1.05/1 !important;}
+  body.app-body .unverified-preview-card .preview-card-body {padding:8px !important;}
+  body.app-body .unverified-preview-card .preview-card-body h2 {font-size:.82rem !important;}
+  body.app-body .unverified-preview-card .preview-area {font-size:.7rem !important;}
 }
-body.landing-body .pm-popular-shell {padding-top: 9px !important; padding-bottom: 8px !important;}
-body.landing-body .pm-photo-discovery {padding-top: 0 !important; padding-bottom: 12px !important;}
-body.landing-body .pm-photo-intro {padding-top: 8px !important; padding-bottom: 8px !important;}
-body.landing-body .pm-photo-intro h2 {margin: 4px 0 5px !important;}
-body.landing-body .pm-photo-intro p {font-size: .86rem !important;}
-body.landing-body .pm-photo-rail-block {margin: 8px 0 18px !important;}
-.pm-photo-card.pm-photo-missing {background:linear-gradient(145deg,#e7eeee,#f4f6f6) !important;}
-.pm-photo-card.pm-photo-missing::before,
-.preview-photo.pm-photo-missing::before {
-  content:"Photo preview unavailable";
-  position:absolute; z-index:1; left:10px; right:10px; top:42%;
-  transform:translateY(-50%); text-align:center; color:#657579;
-  font-size:.75rem; font-weight:700; line-height:1.4;
+
+
+/* 2026-10-28 photo-first compact browse repair: keep the root gateway separate and let browse photos start close to the search. */
+body.app-body .browse-layout{padding-top:4px!important;padding-bottom:12px!important;gap:14px!important}
+body.app-body .finder-heading{margin:0 0 5px!important;min-height:0!important}
+body.app-body .finder-heading h1{margin:0!important;font-size:clamp(1.45rem,3vw,1.9rem)!important}
+body.app-body .finder-search{margin:0!important;padding:6px 7px 5px!important;border-radius:9px!important}
+body.app-body .finder-search-row{gap:6px!important}
+body.app-body .finder-filters{margin-top:3px!important}
+body.app-body .finder-location-tools{padding-top:2px!important;margin-top:0!important}
+body.app-body .finder-results{padding-top:3px!important;margin-top:0!important}
+body.app-body .unverified-preview-grid{margin:3px 0 15px!important;gap:9px!important}
+body.app-body .unverified-preview-card .preview-photo{aspect-ratio:1.35/1!important;background:#e7ecea!important;overflow:hidden!important}
+body.app-body .unverified-preview-card .preview-photo img{display:block!important;width:100%!important;height:100%!important;object-fit:cover!important;background:#e7ecea!important}
+body.app-body .unverified-preview-card .preview-card-body{padding:7px 8px 8px!important}
+body.app-body .unverified-preview-card .preview-card-body h2{margin:0 0 4px!important}
+body.app-body .finder-promotion{margin:12px 0!important}
+body.app-body .category-nav-link small{display:none!important}
+body.app-body .category-nav-link{gap:0!important}
+body.app-body .category-nav-section-label{margin-top:12px!important}
+body.app-body .preview-photo-failed{background:#e5ebe8!important}
+body.app-body .image-fallback-exhausted{object-fit:cover!important}
+@media(max-width:680px){
+ body.app-body .browse-layout{width:calc(100% - 12px)!important;padding-top:3px!important;gap:5px!important}
+ body.app-body .finder-heading{margin-bottom:4px!important}
+ body.app-body .finder-search{padding:5px!important}
+ body.app-body .finder-results{padding-top:2px!important}
+ body.app-body .unverified-preview-grid{margin-top:2px!important;gap:7px!important}
+ body.app-body .unverified-preview-card .preview-photo{aspect-ratio:1.2/1!important}
 }
-.preview-photo.pm-photo-missing {background:linear-gradient(145deg,#e7eeee,#f4f6f6) !important;}
-@media (max-width:650px) {
-  body.landing-body .pm-welcome {
-    min-height:0 !important;
-    height:auto !important;
-    padding:24px 14px 25px !important;
-  }
-  body.landing-body .pm-welcome-inner {width:100%;}
-  body.landing-body .pm-welcome-gateways {margin-top:27px !important;}
-  body.landing-body .pm-popular-shell {padding-top:7px !important; padding-bottom:5px !important;}
-  body.landing-body .pm-popular-top {margin-bottom:7px !important; font-size:.74rem !important;}
-  body.landing-body .pm-popular-buttons {gap:7px !important; padding-bottom:3px !important;}
-  body.landing-body .pm-popular-buttons a {min-height:34px !important; padding:7px 10px !important; font-size:.77rem !important;}
-  body.landing-body .pm-photo-intro {padding-top:7px !important; padding-bottom:5px !important;}
-  body.landing-body .pm-photo-intro h2 {font-size:1.34rem !important; line-height:1.16 !important;}
-  body.landing-body .pm-photo-intro p {font-size:.78rem !important; line-height:1.4 !important;}
-  body.landing-body .pm-photo-rail-block {margin:8px 0 14px !important;}
-  body.landing-body .pm-photo-rail-heading {margin-bottom:7px !important; gap:6px !important;}
-  body.landing-body .pm-photo-rail-heading h3 {font-size:1rem !important;}
-  body.landing-body .pm-photo-rail-heading p {font-size:.74rem !important; line-height:1.35 !important;}
-  body.landing-body .pm-photo-rail {gap:8px !important; padding:0 12px 7px !important;}
-  body.landing-body .pm-photo-card {flex-basis:72vw !important; max-width:250px; aspect-ratio:1.3/1 !important;}
-  body.landing-body .pm-photo-card span {left:9px !important; right:8px !important; bottom:9px !important; font-size:.77rem !important;}
-}
-.place-page-image.pm-photo-missing {background:linear-gradient(145deg,#e7eeee,#f4f6f6) !important; min-height:220px; display:grid; place-items:center;}
-.place-page-image.pm-photo-missing::before {content:"Photo preview unavailable";display:block;color:#657579;font-size:.84rem;font-weight:700;text-align:center;padding:18px;}
