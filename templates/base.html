@@ -19,7 +19,7 @@
   {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
   <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-splash-natural-scroll-r9') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-mobile-photo-dedup-r10') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
   <style>:root{--brand:#2F706A;--accent:#C99648;}</style>
   {% block head %}{% endblock %}
@@ -115,7 +115,7 @@
   </footer>
   {% endif %}
   <script>window.APP_CSRF={{ session.get('csrf_token','')|tojson }};</script>
-  <script src="{{ url_for('static', filename='js/app.js', v='20261028-counter-remove-record-r8') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js', v='20261028-mobile-photo-dedup-r10') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

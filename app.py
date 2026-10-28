@@ -1295,17 +1295,9 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
             "title": title, "area": area, "local_type": local_type,
             "label": source.get("label", title), "src": source.get("src", ""),
             "fallback": source.get("fallback", ""), "fallback2": source.get("fallback2", ""),
-            # Third fallback is a bundled local asset, so cards never disappear when
-            # a CDN/source host is unreachable. Preferred sources remain real Kenyan
-            # photos when the Render gallery cache has populated them.
-            "fallback3": source.get("fallback3") or {
-                "residential": "/static/img/property-scenes/apartment-building.webp",
-                "short_stay": "/static/img/property-scenes/modern-interior.webp",
-                "commercial": "/static/img/property-scenes/modern-interior.webp",
-                "industrial": "/static/img/property-scenes/apartment-building.webp",
-                "land_sale": "/static/img/property-scenes/residential-land.webp",
-                "property_sale": "/static/img/property-scenes/apartment-building.webp",
-            }.get(category, "/static/img/property-scenes/neighbourhood-hero.webp"),
+            # Do not reuse a generic local image as a third fallback; that made
+            # many preview cards show the same photograph when remote hosts failed.
+            "fallback3": source.get("fallback3", ""),
             "unverified": True, "category": category,
         })
     requested_area = (location_filter or "").strip().casefold()
@@ -1323,7 +1315,7 @@ def index():
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
     popular_categories = popular_category_buttons(4)
     return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
-                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories, home_preview_cards=build_discovery_previews("residential", limit=8))
+                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
 
 
 def build_listing_location(form, existing=None):

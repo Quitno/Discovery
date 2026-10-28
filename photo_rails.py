@@ -1483,16 +1483,13 @@ for _section in PHOTO_SECTIONS:
 
 
 def _activate_local_gallery_assets():
-    fallback_for_category = {
-        "residential": "/static/img/property-scenes/apartment-building.webp",
-        "short_stay": "/static/img/property-scenes/modern-interior.webp",
-        "commercial": "/static/img/property-scenes/modern-interior.webp",
-        "industrial": "/static/img/property-scenes/apartment-building.webp",
-        "land_sale": "/static/img/property-scenes/residential-land.webp",
-        "property_sale": "/static/img/property-scenes/apartment-building.webp",
-    }
+    """Use each card's own cached photo; never recycle one photo across failed cards.
+
+    Missing cache slots keep their own distinct remote source and two alternatives.
+    If all three are unavailable the UI shows a neutral missing-photo tile instead
+    of quietly pretending one generic local photograph is dozens of different homes.
+    """
     for section_index, section in enumerate(PHOTO_SECTIONS):
-        cached_in_section = []
         for card_index, card in enumerate(section.get("cards", [])):
             original_src = str(card.get("src", ""))
             card["_original_src"] = original_src
@@ -1506,13 +1503,9 @@ def _activate_local_gallery_assets():
             local_file = _PM_GALLERY_DIR / filename
             if local_file.is_file() and local_file.stat().st_size > 500:
                 card["src"] = "/static/img/gallery/" + filename
-                cached_in_section.append(card["src"])
-        fallback = fallback_for_category.get(section.get("category"), "/static/img/property-scenes/apartment-building.webp")
-        for card_index, card in enumerate(section.get("cards", [])):
-            if cached_in_section:
-                card["fallback3"] = cached_in_section[card_index % len(cached_in_section)]
-            else:
-                card["fallback3"] = fallback
+            # Empty by design: shared apartment/interior/land images used as a
+            # third fallback caused the same first photo to repeat across the page.
+            card["fallback3"] = ""
     return PHOTO_SECTIONS
 
 
