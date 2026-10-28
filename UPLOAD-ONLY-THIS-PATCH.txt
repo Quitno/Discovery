@@ -1,16 +1,22 @@
-PataMahali mobile browsing patch — 2026-10-28
+PATA MAHALI — FULL PROJECT RESTORE PACKAGE
 
-Upload these files to the same paths in your existing repository:
-- templates/base.html
-- static/css/style.css
-- static/js/app.js
+This folder is a complete project source tree, not a small overlay patch. It includes app.py, templates/, static/, requirements.txt, Procfile, render.yaml, and supporting source files.
 
-Fixes:
-- Removes the invisible mobile category drawer from normal page flow. This fixes the tall blank space above the property listings.
-- Keeps the category drawer fixed above the page, with a usable overlay and responsive header offset.
-- Uses cleaner property-category heading typography.
-- Places the area field and Search button side by side on mobile to reduce wasted vertical space.
-- Lets visitors close the category drawer with Escape and returns keyboard focus to its menu button.
-- Updates cache-busting versions so browsers fetch the new CSS and JavaScript.
+UPLOAD / DEPLOY
+1. Extract the project ZIP.
+2. Copy every file and folder from the extracted project root into the ROOT of the existing PataMahali GitHub repository, replacing matching code/assets and preserving the folder structure.
+3. Do not create a nested Discovery-main/Discovery-main directory. app.py and requirements.txt must sit at the repository root.
+4. Commit and let Render redeploy from GitHub.
+5. Keep existing Render environment variables and persistent disk. Do not delete or overwrite /var/data, the production database, uploaded listings/photos, identity documents, or secrets. This project ZIP intentionally does not contain your production database.
 
-No database, listings, images, environment variables, or server configuration are changed.
+KEY FIXES IN THIS BUILD
+- Shared navigation links no longer call the fragile about_patamahali URL endpoint; public About/help links use their stable paths.
+- The error template no longer extends base.html, so a broken shared navigation endpoint cannot turn the 404/500 page into another 500.
+- /favicon.ico redirects to the current PataMahali SVG icon and is excluded from visitor tracking/backups.
+- Find goes to /homes; Post goes to /partner/dashboard for signed-in partners or /partner/register for new partners.
+- The hidden mobile category drawer stays out of normal document flow, removing the large blank area above search results.
+- The hut-shaped default mark is replaced by a location-pin/target icon in SVG, PNG/PWA, and social preview assets.
+- The service-worker cache version is bumped so corrected styles and scripts can load after deployment.
+
+VALIDATION
+Python syntax, Jinja template parsing, JavaScript syntax, CSS parsing, manifest JSON, SVG parsing, and active template URL endpoint references were checked. A live Render deployment was not run from this workspace. After deploying, test /, /homes, /partner/register, /favicon.ico, and creating a partner account then opening the dashboard.

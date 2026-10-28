@@ -1,8 +1,11 @@
-const CACHE_NAME = 'patamahali-shell-v12';
+const CACHE_NAME = 'patamahali-shell-v14';
 const SHELL_ASSETS = [
-  '/static/css/style.css?v=20261020h',
-  '/static/js/app.js?v=20261020h',
+  '/static/css/style.css?v=20261028-full-project-fixed-r15',
+  '/static/js/app.js?v=20261028-full-project-fixed-r15',
   '/icon.svg',
+  '/favicon.ico',
+  '/static/img/patamahali-avatar.png',
+  '/static/icons/favicon.svg',
   '/static/img/property-scenes/neighbourhood-hero.webp',
   '/static/img/property-scenes/modern-interior.webp',
   '/static/img/property-scenes/apartment-building.webp',
