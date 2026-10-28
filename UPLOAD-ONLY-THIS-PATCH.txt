@@ -1,17 +1,16 @@
-PATA MAHALI — GITHUB OVERLAY PATCH (FILES TO ADD/REPLACE)
+PataMahali mobile browsing patch — 2026-10-28
 
-UPLOAD
-1. Download and extract this ZIP.
-2. Copy its contents into the ROOT of your existing Pata Mahali GitHub repository, preserving the folders. Replace files when prompted.
-3. Commit the files and let Render redeploy from GitHub.
-4. Back up your existing production database and uploads first. Do not replace the live database with a fresh copy.
+Upload these files to the same paths in your existing repository:
+- templates/base.html
+- static/css/style.css
+- static/js/app.js
 
-WHAT THIS PATCH COVERS
-- Removes the expandable sidebar category groups that showed + / −. All available categories are listed openly as normal links.
-- Adds a compact strip of exactly four category buttons in the app header. They are ranked using recorded property-search activity, and the top five candidates rotate so the fourth/fifth don't stay permanently hidden.
-- Keeps the landing page's compact Find/Post entry, PataMahali branding and maroon theme.
-- Adds six horizontal discovery photo rails: 25 Homes & Rentals photos, 25 Hotels & Short Stays photos, and 3 photos each for Shops & Commercial, Warehouses, Land & Plots, and Property for Sale. These are compressed Unsplash CDN photo URLs to avoid storing 62 image files on Render. They are discovery photos, not live property adverts.
-- Includes the related admin, error logging, informational pages, QR and styling changes already present in the patch.
+Fixes:
+- Removes the invisible mobile category drawer from normal page flow. This fixes the tall blank space above the property listings.
+- Keeps the category drawer fixed above the page, with a usable overlay and responsive header offset.
+- Uses cleaner property-category heading typography.
+- Places the area field and Search button side by side on mobile to reduce wasted vertical space.
+- Lets visitors close the category drawer with Escape and returns keyboard focus to its menu button.
+- Updates cache-busting versions so browsers fetch the new CSS and JavaScript.
 
-IMPORTANT
-This is an overlay patch, not a complete standalone project. Upload every file in the ZIP with the same relative path. Do not delete files from your repository that are not included here. The GitHub backup option is a backup/snapshot workflow, not a live GitHub database. Full Flask runtime/deployment testing still needs to be done in your project environment.
+No database, listings, images, environment variables, or server configuration are changed.

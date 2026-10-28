@@ -21,6 +21,12 @@
       }
     });
     if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && homesSidebar.classList.contains('is-open')) {
+        setSidebarOpen(false);
+        menuButton.focus();
+      }
+    });
     homesSidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => setSidebarOpen(false)));
   } else if (menuButton && nav) {
     menuButton.addEventListener('click', () => {
@@ -462,3 +468,22 @@
   }
 
 })();
+
+
+// Gentle count-up animation to the real recorded value; never invents extra visitors.
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-count-up]').forEach((node) => {
+    const target = Number.parseInt(node.getAttribute('data-count-up') || '0', 10);
+    if (!Number.isFinite(target) || target < 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const duration = Math.min(1800, Math.max(500, target * 2));
+    const start = performance.now();
+    const formatter = new Intl.NumberFormat();
+    const tick = (now) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      node.textContent = formatter.format(Math.round(target * eased));
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+});
