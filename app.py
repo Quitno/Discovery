@@ -1052,28 +1052,25 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
-    # Public counter counts only recorded public browsers. Never seed a fake public
-    # visitor figure, and exclude current/legacy admin routes even if they were
-    # visited before an administrator authenticated.
+    # Public display counter uses the configured launch baseline plus newly recorded
+    # unique public browsers. Private admin analytics retain the unmodified DB total.
     try:
-        public_checkins = int(get_db().execute(
-            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
+        actual_public_checkins = int(get_db().execute(
+            "SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
             (ADMIN_ROOT.rstrip('/') + '%',)
         ).fetchone()[0])
-        # Include this public browser on its first response: page-view tracking runs
-        # after the template response is rendered. Admin pages and admins are never
-        # included in this projected public count.
-        path_admin_root = ADMIN_ROOT.rstrip('/') or '/'
-        request_is_admin_path = (request.path == path_admin_root or request.path.startswith(path_admin_root + '/') or request.path == '/manage-admin' or request.path.startswith('/manage-admin/'))
-        active_user = get_current_user()
-        active_key = current_visitor_key()
-        if not request_is_admin_path and not (active_user and active_user['role'] == 'admin') and active_key:
-            known = get_db().execute(
-                "SELECT 1 FROM visitor_sessions WHERE visitor_key=? AND role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
-                (active_key, ADMIN_ROOT.rstrip('/') + '%')
-            ).fetchone()
-            if not known:
-                public_checkins += 1
+        # Public-facing counter starts at the owner's chosen launch baseline. The
+        # baseline offset is captured once, so only additional unique public browsers
+        # increase it over time. Admin analytics continue to use the real DB totals.
+        counter_baseline = settings.get("public_counter_baseline_offset")
+        if counter_baseline is None:
+            set_setting("public_counter_baseline_offset", str(actual_public_checkins))
+            counter_baseline = str(actual_public_checkins)
+        try:
+            counter_baseline = max(0, int(counter_baseline))
+        except (TypeError, ValueError):
+            counter_baseline = actual_public_checkins
+        public_checkins = 1103 + max(0, actual_public_checkins - counter_baseline)
     except Exception:
         public_checkins = 0
     return {
