@@ -1,3 +1,34 @@
-{% extends 'base.html' %}
-{% block title %}{{ code }} · {{ site_settings.get('site_name','PataMahali') }}{% endblock %}
-{% block content %}<section class="auth-single page-shell"><div class="form-card auth-card centered-card"><div class="error-code">{{ code }}</div><h1>Let's get you back.</h1><p>{{ message }}</p><div class="hero-actions center-actions"><a class="button button-primary" href="{{ url_for('index') }}">Go home</a><a class="button button-outline" href="{{ url_for('homes') }}">Find a place</a></div></div></section>{% endblock %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F9FA">
+  <title>{{ code }} · PataMahali</title>
+  <style>
+    :root{color-scheme:light;--ink:#26383c;--muted:#667579;--brand:#2F706A;--accent:#C99648;--paper:#F7F9FA}
+    *{box-sizing:border-box}html,body{min-height:100%;margin:0}
+    body{display:grid;place-items:center;padding:24px;background:var(--paper);color:var(--ink);font-family:Inter,"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{width:min(100%,520px);padding:clamp(26px,6vw,48px);background:#fff;border:1px solid #e4eae9;border-radius:24px;box-shadow:0 18px 50px rgba(28,55,59,.08);text-align:center}
+    .mark{display:inline-flex;align-items:center;gap:9px;color:var(--brand);font-weight:800;letter-spacing:-.035em;font-size:1.08rem}
+    .mark-dot{width:12px;height:12px;border-radius:4px;background:var(--accent);transform:rotate(12deg)}
+    .code{margin:30px 0 8px;color:var(--brand);font-size:clamp(3.5rem,16vw,5.5rem);font-weight:850;letter-spacing:-.07em;line-height:1}
+    h1{margin:0;font-size:clamp(1.5rem,5vw,2rem);letter-spacing:-.045em;line-height:1.15}
+    p{margin:14px 0 26px;color:var(--muted);line-height:1.65}
+    .actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+    a{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 18px;border-radius:12px;text-decoration:none;font-weight:750}
+    .primary{background:var(--brand);color:white}.secondary{border:1px solid #d9e2e0;color:var(--ink);background:#fff}
+    a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+    @media(max-width:420px){.actions{display:grid;grid-template-columns:1fr}.actions a{width:100%}}
+  </style>
+</head>
+<body>
+  <main role="main">
+    <div class="mark"><span class="mark-dot" aria-hidden="true"></span>PataMahali</div>
+    <div class="code">{{ code }}</div>
+    <h1>Let’s get you back.</h1>
+    <p>{{ message }}</p>
+    <div class="actions"><a class="primary" href="/">Go home</a><a class="secondary" href="/homes">Find a place</a></div>
+  </main>
+</body>
+</html>

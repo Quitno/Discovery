@@ -15,11 +15,11 @@
   <meta name="twitter:description" content="{{ self.meta_description()|striptags|trim|e }}">
   <meta name="twitter:card" content="summary_large_image">
   {% block social_image %}<meta property="og:image" content="{{ public_base() + url_for('static',filename='img/patamahali-share-card.jpg') }}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="PataMahali — find homes, rentals and land across Kenya"><meta name="twitter:image" content="{{ public_base() + url_for('static',filename='img/patamahali-share-card.jpg') }}">{% endblock %}
-  <link rel="manifest" href="{{ url_for('manifest') }}">
-  {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
-  <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  {% if site_settings.get('site_logo') %}<link rel="icon" href="/branding/{{ site_settings.get('site_logo')|urlencode }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-mobile-drawer-repair-r12') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-mobile-drawer-route-compat-r13') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
   <style>:root{--brand:#2F706A;--accent:#C99648;}</style>
   {% block head %}{% endblock %}
@@ -29,8 +29,8 @@
   {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
   <header class="site-header">
     <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle><span></span><span></span><span></span></button>
-    <a class="brand" href="{{ url_for('index') }}" aria-label="{{ site_settings.get('site_name','PataMahali') }} home">
-      <span class="brand-mark">{% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="" width="34" height="34">{% else %}<img src="{{ url_for('icon_svg') }}" alt="" width="30" height="30">{% endif %}</span>
+    <a class="brand" href="/" aria-label="{{ site_settings.get('site_name','PataMahali') }} home">
+      <span class="brand-mark">{% if site_settings.get('site_logo') %}<img src="/branding/{{ site_settings.get('site_logo')|urlencode }}" alt="" width="34" height="34">{% else %}<img src="/icon.svg" alt="" width="30" height="30">{% endif %}</span>
       <span class="brand-copy"><strong>{{ site_settings.get('site_name', 'PataMahali') }}</strong></span>
     </a>
     <div class="site-header-actions">
@@ -38,12 +38,12 @@
       <div class="header-more-menu" id="headerMoreMenu" data-more-menu hidden>
         <div class="header-more-kicker">FOR OWNERS &amp; VISITORS</div>
         {% if current_user and current_user['role'] in ['owner','agent','host','business'] %}
-          <a class="header-menu-primary" href="{{ url_for('partner_dashboard') }}"><span>My properties</span><span aria-hidden="true">↗</span></a>
+          <a class="header-menu-primary" href="/partner/dashboard"><span>My properties</span><span aria-hidden="true">↗</span></a>
         {% else %}
-          <a class="header-menu-primary" href="{{ url_for('partner_register') }}"><span>Become a partner</span><span aria-hidden="true">↗</span></a>
+          <a class="header-menu-primary" href="/partner/register"><span>Become a partner</span><span aria-hidden="true">↗</span></a>
         {% endif %}
-        {% if current_user and current_user['role'] in ['owner','agent','host','business'] %}<a class="header-more-link" href="{{ url_for('partner_register') }}">List another property <span aria-hidden="true">↗</span></a>{% endif %}
-        {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a class="header-more-link" href="{{ url_for('partners_directory') }}">Property partners <span aria-hidden="true">↗</span></a>{% endif %}
+        {% if current_user and current_user['role'] in ['owner','agent','host','business'] %}<a class="header-more-link" href="/partner/register">List another property <span aria-hidden="true">↗</span></a>{% endif %}
+        {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a class="header-more-link" href="/partners">Property partners <span aria-hidden="true">↗</span></a>{% endif %}
         {% if site_settings.get('promo_enabled','0') == '1' and (site_settings.get('promo_title') or site_settings.get('promo_text') or (site_settings.get('promo_link') and not is_competitor_property_portal_url(site_settings.get('promo_link'))) ) %}
           <div class="header-menu-featured">
             {% if site_settings.get('promo_title') %}<strong>{{ site_settings.get('promo_title') }}</strong>{% endif %}
@@ -59,18 +59,18 @@
     </div>
     <nav class="main-nav" id="mainNav" data-nav aria-label="Site navigation">
       <div class="drawer-heading"><strong>Categories</strong></div>
-      {% if 'residential' in public_categories %}<a href="{{ url_for('homes', category='residential') }}">Rentals</a>{% endif %}
-      {% if 'short_stay' in public_categories %}<a href="{{ url_for('homes', category='short_stay') }}">Airbnb & short stays</a><a href="{{ url_for('homes', category='short_stay', type='Hotel room') }}">Hotels</a>{% endif %}
-      {% if 'commercial' in public_categories %}<a href="{{ url_for('homes', category='commercial') }}">Shops & offices</a>{% endif %}
-      {% if 'industrial' in public_categories %}<a href="{{ url_for('homes', category='industrial') }}">Warehouses & godowns</a>{% endif %}
-      {% if 'land_sale' in public_categories %}<a href="{{ url_for('homes', category='land_sale') }}">Land & plots</a>{% endif %}
-      {% if 'property_sale' in public_categories %}<a href="{{ url_for('homes', category='property_sale') }}">Property for sale</a>{% endif %}
-      {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="{{ url_for('partners_directory') }}">Property partners</a>{% endif %}
-      <a href="{{ url_for('about_patamahali') }}">About PataMahali</a>
-      <a href="{{ url_for('how_to_use') }}">How to use PataMahali</a>
-      <a href="{{ url_for('contact_us') }}">Contact us</a>
-      <a href="{{ url_for('rate_site') }}">Rate PataMahali</a>
-      {% if current_user and current_user['role'] != 'admin' %}<form method="post" action="{{ url_for('logout') }}" class="nav-inline">{{ csrf_field() }}<button class="nav-link-button" type="submit">Sign out</button></form>{% endif %}
+      {% if 'residential' in public_categories %}<a href="/homes?category=residential">Rentals</a>{% endif %}
+      {% if 'short_stay' in public_categories %}<a href="/homes?category=short_stay">Airbnb & short stays</a><a href="/homes?category=short_stay&amp;type=Hotel%20room">Hotels</a>{% endif %}
+      {% if 'commercial' in public_categories %}<a href="/homes?category=commercial">Shops & offices</a>{% endif %}
+      {% if 'industrial' in public_categories %}<a href="/homes?category=industrial">Warehouses & godowns</a>{% endif %}
+      {% if 'land_sale' in public_categories %}<a href="/homes?category=land_sale">Land & plots</a>{% endif %}
+      {% if 'property_sale' in public_categories %}<a href="/homes?category=property_sale">Property for sale</a>{% endif %}
+      {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}
+      <a href="/about">About PataMahali</a>
+      <a href="/how-to-use">How to use PataMahali</a>
+      <a href="/contact">Contact us</a>
+      <a href="/rate-us">Rate PataMahali</a>
+      {% if current_user and current_user['role'] != 'admin' %}<form method="post" action="/logout" class="nav-inline">{{ csrf_field() }}<button class="nav-link-button" type="submit">Sign out</button></form>{% endif %}
     </nav>
   </header>
   {% if header_popular_categories %}
@@ -95,7 +95,7 @@
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
       <div class="footer-brand"><strong>{{ site_settings.get('site_name','PataMahali') }}</strong></div>
-      <div class="footer-links"><a href="{{ url_for('homes') }}">Explore places</a>{% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="{{ url_for('partners_directory') }}">Property partners</a>{% endif %}<a href="{{ url_for('partner_register') }}">List a property</a><a href="{{ url_for('privacy_policy') }}">Privacy notice</a><a href="{{ url_for('terms_of_use') }}">Terms of use</a><a href="{{ url_for('qr_platform') }}" target="_blank" rel="noopener">Invite QR</a></div>
+      <div class="footer-links"><a href="/homes">Explore places</a>{% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}<a href="/partner/register">List a property</a><a href="/privacy">Privacy notice</a><a href="/terms">Terms of use</a><a href="/qr/platform.png" target="_blank" rel="noopener">Invite QR</a></div>
       <div class="footer-contact">{% if site_settings.get('support_phone') %}<p>Site support: <a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">WhatsApp</a></p>{% endif %}{% if site_settings.get('support_email') %}<p><a href="mailto:{{ site_settings.get('support_email') }}">{{ site_settings.get('support_email') }}</a></p>{% endif %}<button type="button" class="button button-small button-outline" data-install-pwa hidden>Install app</button></div>
     </div>
     {% endif %}
@@ -109,13 +109,13 @@
     {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') and (site_settings.get('support_phone') or site_settings.get('support_email')) %}
     <div class="developer-contact-strip"><div><strong>Have a project in mind?</strong><span>Get a platform designed around your business.</span></div><div class="developer-contact-actions">{% if site_settings.get('support_phone') %}<a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">Talk to the developer <span aria-hidden="true">↗</span></a>{% endif %}{% if site_settings.get('support_email') %}<a href="mailto:{{ site_settings.get('support_email') }}">Email <span aria-hidden="true">↗</span></a>{% endif %}</div></div>
     {% endif %}
-    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="{{ url_for('about_patamahali') }}">About</a><a href="{{ url_for('how_to_use') }}">How to use</a><a href="{{ url_for('contact_us') }}">Contact us</a><a href="{{ url_for('rate_site') }}">Rate PataMahali</a><a href="{{ url_for('privacy_policy') }}">Privacy</a></div>{% endif %}
-    <div class="site-rating-footer"><span aria-hidden="true">★</span> {{ '%.1f'|format(site_rating_average|float) }} / 5 · {{ site_rating_count }} site rating{{ '' if site_rating_count == 1 else 's' }} · <a href="{{ url_for('rate_site') }}">Rate PataMahali</a></div>
+    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="/about">About</a><a href="/how-to-use">How to use</a><a href="/contact">Contact us</a><a href="/rate-us">Rate PataMahali</a><a href="/privacy">Privacy</a></div>{% endif %}
+    <div class="site-rating-footer"><span aria-hidden="true">★</span> {{ '%.1f'|format(site_rating_average|float) }} / 5 · {{ site_rating_count }} site rating{{ '' if site_rating_count == 1 else 's' }} · <a href="/rate-us">Rate PataMahali</a></div>
     <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovation Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
   </footer>
   {% endif %}
   <script>window.APP_CSRF={{ session.get('csrf_token','')|tojson }};</script>
-  <script src="{{ url_for('static', filename='js/app.js', v='20261028-mobile-drawer-repair-r12') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js', v='20261028-mobile-drawer-route-compat-r13') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
