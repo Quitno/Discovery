@@ -1450,3 +1450,70 @@ for _i, _card in enumerate(_KENYAN_RENTAL_PHOTOS):
 
 PHOTO_SECTIONS[0]["cards"] = _KENYAN_RENTAL_PHOTOS
 PHOTO_SECTIONS[0]["subtitle"] = "Real photographs of everyday Kenyan apartment blocks, flats and family estates. All are unverified visual previews, not live availability claims."
+
+# Runtime image-cache support. The cache is built by cache_gallery_images.py on Render.
+# Image sources remain in metadata so credits can be audited and images can be refreshed.
+from pathlib import Path as _PMPath
+import hashlib as _PMHashlib
+
+_PM_ROOT = _PMPath(__file__).resolve().parent
+_PM_GALLERY_DIR = _PM_ROOT / "static" / "img" / "gallery"
+_PM_GALLERY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def gallery_cache_filename(section_index, card_index, card):
+    """Stable local WebP filename for one gallery slot."""
+    source = str(card.get("src", ""))
+    key = "|".join((str(section_index), str(card_index), str(card.get("label", "")), source))
+    return _PMHashlib.sha256(key.encode("utf-8")).hexdigest()[:20] + ".webp"
+
+
+# Use the canonical Wikimedia file host for thumbnails. A few historical cards
+# used the thumbnail subdomain in source URLs; normal browsers do not reliably
+# resolve that alias, whereas upload.wikimedia.org is the standard file host.
+for _section in PHOTO_SECTIONS:
+    for _card in _section.get("cards", []):
+        for _field in ("src", "fallback", "fallback2"):
+            _value = _card.get(_field)
+            if isinstance(_value, str):
+                _card[_field] = _value.replace(
+                    "https://thumb.wikimedia.org/wikipedia/commons/thumb/",
+                    "https://upload.wikimedia.org/wikipedia/commons/thumb/",
+                )
+
+
+def _activate_local_gallery_assets():
+    fallback_for_category = {
+        "residential": "/static/img/property-scenes/apartment-building.webp",
+        "short_stay": "/static/img/property-scenes/modern-interior.webp",
+        "commercial": "/static/img/property-scenes/modern-interior.webp",
+        "industrial": "/static/img/property-scenes/apartment-building.webp",
+        "land_sale": "/static/img/property-scenes/residential-land.webp",
+        "property_sale": "/static/img/property-scenes/apartment-building.webp",
+    }
+    for section_index, section in enumerate(PHOTO_SECTIONS):
+        cached_in_section = []
+        for card_index, card in enumerate(section.get("cards", [])):
+            original_src = str(card.get("src", ""))
+            card["_original_src"] = original_src
+            candidates = []
+            for candidate in (original_src, card.get("fallback"), card.get("fallback2")):
+                if isinstance(candidate, str) and candidate.startswith(("https://", "http://")) and candidate not in candidates:
+                    candidates.append(candidate)
+            card["_remote_candidates"] = candidates
+            filename = gallery_cache_filename(section_index, card_index, card)
+            card["_cache_filename"] = filename
+            local_file = _PM_GALLERY_DIR / filename
+            if local_file.is_file() and local_file.stat().st_size > 500:
+                card["src"] = "/static/img/gallery/" + filename
+                cached_in_section.append(card["src"])
+        fallback = fallback_for_category.get(section.get("category"), "/static/img/property-scenes/apartment-building.webp")
+        for card_index, card in enumerate(section.get("cards", [])):
+            if cached_in_section:
+                card["fallback3"] = cached_in_section[card_index % len(cached_in_section)]
+            else:
+                card["fallback3"] = fallback
+    return PHOTO_SECTIONS
+
+
+PHOTO_SECTIONS = _activate_local_gallery_assets()

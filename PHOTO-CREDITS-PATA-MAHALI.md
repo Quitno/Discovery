@@ -1,6 +1,6 @@
 # PataMahali rental-photo credits and use notes
 
-Updated 28 October 2026. The Rentals gallery now uses 40 distinct photographs depicting normal Kenyan apartment blocks, walk-up flats, townhouses and residential estates. Image sizes are served remotely where the source provides resized thumbnails; these gallery photos are not stored in the Render filesystem. Every card is an **UNVERIFIED visual preview** and is not an assertion that the pictured property is currently available or belongs to a PataMahali advertiser.
+Updated 28 October 2026. The Rentals gallery catalogue contains 40 photographs of Kenyan apartment blocks, walk-up flats, townhouses and residential estates. The project builds compressed 640×420 WebP copies of the images whose sources permit reuse. Third-party property-site/editorial images with unclear reuse terms remain linked to their original hosts and are not re-hosted by the build script; their on-page fallback uses a locally cached, open-licensed image when available. Every card is an **UNVERIFIED visual preview** and is not an assertion that the pictured property is currently available or belongs to a PataMahali advertiser.
 
 ## Open-licensed Wikimedia photographs
 

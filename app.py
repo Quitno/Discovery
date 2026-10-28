@@ -28,7 +28,21 @@ from flask import (
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from photo_rails import PHOTO_SECTIONS
+# Materialize the compressed gallery on services that use dashboard build commands
+# instead of the repository's render.yaml. The regular Render build has already
+# cached the images, so this fallback normally completes immediately. Any source
+# failures are non-fatal and the templates retain image fallbacks.
+import importlib as _pm_importlib
+import photo_rails as _pm_photo_rails
+_pm_gallery_dir = Path(__file__).resolve().parent / "static" / "img" / "gallery"
+if not any(_pm_gallery_dir.glob("*.webp")):
+    try:
+        from cache_gallery_images import run as _pm_run_gallery_cache
+        _pm_run_gallery_cache(only_missing=True)
+        _pm_photo_rails = _pm_importlib.reload(_pm_photo_rails)
+    except Exception as _pm_gallery_exc:
+        print(f"WARNING: PataMahali gallery cache could not be built at startup: {_pm_gallery_exc}")
+PHOTO_SECTIONS = _pm_photo_rails.PHOTO_SECTIONS
 from places import (
     COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
     county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
