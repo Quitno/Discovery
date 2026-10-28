@@ -19,7 +19,7 @@
   {% if site_settings.get('site_logo') %}<link rel="icon" href="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}">{% else %}<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">{% endif %}
   <link rel="icon" href="{{ url_for('icon_svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-dynamic-category-r4') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-pm-real-photo-rails-r5') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
   <style>:root{--brand:{{ site_settings.get('brand_primary','#6A1B35') }};--accent:{{ site_settings.get('brand_accent','#D6A7B3') }};}</style>
   {% block head %}{% endblock %}
@@ -74,13 +74,11 @@
     </nav>
     {% endif %}
   </header>
-  {% endif %}
-  {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') and popular_categories %}
-  <nav class="pm-top-category-nav" aria-label="Popular property categories">
-    <div class="pm-top-category-inner">
-      {% for item in popular_categories %}<a href="{{ item.url }}" {% if request.endpoint == 'homes' and request.args.get('category','residential') == item.key %}aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
-    </div>
+  {% if header_popular_categories %}
+  <nav class="header-popular-shortcuts" aria-label="Most searched property categories">
+    {% for item in header_popular_categories %}<a href="{{ item.url }}" title="{{ item.label }}{% if item.searches %} · {{ item.searches }} recent searches{% endif %}">{{ item.label }}</a>{% endfor %}
   </nav>
+  {% endif %}
   {% endif %}
   <main id="main-content">
     {% if request.endpoint != 'index' %}

@@ -513,26 +513,9 @@ def init_db() -> None:
                 print(f"Password (copy now; stored as a hash): {password}")
                 print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
 
-        # Keep the public homepage photo-rich with real photography from the image CDN,
-        # not generated demo properties. Retire any illustrative listings created by
-        # older releases so they cannot be mistaken for available homes. Preserve the
-        # rows for audit/history, but remove their temporary image files to save storage.
-        old_samples = conn.execute("SELECT id, images FROM listings WHERE COALESCE(is_sample,0)=1").fetchall()
-        if old_samples:
-            for sample_row in old_samples:
-                try:
-                    names = json.loads(sample_row["images"] or "[]")
-                except (TypeError, json.JSONDecodeError):
-                    names = []
-                for name in names if isinstance(names, list) else []:
-                    filename = Path(str(name)).name
-                    if filename.startswith("illustrative-"):
-                        (LISTING_UPLOAD_DIR / filename).unlink(missing_ok=True)
-            conn.execute(
-                "UPDATE listings SET status='archived', approval_status='rejected', updated_at=? WHERE COALESCE(is_sample,0)=1",
-                (now_iso(),),
-            )
-
+        # Do not seed pretend property records or generic demonstration photos.
+        # The homepage photo galleries are discovery imagery only; public inventory
+        # must come from real owner submissions that pass the existing approval rules.
         conn.execute("PRAGMA journal_mode = WAL")
 
 
@@ -1031,69 +1014,6 @@ def _safe_admin_error_count():
         pass
     return 0
 
-def popular_category_shortcuts(enabled_categories=None):
-    """Return four compact category links ranked by observed property searches.
-
-    The top five candidates are rotated daily so the fifth category also gets
-    occasional visibility while the header remains limited to four buttons.
-    """
-    if enabled_categories is None:
-        enabled_categories = visible_categories()
-    labels = {
-        "residential": "Rentals", "hotels": "Hotels",
-        "stays": "Airbnb & stays", "land_sale": "Land & plots",
-        "property_sale": "Homes for sale", "commercial": "Shops & offices",
-        "industrial": "Warehouses",
-    }
-    routes = {
-        "residential": ("residential", ""),
-        "hotels": ("short_stay", "Hotel room"),
-        "stays": ("short_stay", ""),
-        "land_sale": ("land_sale", ""),
-        "property_sale": ("property_sale", ""),
-        "commercial": ("commercial", ""),
-        "industrial": ("industrial", ""),
-    }
-    fallback = ["residential", "hotels", "stays", "land_sale", "property_sale", "commercial", "industrial"]
-    active = []
-    for key in fallback:
-        category_key = routes[key][0]
-        if category_key in enabled_categories and key not in active:
-            active.append(key)
-    counts = Counter()
-    try:
-        rows = get_db().execute("SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 3000").fetchall()
-        for row in rows:
-            try:
-                data = json.loads(row["details"] or "{}")
-                category = str(data.get("category", "")).strip()
-                prop_type = str(data.get("type") or data.get("property_type") or "").strip().lower()
-                if category == "short_stay":
-                    key = "hotels" if "hotel" in prop_type else "stays"
-                else:
-                    key = category
-                if key in active:
-                    counts[key] += 1
-            except (TypeError, json.JSONDecodeError):
-                continue
-    except Exception:
-        pass
-    ordered = sorted(active, key=lambda key: (-counts.get(key, 0), active.index(key)))
-    if not any(counts.values()):
-        ordered = active[:]
-    if len(ordered) > 1:
-        rotate = datetime.now(timezone.utc).timetuple().tm_yday % len(ordered)
-        ordered = ordered[rotate:] + ordered[:rotate]
-    result = []
-    for key in ordered[:4]:
-        category, prop_type = routes[key]
-        values = {"category": category}
-        if prop_type:
-            values["type"] = prop_type
-        result.append({"key": key, "label": labels[key], "url": url_for("homes", **values), "searches": counts.get(key, 0)})
-    return result
-
-
 @app.context_processor
 def inject_globals():
     user = get_current_user()
@@ -1114,6 +1034,7 @@ def inject_globals():
     return {
         "site_settings": settings,
         "header_resource_links": header_resource_links,
+        "header_popular_categories": [] if request.endpoint == "index" or (request.endpoint or "").startswith("admin_") else popular_category_buttons(4),
         "promo_embed_url": safe_video_embed_url(settings.get("promo_video_url", "")),
         "is_competitor_property_portal_url": is_competitor_property_portal_url,
         "current_user": user,
@@ -1123,7 +1044,6 @@ def inject_globals():
         "seo_category_pages": SEO_CATEGORY_PAGES,
         "public_base": public_base,
         "public_categories": enabled_categories,
-        "popular_categories": popular_category_shortcuts(enabled_categories),
         "money": money,
         "fee_for_category": fee_for_category,
         "expiry_days_remaining": expiry_days_remaining,
@@ -1213,12 +1133,52 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def popular_category_buttons(limit: int = 4):
+    """Rank the four top shortcuts by recorded category/type searches."""
+    enabled = visible_categories()
+    fallback_order = ["residential", "hotels", "short_stay", "land_sale", "property_sale", "commercial", "industrial"]
+    definitions = {
+        "residential": {"label": "Rentals", "url": url_for("homes", category="residential")},
+        "hotels": {"label": "Hotels", "url": url_for("homes", category="short_stay", type="Hotel room")},
+        "short_stay": {"label": "Airbnb & stays", "url": url_for("homes", category="short_stay")},
+        "land_sale": {"label": "Land & plots", "url": url_for("homes", category="land_sale")},
+        "property_sale": {"label": "Homes for sale", "url": url_for("homes", category="property_sale")},
+        "commercial": {"label": "Shops & offices", "url": url_for("homes", category="commercial")},
+        "industrial": {"label": "Warehouses", "url": url_for("homes", category="industrial")},
+    }
+    available = []
+    for key in fallback_order:
+        base_key = "short_stay" if key == "hotels" else key
+        if base_key in enabled:
+            available.append(key)
+    counts = Counter()
+    rows = get_db().execute(
+        "SELECT details FROM visitor_events WHERE event_type='property_search' ORDER BY id DESC LIMIT 1000"
+    ).fetchall()
+    for row in rows:
+        try:
+            details = json.loads(row["details"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        category = str(details.get("category", "")).strip()
+        property_type = str(details.get("type", "")).strip().casefold()
+        query_text = str(details.get("q", "")).casefold()
+        if category == "short_stay":
+            key = "hotels" if property_type == "hotel room" or "hotel" in query_text else "short_stay"
+        else:
+            key = category
+        if key in definitions:
+            counts[key] += 1
+    ranked = sorted(available, key=lambda key: (-counts.get(key, 0), fallback_order.index(key)))
+    return [{"key": key, "label": definitions[key]["label"], "url": definitions[key]["url"], "searches": counts.get(key, 0)} for key in ranked[:max(1, min(int(limit), 4))]]
+
+
 @app.route("/")
 def index():
     focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
     featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
                          for name in focus_order if name in COUNTY_CONSTITUENCIES]
-    popular_categories = popular_category_shortcuts(visible_categories())
+    popular_categories = popular_category_buttons(4)
     return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
                            photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
 
@@ -1399,6 +1359,7 @@ def homes():
         types=CATEGORY_META.get(category, {}).get("types", []),
         sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
         category_meta=category_meta,
+        photo_section=(next((section for section in PHOTO_SECTIONS if section["category"] == category and section.get("type") == property_type), None) if property_type else next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)) or next((section for section in PHOTO_SECTIONS if section["category"] == category), None),
         external_searches=external_property_searches(" ".join(x for x in (q, location) if x), category),
         featured_area_cards=[
             {"name":"Nairobi","slug":"nairobi"}, {"name":"Kiambu","slug":"kiambu"},
@@ -1651,6 +1612,8 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
         constituency_cards = [{"name": name, "slug": slugify(name)} for name in COUNTY_CONSTITUENCIES.get(county, [])]
     enabled = visible_categories()
     category_links = [{"slug": slug, "label": item["label"], "count": item["category"]} for slug, item in SEO_CATEGORY_PAGES.items() if slug != category_slug and item["category"] in enabled]
+    photo_section = next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)
+    hero_photo = photo_section["cards"][0] if photo_section and photo_section.get("cards") else None
     canonical_url = public_base() + request.path
     # Don't index empty, nearly-identical category/location combinations. The main
     # county and constituency directory pages remain indexable and discoverable.
@@ -1659,7 +1622,7 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
         constituency=constituency, area_name=area_name, place_name=place_name, listings=listings, seo_title=seo_title,
         description=description, canonical_url=canonical_url, allow_index=allow_index,
         nearby_areas=nearby_areas, wards=wards, constituency_cards=constituency_cards,
-        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()))
+        category_links=category_links, counties=sorted(COUNTY_CONSTITUENCIES.keys()), hero_photo=hero_photo)
 
 
 @app.route("/listing/<int:listing_id>")
