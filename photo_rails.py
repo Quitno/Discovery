@@ -1192,3 +1192,261 @@ PHOTO_SECTIONS = [{'title': 'Homes & rentals',
              'credit': 'Unsplash or Pexels contributor',
              'license': 'Provider terms; remotely served image',
              'source_page': 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=420&h=300&q=64'}]}]
+
+
+# PataMahali Kenya mid-market rental photo set (2026-10-28).
+# These are genuine photographs of Kenyan apartment blocks and residential estates, used only
+# as UNVERIFIED visual previews. They do not assert that the depicted property is available.
+# Images are requested as small remote thumbnails; no gallery photos are stored on Render.
+_KENYAN_RENTAL_PHOTOS = [
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Residential_building_in_Nairobi.jpg/640px-Residential_building_in_Nairobi.jpg",
+        "title": "Apartment block in Nairobi", "area": "Nairobi, Nairobi", "local_type": "Everyday apartment block",
+        "label": "Residential building in Nairobi", "credit": "Bjarki781", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Residential_building_in_Nairobi.jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Houses_in_Makongeni_%28Nairobi%29_%285163671266%29.jpg/640px-Houses_in_Makongeni_%28Nairobi%29_%285163671266%29.jpg",
+        "title": "Residential flats in Makongeni", "area": "Makongeni, Nairobi", "local_type": "Residential flats",
+        "label": "Houses in Makongeni, Nairobi", "credit": "SuSanA Secretariat", "license": "CC BY 2.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Houses_in_Makongeni_(Nairobi)_(5163671266).jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Housing_in_Nairobi_01.jpg/640px-Housing_in_Nairobi_01.jpg",
+        "title": "Nairobi residential housing", "area": "Nairobi, Nairobi", "local_type": "Apartment homes",
+        "label": "Housing in Nairobi", "credit": "flightlog", "license": "CC BY 2.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Housing_in_Nairobi_01.jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Artistic_Photo_of_Kenyan_Apartments.jpg/640px-Artistic_Photo_of_Kenyan_Apartments.jpg",
+        "title": "Kenyan apartment buildings", "area": "Nairobi, Nairobi", "local_type": "Apartment buildings",
+        "label": "Kenyan apartments", "credit": "Mwe17", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Artistic_Photo_of_Kenyan_Apartments.jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Membley_Estate_Ruiru.jpg/640px-Membley_Estate_Ruiru.jpg",
+        "title": "Homes in Membley Estate", "area": "Membley, Ruiru", "local_type": "Estate homes",
+        "label": "Membley Estate homes", "credit": "Benard10", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Membley_Estate_Ruiru.jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Houses_in_Membley.jpg/640px-Houses_in_Membley.jpg",
+        "title": "Residential homes in Membley", "area": "Membley, Ruiru", "local_type": "Family homes",
+        "label": "Houses in Membley", "credit": "Gerald Maina MWANGI", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Houses_in_Membley.jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Mirema_Residential.jpg/500px-Mirema_Residential.jpg",
+        "title": "Residential area in Mirema", "area": "Mirema, Nairobi", "local_type": "Residential apartments",
+        "label": "Mirema Residential", "credit": "Ashhraffmunyi", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Mirema_Residential.jpg",
+    },
+    {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Hurlingham_Residential.jpg/640px-Hurlingham_Residential.jpg",
+        "title": "Residential buildings in Hurlingham", "area": "Hurlingham, Nairobi", "local_type": "Residential flats",
+        "label": "Hurlingham residential buildings", "credit": "Ashhraffmunyi", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Hurlingham_Residential.jpg",
+    },
+    {
+        "src": "https://commons.wikimedia.org/wiki/Special:FilePath/Lifestyle_Heights_Apartment.jpg?width=640",
+        "title": "Apartment development near Tatu City", "area": "Tatu City, Kiambu", "local_type": "Mid-rise apartments",
+        "label": "Lifestyle Heights Apartment", "credit": "Benard10", "license": "CC BY-SA 4.0",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Lifestyle_Heights_Apartment.jpg",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/983/webp/mcaxp-1-bedroom-apartment-for-rent-in-embu-town.webp",
+        "title": "Apartment flats in Blue Valley", "area": "Blue Valley, Embu", "local_type": "One-bedroom apartment block",
+        "label": "Apartment building in Embu Town", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/properties/983/1-bedroom-apartment-for-rent-in-embu-town",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/1018/webp/6cmhe-1-and-2-bedroom-for-rent-in-kamuthi-near-maziwa-kahawa-west.webp",
+        "title": "Apartments near Maziwa", "area": "Kahawa West, Nairobi", "local_type": "One- and two-bedroom apartments",
+        "label": "Apartment block near Maziwa, Kahawa West", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/properties/1018/1-and-2-bedroom-for-rent-in-kamuthi-near-maziwa-kahawa-west",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/1018/webp/vbl5l-1-and-2-bedroom-for-rent-in-kamuthi-near-maziwa-kahawa-west.webp",
+        "title": "Apartment courtyard in Kahawa West", "area": "Kahawa West, Nairobi", "local_type": "Apartment compound",
+        "label": "Apartment ground-floor and parking area", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/properties/1018/1-and-2-bedroom-for-rent-in-kamuthi-near-maziwa-kahawa-west",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/unfurnished-spacious-2-bedroom-apartment-to-letsale-in-juja-south-estate-dx82g.jpeg",
+        "title": "Two-bedroom flats in Juja South", "area": "Juja South, Kiambu", "local_type": "Two-bedroom apartment block",
+        "label": "Apartment block in Juja South Estate", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/properties/12971/unfurnished-spacious-2-bedroom-apartment-to-letsale-in-juja-south-estate",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/apartment-for-sale-in-juja-dotf3.jpg",
+        "title": "Red-and-cream apartment block", "area": "Juja, Kiambu", "local_type": "Multi-storey apartment block",
+        "label": "Apartment building in Juja", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/properties/6983/apartment-for-sale-in-juja",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/block-of-apartment-for-sale-in-juja-dxjjs.jpg",
+        "title": "Yellow-and-cream apartment block", "area": "Juja, Kiambu", "local_type": "Apartment flats",
+        "label": "Residential apartment building in Juja", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/properties/14762/block-of-apartment-for-sale-in-juja",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/block-of-apartment-for-sale-in-juja-cofoo.jpg",
+        "title": "Everyday flats near Juja town", "area": "Juja, Kiambu", "local_type": "Residential flats",
+        "label": "Residential flat block in Juja", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/flat-and-apartments/in/juja-kenya",
+    },
+    {
+        "src": "https://images.prop24.com/uxjosurk3ezmlgqdgur7uvyeiq/Crop600x400",
+        "title": "Flats in Kahawa Wendani", "area": "Kahawa Wendani, Nairobi", "local_type": "Residential apartments",
+        "label": "Apartment building in Kahawa Wendani", "credit": "Property24 Kenya listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://www.property24.co.ke/apartment-flat-for-sale-in-kahawa-wendani-116252068",
+    },
+    {
+        "src": "https://images.prop24.com/kgbzhakaaw3dmppmnhxiomys4u/Crop600x400",
+        "title": "Apartment courtyard in Kahawa Wendani", "area": "Kahawa Wendani, Nairobi", "local_type": "Apartment compound",
+        "label": "Apartment courtyard and parking", "credit": "Property24 Kenya listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://www.property24.co.ke/apartments-flats-for-sale-in-kahawa-wendani-s14620",
+    },
+    {
+        "src": "https://pub-a740d44fbd0a4f7eb7eecc73b5b9f63e.r2.dev/248381157-101479049005940-8525604851195304043-n.jpg",
+        "title": "Mid-rise flats in Kahawa West", "area": "Kahawa West, Nairobi", "local_type": "Mid-rise apartment block",
+        "label": "Residential building in Kahawa West", "credit": "Masion neighbourhood guide", "license": "Third-party site image; source terms apply",
+        "source_page": "https://masion.co.ke/news/kahawa-west-neighbourhood-guide-what-you-need-to-know-in-2025",
+    },
+    {
+        "src": "https://www.hakikaproperties.com/photos2/aTRINITY%201.jpeg",
+        "title": "Trinity Heights apartment block", "area": "Nairobi, Nairobi", "local_type": "Multi-storey rental flats",
+        "label": "Trinity Heights residential building", "credit": "Hakika Properties", "license": "Third-party property photo; source terms apply",
+        "source_page": "https://www.hakikaproperties.com/resulti.php?braxton=House+to+Let",
+    },
+    {
+        "src": "https://secure.toolkitfiles.co.uk/clients/35888/siteimages/hires/embu-final.jpg",
+        "title": "Apartment homes in Embu", "area": "Embu Town, Embu", "local_type": "Apartment estate",
+        "label": "Embu apartment housing project", "credit": "Hand in Hand Group project page", "license": "Third-party site image; source terms apply",
+        "source_page": "https://www.handinhandgroup.com/projects-and-opportunities",
+    },
+    {
+        "src": "https://tej.co.ke/media/k2/galleries/32/p1bme8sg1c4rq5ne1ss01buhujl5.jpg",
+        "title": "Madaraka residential estate homes", "area": "Madaraka, Nairobi", "local_type": "Two-storey family homes",
+        "label": "AKILA 1 housing estate in Madaraka", "credit": "TEJ project page", "license": "Third-party site image; source terms apply",
+        "source_page": "https://tej.co.ke/index.php/products/projects/item/32-akila-1",
+    },
+    {
+        "src": "https://media.licdn.com/dms/image/v2/D4D22AQH156R8_g8vdw/feedshare-shrink_800/B4DZcb9MvFGYAg-/0/1748520768667?e=2147483647&t=a6z8JVMvn5qfb-o0HccYd-lpaq2K0rdv_ZtngAPvNDE&v=beta",
+        "title": "Affordable apartment homes in Homa Bay", "area": "Homa Bay, Homa Bay", "local_type": "Apartment estate",
+        "label": "Homa Bay affordable housing", "credit": "National Housing Corporation social post", "license": "Third-party social image; source terms apply",
+        "source_page": "https://www.linkedin.com/company/national-housing-corporation/",
+    },
+    {
+        "src": "https://affordablehousingboard.go.ke/sites/default/files/styles/medium/public/portfolio-images/Kings%20Serenity_0.jpg?itok=jOWC5q8T",
+        "title": "Apartment estate in Nakuru", "area": "Nakuru, Nakuru", "local_type": "Mid-rise residential apartments",
+        "label": "Kings Sapphire affordable housing complex", "credit": "Affordable Housing Board", "license": "Official project photo; confirm reuse conditions",
+        "source_page": "https://affordablehousingboard.go.ke/ongoing-projects",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/4-bedrooms-maisonette-plus-dsq-to-let-membley-ruiru-02kzm.jpg",
+        "title": "Family maisonette in Membley", "area": "Membley, Ruiru", "local_type": "Two-storey maisonette",
+        "label": "Maisonette in Membley Estate", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/gated-communities/in/membley-estate-ruiru",
+    },
+    {
+        "src": "https://justhomes.co.ke/uploads/images/lM1PK2mEOg0aoExIgHTwDR3z6pE1V8.jpeg",
+        "title": "Family home in Komarock", "area": "Komarock, Nairobi", "local_type": "Two-storey family home",
+        "label": "Maisonette in Komarock Phase 4", "credit": "JustHomes listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://justhomes.co.ke/houses/4-bedroom-maisonette-komarock-phase-4-67192842",
+    },
+    {
+        "src": "https://images.prop24.com/pmtsgwbr52fyrgqyxn2ysrjc44/Crop600x400",
+        "title": "Madaraka family maisonette", "area": "Madaraka, Nairobi", "local_type": "Family maisonette",
+        "label": "Four-bedroom maisonette in Madaraka", "credit": "Property24 Kenya listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://www.property24.co.ke/4-bedroom-house-for-sale-in-madaraka-116352251",
+    },
+    {
+        "src": "https://i.roamcdn.net/prop/brk/og-image-full-1200w-630h/a8f14f425b29e9edfe579b7520465271/-/prod-property-core-backend-media-brk/9879247/9b9779f5-1a21-4154-bd5f-e36baf552132.jpeg",
+        "title": "Residential complex in Ruiru", "area": "Ruiru, Kiambu", "local_type": "Mid-rise apartment complex",
+        "label": "Ruiru residential apartments", "credit": "BuyRentKenya listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://www.buyrentkenya.com/flats-apartments-for-rent/kiambu/ruiru/2-bedroom",
+    },
+    {
+        "src": "https://nation.africa/resource/image/3787180/landscape_ratio3x2/1620/1080/20edb87fda2b2c0e726e1921af5b640d/uM/nyayo.jpg",
+        "title": "Apartment blocks in Nyayo Estate", "area": "Nyayo Estate, Embakasi", "local_type": "Estate apartments",
+        "label": "Nyayo Estate residential blocks", "credit": "Nation Africa editorial photo", "license": "Third-party editorial image; source terms apply",
+        "source_page": "https://nation.africa/kenya/counties/nairobi/why-posh-nyayo-estate-continues-to-be-plagued-by-water-shortages-3783598",
+    },
+    {
+        "src": "https://eazzyrent.com/propertyimages/00022189201.jpg",
+        "title": "Apartment courtyard in Ruiru", "area": "Ruiru, Kiambu", "local_type": "Apartment compound",
+        "label": "Residential block and parking in Ruiru", "credit": "EazzyRent listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://eazzyrent.com/listings/2-bedroom-apartment-for-rent-in-ruiru-kiambu-4369",
+    },
+    {
+        "src": "https://i.roamcdn.net/prop/brk/og-image-full-1200w-630h/6592bd0b6045219aebd2204cf6694ae3/-/prod-property-core-backend-media-brk/3065048/7e193f4c-0913-45b4-b30b-00416b5ef3df.jpg",
+        "title": "Apartment flats in Donholm", "area": "Donholm, Nairobi", "local_type": "Five-storey apartment block",
+        "label": "Donholm residential building", "credit": "BuyRentKenya listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://www.buyrentkenya.com/listings/2-bedroom-apartment-for-sale-donholm-11-3399915",
+    },
+    {
+        "src": "https://greatways.co.ke/grateways/components/photos/witethie/main.jpeg",
+        "title": "Homes in Witethie", "area": "Witethie, Juja", "local_type": "Residential courtyard homes",
+        "label": "Residential homes in Witethie, Juja", "credit": "Greatways property page", "license": "Third-party site image; source terms apply",
+        "source_page": "https://greatways.co.ke/",
+    },
+    {
+        "src": "https://www.jupiterkenya.com/static/media/6.081550176f7c21a68b0a.jpg",
+        "title": "Townhouse estate in Kenya", "area": "Nairobi metropolitan area", "local_type": "Estate maisonettes",
+        "label": "Row of townhouse-style homes", "credit": "Jupiter Energy Solutions project page", "license": "Third-party site image; source terms apply",
+        "source_page": "https://www.jupiterkenya.com/projects",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/studio-and-1-bedroom-apartment-for-sale-in-juja-eq1wh.jpg",
+        "title": "One-bedroom apartment interior in Juja", "area": "Juja, Kiambu", "local_type": "Apartment interior",
+        "label": "Living area in a Juja apartment", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/flat-and-apartments/in/juja-kenya",
+    },
+    {
+        "src": "https://images.prop24.com/li5czscmkqhwnmpoivq5pj4jye/Crop600x400",
+        "title": "Apartments in Zimmerman", "area": "Zimmerman, Nairobi", "local_type": "Multi-storey residential flats",
+        "label": "Apartment block in Zimmerman", "credit": "Property24 Kenya listing photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://www.property24.co.ke/2-bedroom-apartments-flats-for-sale-in-zimmerman-s14618",
+    },
+    {
+        "src": "https://pix10.agoda.net/hotelImages/77602513/0/be0c9d0f34a2cc906fa0173e33ed7000.jpg?ce=2&s=800x600",
+        "title": "Apartments near Kasarani Seasons", "area": "Kasarani, Nairobi", "local_type": "Urban apartment block",
+        "label": "Residential apartment complex in Kasarani", "credit": "Agoda accommodation photo", "license": "Third-party accommodation image; source terms apply",
+        "source_page": "https://www.agoda.com/cozy-studio-bnb-in-kasarani-seasons-nairobi/hotel/kasarani-ke.html",
+    },
+    {
+        "src": "https://q-xx.bstatic.com/xdata/images/hotel/840x460/667382710.jpg?k=0039f1aeae1fe13efb8efabbcbaec9ae42c2a94f0fd0f8d0ec1485f0d1c58ae2&o=",
+        "title": "Apartment building in Umoja", "area": "Umoja, Nairobi", "local_type": "Urban apartment flats",
+        "label": "Apartment exterior in Umoja", "credit": "Booking.com accommodation photo", "license": "Third-party accommodation image; source terms apply",
+        "source_page": "https://www.agoda.com/en-au/umoja/maps/nairobi-ke.html",
+    },
+    {
+        "src": "https://propscout.co.ke/storage/properties/files/block-of-apartment-for-sale-in-githurai-44-lpdh7.jpg",
+        "title": "Flats with ground-floor shops in Githurai", "area": "Githurai 44, Nairobi", "local_type": "Apartment block with shops",
+        "label": "Apartment block in Githurai 44", "credit": "Property photograph via Propscout", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://propscout.co.ke/githurai-44-githurai-kenya",
+    },
+    {
+        "src": "https://ownitkenya.com/wp-content/uploads/2022/08/IMG-20220819-WA0043.jpg",
+        "title": "Apartments in Kasarani Mwiki", "area": "Kasarani Mwiki, Nairobi", "local_type": "Apartment block",
+        "label": "Residential apartments in Kasarani Mwiki", "credit": "Own It Kenya property photo", "license": "Third-party listing image; source terms apply",
+        "source_page": "https://ownitkenya.com/property/block-of-flats-for-sale-in-kasarani/",
+    },
+    {
+        "src": "https://nation.africa/resource/image/4037616/portrait_ratio1x1/1600/1600/699398fa4db2eeffbbbb63910e84e409/yV/housing.jpg",
+        "title": "Affordable flats in Ngara", "area": "Ngara, Nairobi", "local_type": "Mid-rise apartment estate",
+        "label": "Affordable housing apartments in Ngara", "credit": "Nation Africa editorial photo", "license": "Third-party editorial image; source terms apply",
+        "source_page": "https://nation.africa/kenya/blogs-opinion/blogs/affordable-housing-agenda-a-boon-for-tvets-4037590",
+    },
+]
+
+# Add small-image fallback URLs from other real Kenyan housing photographs (never luxury-villa stock).
+for _i, _card in enumerate(_KENYAN_RENTAL_PHOTOS):
+    _card["fallback"] = _KENYAN_RENTAL_PHOTOS[(_i + 1) % len(_KENYAN_RENTAL_PHOTOS)]["src"]
+    _card["fallback2"] = _KENYAN_RENTAL_PHOTOS[(_i + 2) % len(_KENYAN_RENTAL_PHOTOS)]["src"]
+    _card["alt"] = _card["label"] + " — real Kenyan housing photo, unverified visual preview"
+    _card["unverified"] = True
+
+PHOTO_SECTIONS[0]["cards"] = _KENYAN_RENTAL_PHOTOS
+PHOTO_SECTIONS[0]["subtitle"] = "Real photographs of everyday Kenyan apartment blocks, flats and family estates. All are unverified visual previews, not live availability claims."

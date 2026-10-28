@@ -1233,20 +1233,11 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
     for index, source in enumerate(cards):
         area, local_type = PREVIEW_AREA_GUIDES[index % len(PREVIEW_AREA_GUIDES)]
         title = titles[index % len(titles)]
-        # Homes show common Kenyan rental styles and neighbourhoods, not just luxury villas.
+        # Rental previews use the actual photo's source label/locality, not a random unrelated area.
         if category == "residential":
-            area, local_type = PREVIEW_AREA_GUIDES[index % len(PREVIEW_AREA_GUIDES)]
-            if index % 5 == 0:
-                title = "Bedsitter / single-room style"
-            elif index % 5 == 1:
-                title = "Everyday apartment block"
-            elif index % 5 == 2:
-                title = "One-bedroom flat style"
-            elif index % 5 == 3:
-                title = "Family rental home style"
-            else:
-                title = "Studio or compact apartment"
-            local_type = title
+            area = source.get("area") or area
+            title = source.get("title") or source.get("label") or "Kenyan apartment or family home"
+            local_type = source.get("local_type") or title
         elif category == "short_stay":
             if property_type == "Hotel room":
                 title = ["Hotel room", "Budget hotel room", "Guest room", "Family hotel room"][index % 4]
