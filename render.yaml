@@ -3,7 +3,7 @@ services:
     name: patamahali-marketplace
     runtime: python
     plan: starter
-    buildCommand: pip install -r requirements.txt && python cache_gallery_images.py
+    buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120
     healthCheckPath: /
     disk:
