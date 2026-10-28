@@ -8,8 +8,8 @@ listing images are not re-hosted unless their card says it has an open licence; 
 page can still try the original image URL and uses an on-page local fallback if it
 fails. Source URLs, credits and the licence/source note remain in the manifest.
 
-The build does not fail if an image host is temporarily unavailable. Unavailable
-slots keep their own remote alternatives and never borrow another card's photo.
+The build does not fail if an image host is temporarily unavailable. A failed
+licensed slot may reuse a successfully cached image from the same section.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.error
@@ -63,14 +64,12 @@ def _headers(url: str, card: dict) -> dict:
         "Accept": "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5",
     }
     source_page = card.get("source_page")
-    parsed = urllib.parse.urlsplit(url)
-    source_parsed = urllib.parse.urlsplit(str(source_page or ""))
-    # A card may fall back from a Wikimedia photo to a Pexels/Unsplash image.
-    # Do not send an unrelated source-page Referer to the fallback image host.
-    if source_parsed.scheme in {"https", "http"} and source_parsed.netloc.lower().endswith(parsed.netloc.lower()):
-        headers["Referer"] = str(source_page)
-    elif parsed.scheme and parsed.netloc:
-        headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+    if source_page and str(source_page).startswith(("https://", "http://")):
+        headers["Referer"] = source_page
+    else:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme and parsed.netloc:
+            headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
     return headers
 
 
@@ -125,12 +124,10 @@ def _slot_list():
                     candidate for candidate in (card.get("_remote_candidates") or [card.get("src", ""), card.get("fallback", ""), card.get("fallback2", "")])
                     if _url_is_cacheable(str(candidate))
                 ],
-                # A non-cacheable primary may still have a reusable Pexels or
-                # Unsplash fallback. Cache that permitted candidate for this slot.
-                "cacheable": any(
-                    _url_is_cacheable(str(candidate))
-                    for candidate in (card.get("_remote_candidates") or [card.get("src", ""), card.get("fallback", ""), card.get("fallback2", "")])
-                ),
+                # A card is cacheable when either its primary photo has reuse rights
+                # OR its explicitly supplied, reusable provider fallback can be cached.
+                # Previously a third-party primary blocked all fallback caching.
+                "cacheable": any(_url_is_cacheable(str(candidate)) for candidate in (card.get("_remote_candidates") or [card.get("src", ""), card.get("fallback", ""), card.get("fallback2", "")])),
             })
     return slots
 
@@ -172,17 +169,41 @@ def run(only_missing=True, dry_run=False):
             if result["status"] == "downloaded":
                 print(f"[image-cache] saved {filename} from {result['url']}")
 
-    # Do NOT copy one successful image into failed slots. Previously a single
-    # downloaded apartment/interior photo could be copied into dozens of files,
-    # then loaded as if it were a different photo for every card. Failed slots
-    # retain their own remote source/fallback chain and render a neutral tile if
-    # those sources also fail.
+    # Keep gallery cards visible when one or more source hosts reject hotlinking.
+    # Prefer a different successfully cached photograph from the same category.
+    category_successes = {}
     for slot in slots:
-        if not slot["target"].is_file() or slot["target"].stat().st_size <= 500:
-            results.setdefault(slot["filename"], {
-                "status": "no_unique_photo_cached",
-                "url": slot["card"].get("_original_src") or slot["card"].get("src", ""),
-            })
+        item = results.get(slot["filename"], {})
+        if item.get("status") in {"downloaded", "cached"} and slot["target"].is_file():
+            category_successes.setdefault(slot["section_index"], []).append(slot["target"])
+    for slot in slots:
+        if slot["target"].is_file() and slot["target"].stat().st_size > 500:
+            continue
+        if not slot["cacheable"]:
+            continue
+        successful = category_successes.get(slot["section_index"], [])
+        if successful:
+            # Cycle through different successful photos to avoid one repeated image.
+            donor = successful[slot["card_index"] % len(successful)]
+            shutil.copyfile(donor, slot["target"])
+            results[slot["filename"]] = {"status": "copied_category_fallback", "url": str(donor)}
+            print(f"[image-cache] fallback copy for {slot['filename']} from {donor.name}")
+        else:
+            category = slot["section"].get("category", "residential")
+            backup_names = {
+                # Fallbacks are only for total source-host outages; they keep cards
+                # filled rather than showing blank placeholders. Kenyan source photos
+                # should be cached first whenever their approved URLs are reachable.
+                "residential": "apartment-building.webp", "short_stay": "modern-interior.webp",
+                "commercial": "modern-interior.webp", "industrial": "apartment-building.webp",
+                "land_sale": "residential-land.webp", "property_sale": "apartment-building.webp",
+            }
+            backup = ROOT / "static" / "img" / "property-scenes" / backup_names.get(category, "apartment-building.webp")
+            if backup.is_file():
+                with Image.open(backup) as source:
+                    image = ImageOps.fit(ImageOps.exif_transpose(source).convert("RGB"), (640, 420), method=Image.Resampling.LANCZOS)
+                    image.save(slot["target"], "WEBP", quality=64, method=6, optimize=True)
+                results[slot["filename"]] = {"status": "local_scene_fallback", "url": str(backup)}
 
     manifest = []
     for slot in slots:

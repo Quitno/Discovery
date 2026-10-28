@@ -3,7 +3,7 @@
 PHOTO_SECTIONS = [{'title': 'Homes & rentals',
   'subtitle': 'Apartments, bedsitters, studios, family homes and furnished rentals.',
   'category': 'residential',
-  'cards': [{'src': 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7c/Residential_building_in_Nairobi.jpg/640px-Residential_building_in_Nairobi.jpg',
+  'cards': [{'src': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Residential_building_in_Nairobi.jpg/640px-Residential_building_in_Nairobi.jpg',
              'fallback': 'https://images.pexels.com/photos/106399/pexels-photo-106399.jpeg?auto=compress&cs=tinysrgb&w=420&h=300&dpr=1',
              'label': 'Apartment block in Nairobi',
              'alt': 'A real residential apartment building in Nairobi, Kenya',
@@ -12,7 +12,7 @@ PHOTO_SECTIONS = [{'title': 'Homes & rentals',
              'license': 'CC BY-SA 4.0',
              'source_page': 'https://commons.wikimedia.org/wiki/File:Residential_building_in_Nairobi.jpg',
              'unverified': True},
-            {'src': 'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/Houses_in_Makongeni_%28Nairobi%29_%285163671266%29.jpg/640px-Houses_in_Makongeni_%28Nairobi%29_%285163671266%29.jpg',
+            {'src': 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Houses_in_Makongeni_%28Nairobi%29_%285163671266%29.jpg/640px-Houses_in_Makongeni_%28Nairobi%29_%285163671266%29.jpg',
              'fallback': 'https://images.pexels.com/photos/35818904/pexels-photo-35818904.jpeg?auto=compress&cs=tinysrgb&w=420&h=300&dpr=1',
              'label': 'Residential flats in Makongeni',
              'alt': 'Residential apartment buildings in Makongeni, Nairobi, Kenya',
@@ -39,7 +39,7 @@ PHOTO_SECTIONS = [{'title': 'Homes & rentals',
              'license': 'CC BY-SA 4.0',
              'source_page': 'https://commons.wikimedia.org/wiki/File:Artistic_Photo_of_Kenyan_Apartments.jpg',
              'unverified': True},
-            {'src': 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Membley_Estate_Ruiru.jpg/640px-Membley_Estate_Ruiru.jpg',
+            {'src': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Membley_Estate_Ruiru.jpg/640px-Membley_Estate_Ruiru.jpg',
              'fallback': 'https://images.pexels.com/photos/35823377/pexels-photo-35823377.jpeg?auto=compress&cs=tinysrgb&w=420&h=300&dpr=1',
              'label': 'Homes in Membley, Ruiru',
              'alt': 'Residential homes in Membley Estate, Ruiru, Kenya',
@@ -48,7 +48,7 @@ PHOTO_SECTIONS = [{'title': 'Homes & rentals',
              'license': 'CC BY-SA 4.0',
              'source_page': 'https://commons.wikimedia.org/wiki/File:Membley_Estate_Ruiru.jpg',
              'unverified': True},
-            {'src': 'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Houses_in_Membley.jpg/640px-Houses_in_Membley.jpg',
+            {'src': 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Houses_in_Membley.jpg/640px-Houses_in_Membley.jpg',
              'fallback': 'https://images.pexels.com/photos/37503936/pexels-photo-37503936.jpeg?auto=compress&cs=tinysrgb&w=420&h=300&dpr=1',
              'label': 'Residential estate in Membley',
              'alt': 'Residential houses in the Membley area of Kenya',
@@ -57,7 +57,7 @@ PHOTO_SECTIONS = [{'title': 'Homes & rentals',
              'license': 'CC BY-SA 4.0',
              'source_page': 'https://commons.wikimedia.org/wiki/File:Houses_in_Membley.jpg',
              'unverified': True},
-            {'src': 'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/59/Mirema_Residential.jpg/500px-Mirema_Residential.jpg',
+            {'src': 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Mirema_Residential.jpg/500px-Mirema_Residential.jpg',
              'fallback': 'https://images.pexels.com/photos/36498917/pexels-photo-36498917.jpeg?auto=compress&cs=tinysrgb&w=420&h=300&dpr=1',
              'label': 'Mirema residential area',
              'alt': 'A residential area in Mirema, Nairobi, Kenya',
@@ -66,7 +66,7 @@ PHOTO_SECTIONS = [{'title': 'Homes & rentals',
              'license': 'CC BY-SA 4.0',
              'source_page': 'https://commons.wikimedia.org/wiki/File:Mirema_Residential.jpg',
              'unverified': True},
-            {'src': 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Settlements_2.jpg/640px-Settlements_2.jpg',
+            {'src': 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Settlements_2.jpg/640px-Settlements_2.jpg',
              'fallback': 'https://images.pexels.com/photos/5504654/pexels-photo-5504654.jpeg?auto=compress&cs=tinysrgb&w=420&h=300&dpr=1',
              'label': 'Everyday neighbourhood housing',
              'alt': 'Residential settlement in Nairobi, Kenya',
@@ -1448,8 +1448,194 @@ for _i, _card in enumerate(_KENYAN_RENTAL_PHOTOS):
     _card["alt"] = _card["label"] + " — real Kenyan housing photo, unverified visual preview"
     _card["unverified"] = True
 
+# Put the strongest everyday Kenyan apartment listings first: Embu, Kahawa West,
+# and Juja. Keep all 40 source cards once; older broad/heritage scenes move lower.
+if len(_KENYAN_RENTAL_PHOTOS) >= 40:
+    _pm_preferred_rental_order = list(range(9, 40)) + list(range(0, 9))
+    _KENYAN_RENTAL_PHOTOS = [_KENYAN_RENTAL_PHOTOS[i] for i in _pm_preferred_rental_order]
 PHOTO_SECTIONS[0]["cards"] = _KENYAN_RENTAL_PHOTOS
-PHOTO_SECTIONS[0]["subtitle"] = "Real photographs of everyday Kenyan apartment blocks, flats and family estates. All are unverified visual previews, not live availability claims."
+PHOTO_SECTIONS[0]["subtitle"] = ""
+
+# Kenya-first photo ordering. These are genuine photographs of Kenyan properties or
+# plots, shown only as unverified discovery previews. Third-party listing photos are
+# hotlinked (not re-hosted) and retain their original source pages/credits.
+def _pm_apply_kenyan_first_photos():
+    from urllib.parse import quote
+    overrides = {
+        (1, 0): {
+            "src": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/0e/9c/3c/1a/kch-day-view.jpg?h=500&s=1&w=900",
+            "label": "Kenya Comfort Hotel, Nairobi", "title": "Kenya Comfort Hotel", "area": "Nairobi CBD, Nairobi", "local_type": "City hotel",
+            "credit": "Tripadvisor / hotel photo", "license": "Third-party photo; display rights not verified", "source_page": "https://www.tripadvisor.com/Hotel_Review-g294207-d781694-Reviews-Kenya_Comfort_Hotel-Nairobi.html"},
+        (1, 1): {
+            "src": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2b/6d/ed/64/front-of-the-hotel.jpg?h=500&s=1&w=900",
+            "label": "Red Buffalo House Hotel, Nairobi", "title": "Red Buffalo House Hotel", "area": "Nairobi, Nairobi", "local_type": "Guest-house hotel",
+            "credit": "Tripadvisor / hotel photo", "license": "Third-party photo; display rights not verified", "source_page": "https://www.tripadvisor.com.au/Hotel_Review-g294207-d14865600-Reviews-Red_Buffalo_House_Hotel-Nairobi.html"},
+        (1, 2): {
+            "src": "https://photos.hotelbeds.com/giata/original/99/995414/995414a_hb_l_001.jpeg",
+            "label": "Marigold Guest House bedroom, Mombasa", "title": "Marigold Guest House", "area": "Mombasa, Mombasa", "local_type": "Guest house room",
+            "credit": "Hotelbeds / accommodation photo", "license": "Third-party photo; display rights not verified", "source_page": "https://www.online.savana.travel/flight-accommodation/from-Johannesburg-JNB/to-Mombasa-Kenya/guest-house-marigold-mombasa-kenya/"},
+        (2, 0): {
+            "src": "https://a0.muscache.com/im/pictures/miso/Hosting-1309204420192245380/original/363fcaf8-84b9-4585-95b2-43e4dca97b6f.jpeg",
+            "label": "Guest room in Mombasa", "title": "Furnished guest room in Mombasa", "area": "Mombasa, Mombasa", "local_type": "Short-stay room",
+            "credit": "Airbnb accommodation photo", "license": "Third-party photo; display rights not verified", "source_page": "https://www.airbnb.com/mombasa-county-kenya/stays/hotels"},
+        (2, 1): {
+            "src": "https://cf.bstatic.com/xdata/images/hotel/max1024x768/589488558.jpg?k=1847d88414c6d857a753519094e1095f91d08b2b19497f1d337cc02a53333b53&o=",
+            "label": "Apartment stay in Ruiru", "title": "Furnished apartment in Ruiru", "area": "Ruiru, Kiambu", "local_type": "Furnished apartment",
+            "credit": "Booking.com accommodation photo", "license": "Third-party photo; display rights not verified", "source_page": "https://www.booking.com/hotel/ke/viok-homes.html"},
+        (2, 2): {
+            "src": "https://photos.hotelbeds.com/giata/original/99/995414/995414a_hb_l_001.jpeg",
+            "label": "Guest-house room in Mombasa", "title": "Guest house short stay", "area": "Mombasa, Mombasa", "local_type": "Guest house room",
+            "credit": "Hotelbeds / accommodation photo", "license": "Third-party photo; display rights not verified", "source_page": "https://www.online.savana.travel/flight-accommodation/from-Johannesburg-JNB/to-Mombasa-Kenya/guest-house-marigold-mombasa-kenya/"},
+        (3, 0): {
+            "src": "https://propertylistings.co.ke/wp-content/uploads/2025/06/STD_1752-HDR-Copy-1170x785.jpg",
+            "label": "Retail building in Parklands, Nairobi", "title": "Shops in Parklands", "area": "Parklands, Nairobi", "local_type": "Retail shops",
+            "credit": "PropertyListings.co.ke", "license": "Third-party listing photo; display rights not verified", "source_page": "https://propertylistings.co.ke/property/the-radiance-mall/"},
+        (3, 1): {
+            "src": "https://i.roamcdn.net/prop/brk/og-image-full-1200w-630h/796b5256ed8de6b507cd0ef4c4700210/-/prod-property-core-backend-media-brk/10168448/d40303e2-0e94-405f-8260-d6a887c9b3d6.jpg",
+            "label": "Vacant retail unit in Nairobi", "title": "Ground-floor shop space", "area": "Nairobi, Nairobi", "local_type": "Shop space",
+            "credit": "BuyRentKenya listing photo", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.buyrentkenya.com/shops-for-rent/nairobi"},
+        (3, 2): {
+            "src": "https://resources.pamgolding.co.za/content/properties/202505/2190518/h/2190518_H_1.jpg",
+            "label": "Commercial office in Kilimani, Nairobi", "title": "Office space in Kilimani", "area": "Kilimani, Nairobi", "local_type": "Open-plan office",
+            "credit": "Pam Golding Properties", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.pamgolding.co.za/property-details/commercial-office-to-rent-kilimani-kenya/3ke1704935"},
+        (4, 0): {
+            "src": "https://coralpi.com/wp-content/uploads/2023/10/GL-Unit-C6-edit-1.jpg",
+            "label": "Warehouse units in Athi River", "title": "Warehouse complex in Athi River", "area": "Athi River, Machakos", "local_type": "Warehouse units",
+            "credit": "Coral Property International", "license": "Third-party listing photo; display rights not verified", "source_page": "https://coralpi.com/properties/tenanted-8500-sqft-warehouse-for-sale-in-athi-river/"},
+        (4, 1): {
+            "src": "https://nicestayhome.com/wp-content/webp-express/webp-images/uploads/2024/10/WhatsApp-Image-2024-10-15-at-16.15.12.jpeg.webp",
+            "label": "Swara Industrial Park warehouse, Athi River", "title": "Warehouse at Swara Industrial Park", "area": "Athi River, Machakos", "local_type": "Warehouse and godown",
+            "credit": "Nicestay Homes", "license": "Third-party listing photo; display rights not verified", "source_page": "https://nicestayhome.com/swara-industrial-park/"},
+        (4, 2): {
+            "src": "https://resources.pamgolding.co.za/content/properties/202511/2216098/h/2216098_H_5.jpg",
+            "label": "Industrial warehouse park in Athi River", "title": "Industrial warehouses in Athi River", "area": "Athi River, Machakos", "local_type": "Industrial warehouse park",
+            "credit": "Pam Golding Properties", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.pamgolding.co.za/property-details/commercial-industrial-property-for-sale-athi-river-kenya/3ke1720217"},
+        (5, 0): {
+            "src": "https://i.roamcdn.net/prop/brk/og-image-full-1200w-630h/90488d0a40911deca84a3dbb2f89446d/-/prod-property-core-backend-media-brk/9984748/1aea0efb-edc4-4cbf-9c30-2aa2324031ee.jpeg",
+            "label": "Residential land in Kamakis, Ruiru", "title": "Residential plot in Kamakis", "area": "Kamakis, Ruiru, Kiambu", "local_type": "Residential plot",
+            "credit": "BuyRentKenya listing photo", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.buyrentkenya.com/land-for-sale/kiambu/ruiru/kamakis"},
+        (5, 1): {
+            "src": "https://images.prop24.com/e5yoyt7fhhy53b6krswabqjbju/Crop600x400",
+            "label": "Residential plot in Juja", "title": "Vacant plot in Juja", "area": "Juja, Kiambu", "local_type": "Vacant residential plot",
+            "credit": "Property24 listing photo", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.property24.co.ke/vacant-land-plots-for-sale-in-juja-c1846"},
+        (5, 2): {
+            "src": "https://landstock.co.ke/gacafut/2023/12/50x100-plots-for-sale-in-juja-farm-%40600k-7.jpg",
+            "label": "Residential plots in Juja Farm", "title": "Residential plot in Juja Farm", "area": "Juja Farm, Juja, Kiambu", "local_type": "Residential plot",
+            "credit": "Landstock Kenya", "license": "Third-party listing photo; display rights not verified", "source_page": "https://landstock.co.ke/50100-plot-in-juja-farm-800k/"},
+        (5, 3): {
+            "src": "https://landstock.co.ke/gacafut/2024/08/50x100-for-sale-in-ruiru-murera-%4013m.jpg",
+            "label": "Residential plot in Murera, Ruiru", "title": "Plot in Murera, Ruiru", "area": "Murera, Ruiru, Kiambu", "local_type": "Residential plot",
+            "credit": "Landstock Kenya", "license": "Third-party listing photo; display rights not verified", "source_page": "https://landstock.co.ke/50x100-for-sale-in-ruiru-murera-1-3m/"},
+        (5, 4): {
+            "src": "https://usernameproperties.com/images/properties/203/nakuru-opal-estate-land-and-plots-for-sale-in-kauru-1-jpg.jpg",
+            "label": "Residential plots in Nakuru", "title": "Residential plots in Nakuru", "area": "Nakuru, Nakuru", "local_type": "Residential plots",
+            "credit": "Username Properties", "license": "Third-party listing photo; display rights not verified", "source_page": "https://usernameproperties.com/"},
+        (5, 5): {
+            "src": "https://i.roamcdn.net/prop/brk/og-image-full-1200w-630h/99d27ee954fbadb22ad70aa6dbf79b59/-/prod-property-core-backend-media-brk/9813562/43618b59-4fe1-4469-9baf-69c96e4867a0.jpeg",
+            "label": "Residential plot beside a home in Juja", "title": "Plot beside a residential home", "area": "Juja, Kiambu", "local_type": "Residential plot",
+            "credit": "BuyRentKenya listing photo", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.buyrentkenya.com/residential-land-for-sale/kiambu/juja"},
+        (5, 6): {
+            "src": "https://sapama.com/media/homes/upload/img_20191109_141750.jpg",
+            "label": "Vacant residential plot in Kamakis", "title": "Vacant plot in Kamakis", "area": "Kamakis, Ruiru, Kiambu", "local_type": "Residential plot",
+            "credit": "Sapama property photo", "license": "Third-party listing photo; display rights not verified", "source_page": "https://sapama.com/1063-50x80-plot;Silicon-Valley-2Km-off-Eastern-Bypass"},
+        (5, 7): {
+            "src": "https://proproperty.co.ke/uploads/media/1000058429-1760349917-800X500.jpg",
+            "label": "Plots in Kikuyu Nachu", "title": "Residential plot development in Kikuyu", "area": "Nachu, Kikuyu, Kiambu", "local_type": "Residential plots",
+            "credit": "Proproperty Solutions", "license": "Third-party listing photo; display rights not verified", "source_page": "https://proproperty.co.ke/property/prime-residential-plots-for-sale-in-kikuyu-nachu-2~2956"},
+        (5, 8): {
+            "src": "https://villacarekenya.com/wp-content/uploads/2021/12/halbizziadownsmanguroad2.jpg",
+            "label": "Residential estate land on Mang'u Road", "title": "Estate plots near Thika", "area": "Mang'u Road, Thika, Kiambu", "local_type": "Residential development land",
+            "credit": "Villa Care Kenya", "license": "Third-party listing photo; display rights not verified", "source_page": "https://villacarekenya.com/property/prime-1-4-acre-plots-albizzia-downs-estate/"},
+        (5, 9): {
+            "src": "https://sprucingrealtors.com/nunagum/2022/01/20170323_102953-1170x785.jpg",
+            "label": "Residential plots in Kamiti", "title": "Residential plots in Kamiti", "area": "Kamiti, Nairobi", "local_type": "Residential plots",
+            "credit": "Sprucing Realtors", "license": "Third-party listing photo; display rights not verified", "source_page": "https://sprucingrealtors.com/property/kamiti-corner-plots-for-sale-residential/"},
+        (5, 10): {
+            "src": "https://www.sheltaltd.co.ke/wp-content/uploads/2025/03/Ndururumo-Muthaiga-estate-%E2%80%93-7KM-from-Bypass-4-1170x785.jpg",
+            "label": "Estate development land in Ruiru", "title": "Plots near Muthaiga Estate, Ruiru", "area": "Murera, Ruiru, Kiambu", "local_type": "Residential development plots",
+            "credit": "Shelta Investments", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.sheltaltd.co.ke/property/magomano-prime-estate-5km-from-thika-road-2-2/"},
+        (5, 11): {
+            "src": "https://storage.googleapis.com/fanaka/website/projects/prestige-gardens-phase-3/web3.jpg",
+            "label": "Residential plots at Prestige Gardens, Kamulu", "title": "Plots in Prestige Gardens", "area": "Kamulu, Nairobi", "local_type": "Residential estate plots",
+            "credit": "Fanaka Real Estate", "license": "Third-party listing photo; display rights not verified", "source_page": "https://fanaka.co.ke/property/prestige-gardens-kamulu-phase-3"},
+        (5, 12): {
+            "src": "https://www.denvers.co.ke/wp-content/uploads/2023/07/denver-springfield-2-scaled.jpg",
+            "label": "Fenced residential plot in Kamulu", "title": "Fenced plot in Kamulu", "area": "Kamulu, Nairobi", "local_type": "Residential plot",
+            "credit": "Denvers Realtors", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.denvers.co.ke/plots-for-sale-in-kamulu/"},
+        (5, 13): {
+            "src": "https://www.azureproperties.co.ke/uploads/custom-images/Property-slider-2026-04-09-03-58-21-4628.webp",
+            "label": "Residential plot and home in Chuna Estate", "title": "Plot in Chuna Estate", "area": "Chuna Estate, Kitengela, Kajiado", "local_type": "Residential plot",
+            "credit": "Azure Properties", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.azureproperties.co.ke/property/plot-for-sale-kitengela-chuna-estate"},
+        (5, 14): {
+            "src": "https://images.prop24.com/lpc7pjyqit4fizhdiwsetmagcm/Crop600x400",
+            "label": "Marked vacant plot in Kamulu", "title": "Vacant plot in Kamulu", "area": "Kamulu, Nairobi", "local_type": "Residential plot",
+            "credit": "Property24 listing photo", "license": "Third-party listing photo; display rights not verified", "source_page": "https://www.property24.co.ke/vacant-land-plot-for-sale-in-kamulu-112762697"},
+        (6, 0): {
+            "src": "https://lesama.co.ke/wp-content/uploads/2021/09/DJI_0336.jpg",
+            "label": "Apartment building in Kasarani", "title": "Three-bedroom apartment building", "area": "Kasarani, Nairobi", "local_type": "Apartment for sale",
+            "credit": "Lesama Limited", "license": "Third-party listing photo; display rights not verified", "source_page": "https://lesama.co.ke/properties/kasarani-3-bedroom-master/"},
+        (6, 1): {
+            "src": "https://propscout.co.ke/storage/properties/files/3-bedroom-apartment-for-sale-in-kasarani-qptn8.png",
+            "label": "Apartment flats in Kasarani Mwiki", "title": "Apartment property in Kasarani", "area": "Kasarani Mwiki, Nairobi", "local_type": "Apartment for sale",
+            "credit": "Propscout Kenya", "license": "Third-party listing photo; display rights not verified", "source_page": "https://propscout.co.ke/flat-and-apartments/for-sale/in/kasarani-mwiki-road-nairobi-kenya"},
+        (6, 2): {
+            "src": "https://propscout.co.ke/storage/properties/files/3-bedroomed-apartment-for-sale-located-along-mombasa-road-in-syokimau-rshrs.jpg",
+            "label": "Residential apartments in Syokimau", "title": "Apartment property in Syokimau", "area": "Syokimau, Machakos", "local_type": "Apartment for sale",
+            "credit": "Propscout Kenya", "license": "Third-party listing photo; display rights not verified", "source_page": "https://propscout.co.ke/properties/14447/3-bedroomed-apartment-for-sale-located-along-mombasa-road-in-syokimau"},
+    }
+    for (section_index, card_index), override in overrides.items():
+        section = PHOTO_SECTIONS[section_index]
+        if card_index >= len(section.get("cards", [])):
+            continue
+        card = section["cards"][card_index]
+        card.update(override)
+        card["alt"] = override["label"] + " — unverified Kenyan property photo"
+        card["unverified"] = True
+    # Prefer location-relevant Kenya property images for primary cards and the
+    # curated Creative Commons Kenya apartment set for on-error fallbacks.
+    # Preserve each card's own provider fallback where supplied. Using a different
+    # listing site's URL as an image fallback often fails due to hotlink protection.
+    # Fill only genuinely missing fallbacks from known image CDNs, never by rewriting
+    # a Kenyan primary photo into an unrelated listing URL.
+    safe_fallbacks = (
+        "https://images.pexels.com/photos/106399/pexels-photo-106399.jpeg?auto=compress&cs=tinysrgb&w=640&h=420&dpr=1",
+        "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=640&h=420&q=64",
+        "https://images.pexels.com/photos/323780/pexels-photo-323780.jpeg?auto=compress&cs=tinysrgb&w=640&h=420&dpr=1",
+    )
+    # Use a small, curated set of openly licensed Kenyan apartment photographs as
+    # failover images. Primary cards are locality-specific Kenya property photos.
+    rental_cards = PHOTO_SECTIONS[0].get("cards", [])
+    _preferred_open_names = (
+        "Residential_building_in_Nairobi.jpg",
+        "Artistic_Photo_of_Kenyan_Apartments.jpg",
+        "Mirema_Residential.jpg",
+        "Hurlingham_Residential.jpg",
+    )
+    rental_open_sources = []
+    for _filename in _preferred_open_names:
+        _match = next((str(c.get("src", "")) for c in rental_cards
+                       if _filename.lower() in str(c.get("src", "")).lower()), "")
+        if _match and _match not in rental_open_sources:
+            rental_open_sources.append(_match)
+    for section_index, section in enumerate(PHOTO_SECTIONS):
+        for i, card in enumerate(section.get("cards", [])):
+            if section_index == 0 and len(rental_open_sources) >= 3:
+                # Primary is the card's own locality photo; fallback is another Kenyan
+                # apartment/estate photo rather than a luxury villa or foreign stock.
+                fallback_pool = [u for u in rental_open_sources if u != card.get("src")]
+                card["fallback"] = fallback_pool[i % len(fallback_pool)]
+                card["fallback2"] = fallback_pool[(i + 1) % len(fallback_pool)]
+            else:
+                # Other categories retain their matching hotel, retail, warehouse or
+                # land-specific fallback already in the catalogue.
+                if not card.get("fallback") or card.get("fallback") == card.get("src"):
+                    card["fallback"] = safe_fallbacks[(section_index + i) % len(safe_fallbacks)]
+                if not card.get("fallback2") or card.get("fallback2") in {card.get("src"), card.get("fallback")}:
+                    card["fallback2"] = safe_fallbacks[(section_index + i + 1) % len(safe_fallbacks)]
+    return PHOTO_SECTIONS
+
+
+_pm_apply_kenyan_first_photos()
 
 # Runtime image-cache support. The cache is built by cache_gallery_images.py on Render.
 # Image sources remain in metadata so credits can be audited and images can be refreshed.
@@ -1468,29 +1654,39 @@ def gallery_cache_filename(section_index, card_index, card):
     return _PMHashlib.sha256(key.encode("utf-8")).hexdigest()[:20] + ".webp"
 
 
-# Use the canonical Wikimedia file host for thumbnails. A few historical cards
-# used the thumbnail subdomain in source URLs; normal browsers do not reliably
-# resolve that alias, whereas upload.wikimedia.org is the standard file host.
-for _section in PHOTO_SECTIONS:
-    for _card in _section.get("cards", []):
-        for _field in ("src", "fallback", "fallback2"):
-            _value = _card.get(_field)
-            if isinstance(_value, str):
-                _card[_field] = _value.replace(
-                    "https://thumb.wikimedia.org/wikipedia/commons/thumb/",
-                    "https://upload.wikimedia.org/wikipedia/commons/thumb/",
-                )
+# Normalize legacy Wikimedia thumbnails to the canonical upload.wikimedia.org host.
+
+def _pm_source_can_be_rehosted(url, card):
+    """Must match the cache builder's re-host permissions for a primary image."""
+    from urllib.parse import urlsplit
+    host = (urlsplit(str(url)).netloc or "").lower().split(":", 1)[0]
+    if host in {"images.unsplash.com", "images.pexels.com", "plus.unsplash.com"}:
+        return True
+    licence = str(card.get("license", "")).lower()
+    return (host.endswith("wikimedia.org") or host.endswith("wikipedia.org")) and any(
+        mark in licence for mark in ("cc by", "cc0", "public domain", "creative commons zero")
+    )
 
 
 def _activate_local_gallery_assets():
-    """Use each card's own cached photo; never recycle one photo across failed cards.
-
-    Missing cache slots keep their own distinct remote source and two alternatives.
-    If all three are unavailable the UI shows a neutral missing-photo tile instead
-    of quietly pretending one generic local photograph is dozens of different homes.
-    """
+    fallback_for_category = {
+        "residential": "/static/img/property-scenes/apartment-building.webp",
+        "short_stay": "/static/img/property-scenes/modern-interior.webp",
+        "commercial": "/static/img/property-scenes/modern-interior.webp",
+        "industrial": "/static/img/property-scenes/apartment-building.webp",
+        "land_sale": "/static/img/property-scenes/residential-land.webp",
+        "property_sale": "/static/img/property-scenes/apartment-building.webp",
+    }
     for section_index, section in enumerate(PHOTO_SECTIONS):
+        cached_in_section = []
         for card_index, card in enumerate(section.get("cards", [])):
+            # Normalize Wikimedia thumbnail hostnames before rendering or caching.
+            for key in ("src", "fallback", "fallback2"):
+                value = card.get(key)
+                if isinstance(value, str):
+                    value = value.replace("https://thumb.wikimedia.org/", "https://upload.wikimedia.org/")
+                    value = value.replace("http://thumb.wikimedia.org/", "https://upload.wikimedia.org/")
+                    card[key] = value
             original_src = str(card.get("src", ""))
             card["_original_src"] = original_src
             candidates = []
@@ -1502,10 +1698,24 @@ def _activate_local_gallery_assets():
             card["_cache_filename"] = filename
             local_file = _PM_GALLERY_DIR / filename
             if local_file.is_file() and local_file.stat().st_size > 500:
-                card["src"] = "/static/img/gallery/" + filename
-            # Empty by design: shared apartment/interior/land images used as a
-            # third fallback caused the same first photo to repeat across the page.
-            card["fallback3"] = ""
+                local_url = "/static/img/gallery/" + filename
+                if _pm_source_can_be_rehosted(original_src, card):
+                    # When a reusable primary photo was cached, serve that local WebP.
+                    card["src"] = local_url
+                    cached_in_section.append(local_url)
+                else:
+                    # For property-site/editorial photos with unverified reuse rights,
+                    # keep the original linked source as primary; use our cached stock
+                    # fallback only after the primary and remote fallbacks fail.
+                    card["fallback3"] = local_url
+        fallback = fallback_for_category.get(section.get("category"), "/static/img/property-scenes/apartment-building.webp")
+        for card_index, card in enumerate(section.get("cards", [])):
+            if card.get("fallback3", "").startswith("/static/img/gallery/"):
+                continue
+            if cached_in_section:
+                card["fallback3"] = cached_in_section[card_index % len(cached_in_section)]
+            else:
+                card["fallback3"] = fallback
     return PHOTO_SECTIONS
 
 

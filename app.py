@@ -1052,25 +1052,28 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
-    # Public display counter uses the configured launch baseline plus newly recorded
-    # unique public browsers. Private admin analytics retain the unmodified DB total.
+    # Public counter counts only recorded public browsers. Never seed a fake public
+    # visitor figure, and exclude current/legacy admin routes even if they were
+    # visited before an administrator authenticated.
     try:
-        actual_public_checkins = int(get_db().execute(
-            "SELECT COUNT(DISTINCT visitor_key) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
+        public_checkins = int(get_db().execute(
+            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
             (ADMIN_ROOT.rstrip('/') + '%',)
         ).fetchone()[0])
-        # Public-facing counter starts at the owner's chosen launch baseline. The
-        # baseline offset is captured once, so only additional unique public browsers
-        # increase it over time. Admin analytics continue to use the real DB totals.
-        counter_baseline = settings.get("public_counter_baseline_offset")
-        if counter_baseline is None:
-            set_setting("public_counter_baseline_offset", str(actual_public_checkins))
-            counter_baseline = str(actual_public_checkins)
-        try:
-            counter_baseline = max(0, int(counter_baseline))
-        except (TypeError, ValueError):
-            counter_baseline = actual_public_checkins
-        public_checkins = 1103 + max(0, actual_public_checkins - counter_baseline)
+        # Include this public browser on its first response: page-view tracking runs
+        # after the template response is rendered. Admin pages and admins are never
+        # included in this projected public count.
+        path_admin_root = ADMIN_ROOT.rstrip('/') or '/'
+        request_is_admin_path = (request.path == path_admin_root or request.path.startswith(path_admin_root + '/') or request.path == '/manage-admin' or request.path.startswith('/manage-admin/'))
+        active_user = get_current_user()
+        active_key = current_visitor_key()
+        if not request_is_admin_path and not (active_user and active_user['role'] == 'admin') and active_key:
+            known = get_db().execute(
+                "SELECT 1 FROM visitor_sessions WHERE visitor_key=? AND role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
+                (active_key, ADMIN_ROOT.rstrip('/') + '%')
+            ).fetchone()
+            if not known:
+                public_checkins += 1
     except Exception:
         public_checkins = 0
     return {
@@ -1249,56 +1252,48 @@ PREVIEW_TITLES = {
 }
 
 def build_discovery_previews(category="residential", property_type="", limit=None, location_filter=""):
-    """Build clearly UNVERIFIED UI preview cards without adding fake properties to the database."""
+    """Build clearly UNVERIFIED photo previews without inventing live property listings."""
     section = None
     if property_type:
-        section = next((s for s in PHOTO_SECTIONS if s["category"] == category and s.get("type") == property_type), None)
+        section = next((item for item in PHOTO_SECTIONS if item["category"] == category and item.get("type") == property_type), None)
     if section is None:
-        section = next((s for s in PHOTO_SECTIONS if s["category"] == category and not s.get("type")), None)
+        section = next((item for item in PHOTO_SECTIONS if item["category"] == category and not item.get("type")), None)
     if section is None:
-        section = next((s for s in PHOTO_SECTIONS if s["category"] == category), None)
+        section = next((item for item in PHOTO_SECTIONS if item["category"] == category), None)
     if not section:
         section = PHOTO_SECTIONS[0]
     cards = section.get("cards", [])
     if limit is not None:
         cards = cards[:limit]
+
     titles = PREVIEW_TITLES.get(category, PREVIEW_TITLES["residential"])
+    category_areas = {
+        "residential": ["Kahawa West, Nairobi", "Juja, Kiambu", "Embu Town, Embu", "Ruiru, Kiambu", "Huruma, Nairobi", "Thika, Kiambu"],
+        "short_stay": ["Nairobi, Nairobi", "Mombasa, Mombasa", "Kisumu, Kisumu", "Nakuru, Nakuru", "Naivasha, Nakuru", "Eldoret, Uasin Gishu"],
+        "commercial": ["Parklands, Nairobi", "Nairobi CBD, Nairobi", "Eastleigh, Nairobi", "Thika Town, Kiambu", "Kisumu CBD, Kisumu", "Mombasa CBD, Mombasa"],
+        "industrial": ["Athi River, Machakos", "Industrial Area, Nairobi", "Ruiru, Kiambu", "Mombasa Road, Nairobi", "Changamwe, Mombasa"],
+        "land_sale": ["Kamakis, Ruiru, Kiambu", "Juja, Kiambu", "Juja Farm, Juja, Kiambu", "Murera, Ruiru, Kiambu", "Kitengela, Kajiado", "Nakuru, Nakuru"],
+        "property_sale": ["Kasarani, Nairobi", "Kasarani Mwiki, Nairobi", "Syokimau, Machakos", "Ruiru, Kiambu", "Nakuru, Nakuru", "Mombasa, Mombasa"],
+    }
     results = []
     for index, source in enumerate(cards):
-        area, local_type = PREVIEW_AREA_GUIDES[index % len(PREVIEW_AREA_GUIDES)]
-        title = titles[index % len(titles)]
-        # Rental previews use the actual photo's source label/locality, not a random unrelated area.
-        if category == "residential":
-            area = source.get("area") or area
-            title = source.get("title") or source.get("label") or "Kenyan apartment or family home"
-            local_type = source.get("local_type") or title
-        elif category == "short_stay":
-            if property_type == "Hotel room":
-                title = ["Hotel room", "Budget hotel room", "Guest room", "Family hotel room"][index % 4]
-            else:
-                title = ["Furnished short stay", "Guest house room", "Holiday apartment", "Serviced stay"][index % 4]
-            area = ["Nairobi, Nairobi", "Mombasa, Mombasa", "Kisumu, Kisumu", "Nakuru, Nakuru", "Naivasha, Nakuru", "Eldoret, Uasin Gishu"][index % 6]
-            local_type = title
-        elif category == "commercial":
-            area = ["Eastleigh, Nairobi", "CBD, Nairobi", "Gikomba, Nairobi", "Thika Town, Kiambu", "Kisumu CBD, Kisumu", "Mombasa CBD, Mombasa"][index % 6]
-            local_type = title
-        elif category == "industrial":
-            area = ["Industrial Area, Nairobi", "Athi River, Machakos", "Ruiru, Kiambu", "Mombasa Road, Nairobi", "Changamwe, Mombasa"][index % 5]
-            local_type = title
-        elif category == "land_sale":
-            area = ["Ruiru, Kiambu", "Kitengela, Kajiado", "Juja, Kiambu", "Kiserian, Kajiado", "Nakuru, Nakuru", "Mlolongo, Machakos"][index % 6]
-            local_type = title
-        elif category == "property_sale":
-            area = ["Kasarani, Nairobi", "Ruiru, Kiambu", "Ongata Rongai, Kajiado", "Nakuru, Nakuru", "Mombasa, Mombasa", "Kisumu, Kisumu"][index % 6]
-            local_type = title
+        default_area = category_areas.get(category, category_areas["residential"])[index % len(category_areas.get(category, category_areas["residential"]))]
+        title = source.get("title") or source.get("label") or titles[index % len(titles)]
+        area = source.get("area") or default_area
+        local_type = source.get("local_type") or title
+        fallback3 = source.get("fallback3") or {
+            "residential": "/static/img/property-scenes/apartment-building.webp",
+            "short_stay": "/static/img/property-scenes/modern-interior.webp",
+            "commercial": "/static/img/property-scenes/modern-interior.webp",
+            "industrial": "/static/img/property-scenes/apartment-building.webp",
+            "land_sale": "/static/img/property-scenes/residential-land.webp",
+            "property_sale": "/static/img/property-scenes/apartment-building.webp",
+        }.get(category, "/static/img/property-scenes/neighbourhood-hero.webp")
         results.append({
             "title": title, "area": area, "local_type": local_type,
             "label": source.get("label", title), "src": source.get("src", ""),
             "fallback": source.get("fallback", ""), "fallback2": source.get("fallback2", ""),
-            # Do not reuse a generic local image as a third fallback; that made
-            # many preview cards show the same photograph when remote hosts failed.
-            "fallback3": source.get("fallback3", ""),
-            "unverified": True, "category": category,
+            "fallback3": fallback3, "unverified": True, "category": category,
         })
     requested_area = (location_filter or "").strip().casefold()
     if requested_area:
@@ -1310,12 +1305,9 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
 
 @app.route("/")
 def index():
-    focus_order = ["Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Uasin Gishu", "Kajiado", "Machakos", "Kilifi", "Kwale", "Kakamega", "Bungoma"]
-    featured_counties = [{"name": name, "slug": slugify(name), "constituency_count": len(COUNTY_CONSTITUENCIES[name])}
-                         for name in focus_order if name in COUNTY_CONSTITUENCIES]
-    popular_categories = popular_category_buttons(4)
-    return render_template("index.html", invite_url=public_base() + "/", featured_counties=featured_counties,
-                           photo_sections=PHOTO_SECTIONS, popular_categories=popular_categories)
+    # The root page is intentionally a clean animated gateway only. Discovery
+    # photos, search and categories appear after Find is chosen.
+    return render_template("index.html", invite_url=public_base() + "/")
 
 
 def build_listing_location(form, existing=None):
