@@ -2235,15 +2235,30 @@ body.app-body{--brand:var(--pm-maroon)!important;--accent:var(--pm-blush)!import
 .pm-review-list article small{color:#8e8186}
 @media(max-width:650px){.pm-info-page{padding-top:25px}.pm-guide-steps{grid-template-columns:1fr}.pm-contact-row{display:grid;gap:5px}.pm-review-head{align-items:flex-start;flex-direction:column}}
 
+/* Photo rail count labels and resilient image galleries (2026-10-28). */
+.pm-photo-count{display:inline-flex;vertical-align:middle;align-items:center;margin-left:7px;padding:3px 7px;border:1px solid #e6cfd7;border-radius:99px;background:#fff8fa;color:#7a3c51;font:700 .68rem/1.25 system-ui,sans-serif;letter-spacing:0}
+.pm-photo-card img{background:linear-gradient(135deg,#e9dfe2,#f5efe9);min-height:1px}
 
-/* Four dynamic, search-ranked property shortcuts on every in-app visitor page. */
-.pm-top-category-nav{position:sticky;top:0;z-index:80;background:#6A1B35;border-top:1px solid rgba(255,255,255,.12);box-shadow:0 5px 14px rgba(44,9,23,.10)}
-.pm-top-category-inner{max-width:1240px;margin:0 auto;padding:8px 18px;display:flex;align-items:center;justify-content:center;gap:9px;overflow-x:auto;scrollbar-width:none}
-.pm-top-category-inner::-webkit-scrollbar{display:none}
-.pm-top-category-inner a{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:35px;padding:7px 15px;border:1px solid rgba(255,255,255,.31);border-radius:7px;color:#fff;background:rgba(255,255,255,.075);font-size:.82rem;font-weight:750;text-decoration:none;white-space:nowrap;transition:background .16s ease,border-color .16s ease}
-.pm-top-category-inner a:hover,.pm-top-category-inner a[aria-current="page"]{background:#fff;color:#6A1B35;border-color:#fff}
-/* Keep every sidebar category visible; no accordion affordances. */
-.category-nav{display:flex;flex-direction:column;gap:2px}
-.category-nav-group,.category-nav-group>summary:after{display:none!important}
-.category-nav-link small{display:block;font-size:.72rem;line-height:1.35;font-weight:450;opacity:.78}
-@media(max-width:650px){.pm-top-category-inner{justify-content:flex-start;padding:7px 12px;gap:7px}.pm-top-category-inner a{min-height:36px;padding:8px 13px;font-size:.8rem}.pm-top-category-nav{position:relative}}
+/* Four compact, search-ranked category shortcuts beneath the maroon site header. */
+.header-popular-shortcuts{position:relative;z-index:40;display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:5px max(10px,calc((100vw - 1200px)/2));background:var(--pm-maroon,#6A1B35);border-bottom:1px solid rgba(255,255,255,.18);overflow-x:auto;overscroll-behavior-x:contain;white-space:nowrap;scrollbar-width:none}
+.header-popular-shortcuts::-webkit-scrollbar{display:none}
+.header-popular-shortcuts a{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:30px;padding:6px 13px;border:1px solid rgba(255,255,255,.26);border-radius:999px;background:rgba(255,255,255,.08);color:#fff!important;text-decoration:none;font-size:.78rem;font-weight:750;line-height:1.2;transition:background .15s,color .15s}
+.header-popular-shortcuts a:hover,.header-popular-shortcuts a:focus-visible{background:#fff;color:var(--pm-maroon,#6A1B35)!important;outline:none}
+.category-nav-section-label{padding:11px 11px 5px;color:#8f6675;font-size:.68rem;font-weight:850;letter-spacing:.07em;text-transform:uppercase}
+.finder-photo-inspiration{margin:26px 0;padding:19px;border:1px solid #eadbe0;border-radius:15px;background:#fffafa}
+.finder-photo-inspiration-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:15px}
+.finder-photo-inspiration-heading h2{margin:5px 0 6px;color:#421022;font-size:clamp(1.25rem,3vw,1.75rem)}
+.finder-photo-inspiration-heading p{margin:0;max-width:700px;color:#73636a;font-size:.86rem;line-height:1.6}
+.finder-photo-count{flex:0 0 auto;padding:6px 10px;border-radius:999px;background:#f6e8ed;color:#6a1b35;font-size:.75rem;font-weight:800}
+.finder-photo-inspiration .finder-image-discovery{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:17px}
+.finder-photo-inspiration .finder-image-discovery a{min-height:190px;aspect-ratio:1.4/1}
+.finder-photo-inspiration .finder-image-discovery img{background:#e7d9de}
+.finder-photo-inspiration .finder-image-discovery span small{font-size:.69rem;line-height:1.4}
+@media(max-width:650px){.header-popular-shortcuts{justify-content:flex-start;gap:5px;padding-inline:8px;min-height:38px}.header-popular-shortcuts a{padding:6px 10px;font-size:.72rem}.finder-photo-inspiration{padding:12px;margin:18px 0}.finder-photo-inspiration-heading{align-items:flex-start}.finder-photo-inspiration .finder-image-discovery{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.finder-photo-inspiration .finder-image-discovery a{min-height:150px}.finder-photo-inspiration .finder-image-discovery span{left:9px;right:8px;bottom:9px;font-size:.78rem}}
+/* Keep every sidebar destination visible; no expand/collapse markers are used. */
+.browse-layout .category-nav{gap:3px}
+.browse-layout .category-nav-link{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:42px;padding:9px 11px;line-height:1.25}
+.browse-layout .category-nav-link>span{display:block;width:100%;font-size:.83rem;font-weight:750}
+.browse-layout .category-nav-link>small{display:block;width:100%;font-size:.69rem;line-height:1.35;color:#88757d;font-weight:500}
+.browse-layout .category-nav-link.is-active>small{color:#8e5a6d}
+@media(max-width:650px){.browse-layout .category-nav-link{min-height:46px;padding:10px 12px}.browse-layout .category-nav-link>span{font-size:.94rem}.browse-layout .category-nav-link>small{font-size:.75rem}}
