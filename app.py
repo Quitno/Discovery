@@ -941,6 +941,15 @@ def record_page_view(response):
         or request.path == "/manage-admin"
         or request.path.startswith("/manage-admin/")
     )
+    # Authentication-only pages should not appear in search results. Keep these
+    # URLs crawlable so search engines can read this header; robots.txt is not
+    # an access-control mechanism and would prevent crawlers from seeing noindex.
+    is_private_account_traffic = (
+        is_admin_traffic
+        or request.path.startswith(("/partner/", "/login", "/join"))
+    )
+    if is_private_account_traffic:
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     if (not is_admin_traffic and request.method == "GET" and response.status_code < 400 and request.endpoint not in {
         "static", "manifest", "service_worker", "icon_svg", "favicon", "robots_txt", "sitemap_xml", "qr_platform", "listing_qr", "promo_media"
     }):
@@ -3330,14 +3339,25 @@ def favicon():
 @app.route("/robots.txt")
 def robots_txt():
     base = public_base()
-    return app.response_class(f"User-agent: *\nDisallow: {ADMIN_ROOT}\nDisallow: /manage-admin/\nDisallow: /partner/\nDisallow: /login\nDisallow: /join\nSitemap: {base}/sitemap.xml\n", mimetype="text/plain")
+    # Do not block authentication-only URLs here: crawlers need to fetch their
+    # noindex X-Robots-Tag response. Real privacy is enforced by login_required,
+    # partner_required and admin_required, not by robots.txt.
+    return app.response_class(
+        f"User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n",
+        mimetype="text/plain",
+    )
 
 
 @app.route("/sitemap.xml")
 def sitemap_xml():
     from xml.sax.saxutils import escape
     base = public_base()
-    locs = [base + "/", base + "/homes", base + "/partners", base + "/places"]
+    # Core public destinations. Exclude sign-in, account, admin and legal utility
+    # URLs; the sitemap should focus on pages useful to property seekers.
+    locs = [
+        base + "/", base + "/homes", base + "/partners", base + "/places",
+        base + "/about", base + "/how-to-use", base + "/contact",
+    ]
     for county, constituencies in COUNTY_CONSTITUENCIES.items():
         county_path = url_for("county_page", county_slug=slugify(county))
         locs.append(base + county_path)
