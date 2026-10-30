@@ -1866,6 +1866,13 @@ def terms_of_use():
 def about_patamahali():
     return render_template("about.html")
 
+
+@app.route("/company")
+def company_profile():
+    """Public profile of the company behind PataMahali and other digital products."""
+    return render_template("company.html")
+
+
 @app.route("/how-to-use")
 def how_to_use():
     return render_template("how_to_use.html")
@@ -3356,7 +3363,7 @@ def sitemap_xml():
     # URLs; the sitemap should focus on pages useful to property seekers.
     locs = [
         base + "/", base + "/homes", base + "/partners", base + "/places",
-        base + "/about", base + "/how-to-use", base + "/contact",
+        base + "/about", base + "/company", base + "/how-to-use", base + "/contact",
     ]
     for county, constituencies in COUNTY_CONSTITUENCIES.items():
         county_path = url_for("county_page", county_slug=slugify(county))
@@ -3413,7 +3420,15 @@ def sitemap_xml():
 def llms_txt():
     base = public_base()
     body = [
-        f"# {setting('site_name', 'PataMahali')}",
+        "# Toror Technology & Innovations Ltd",
+        "A Kenyan technology company building and operating practical digital products, web platforms and business software.",
+        "",
+        "## Company", f"- Company profile: {base}/company",
+        "- Company name variants: Toror Technology & Innovations Ltd; Toror Technology and Innovations Ltd; Toror TRT.",
+        "- PataMahali is a Kenya-focused property discovery platform operated by Toror Technology & Innovations Ltd.",
+        "- Denmart is an online supermarket platform associated with the Toror digital product portfolio: https://denmart.co.ke/",
+        "",
+        f"## {setting('site_name', 'PataMahali')}",
         "", setting("site_description", "Kenya property marketplace for houses, rentals, land and commercial space."), "",
         "## Core pages", f"- Home: {base}/", f"- Search properties: {base}/homes",
         f"- All counties and place directory: {base}/places", f"- Property partners: {base}/partners",
