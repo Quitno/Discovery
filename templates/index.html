@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}PataMahali Kenya | Find homes, stays, land & commercial spaces{% endblock %}
-{% block meta_description %}Find houses, rentals, hotels, land, shops, offices and warehouses across Kenya by county, constituency, ward and locality on PataMahali.{% endblock %}
+{% block title %}PataMahali Kenya | A Toror Technology & Innovations Ltd Platform{% endblock %}
+{% block meta_description %}PataMahali is a Kenya property discovery platform by Toror Technology & Innovations Ltd. Find houses, rentals, hotels, land, shops, offices and warehouses across Kenya.{% endblock %}
 {% block head %}
 <meta name="robots" content="index,follow,max-image-preview:large">
-<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'WebSite','name':'PataMahali','description':'Find places to live, stay, work and invest across Kenya.','url':public_base() + '/','potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?q={search_term_string}','query-input':'required name=search_term_string'}}|tojson }}</script>
+<script type="application/ld+json">{{ {'@context':'https://schema.org','@graph':[{'@type':'Organization','@id':public_base() ~ '/company#organization','name':'Toror Technology & Innovations Ltd','alternateName':['Toror Technology and Innovations Ltd','Toror Technology and Innovations','Toror TRT'],'url':public_base() ~ '/company','description':'A Kenyan technology company building and operating practical digital products, web platforms and business software.','areaServed':{'@type':'Country','name':'Kenya'}},{'@type':'WebSite','@id':public_base() ~ '/#website','name':'PataMahali','description':'A Kenya-focused property discovery platform for homes, rentals, stays, land and commercial spaces.','url':public_base() ~ '/','publisher':{'@id':public_base() ~ '/company#organization'},'potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?q={search_term_string}','query-input':'required name=search_term_string'}}]}|tojson }}</script>
 {% endblock %}
 {% block content %}
 <section class="pm-welcome" aria-labelledby="pm-welcome-title">
@@ -16,8 +16,10 @@
       <a class="pm-gateway pm-gateway-find" href="/homes"><span>Find</span></a>
       <a class="pm-gateway pm-gateway-list" href="{{ '/partner/dashboard' if current_user and current_user['role'] in ['owner','agent','host','business'] else '/partner/register' }}"><span>Post</span></a>
     </div>
+    <p class="pm-company-credit">A Kenyan digital platform by <a href="/company">Toror Technology &amp; Innovations Ltd</a></p>
   </div>
 </section>
+<style>.pm-company-credit{margin:22px 0 0;color:rgba(255,255,255,.72);font-size:.78rem;line-height:1.5;text-align:center}.pm-company-credit a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px}</style>
 {% endblock %}
 {% block scripts %}
 <script>

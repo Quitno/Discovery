@@ -67,6 +67,7 @@
       {% if 'property_sale' in public_categories %}<a href="/homes?category=property_sale">Property for sale</a>{% endif %}
       {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}
       <a href="/about">About PataMahali</a>
+      <a href="/company">Toror Technology &amp; Innovations Ltd</a>
       <a href="/how-to-use">How to use PataMahali</a>
       <a href="/contact">Contact us</a>
       <a href="/rate-us">Rate PataMahali</a>
@@ -95,7 +96,7 @@
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
       <div class="footer-brand"><strong>{{ site_settings.get('site_name','PataMahali') }}</strong></div>
-      <div class="footer-links"><a href="/homes">Explore places</a>{% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}<a href="/partner/register">List a property</a><a href="/privacy">Privacy notice</a><a href="/terms">Terms of use</a><a href="/qr/platform.png" target="_blank" rel="noopener">Invite QR</a></div>
+      <div class="footer-links"><a href="/homes">Explore places</a><a href="/company">Toror Technology &amp; Innovations Ltd</a>{% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}<a href="/partner/register">List a property</a><a href="/privacy">Privacy notice</a><a href="/terms">Terms of use</a><a href="/qr/platform.png" target="_blank" rel="noopener">Invite QR</a></div>
       <div class="footer-contact">{% if site_settings.get('support_phone') %}<p>Site support: <a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">WhatsApp</a></p>{% endif %}{% if site_settings.get('support_email') %}<p><a href="mailto:{{ site_settings.get('support_email') }}">{{ site_settings.get('support_email') }}</a></p>{% endif %}<button type="button" class="button button-small button-outline" data-install-pwa hidden>Install app</button></div>
     </div>
     {% endif %}
@@ -109,9 +110,9 @@
     {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') and (site_settings.get('support_phone') or site_settings.get('support_email')) %}
     <div class="developer-contact-strip"><div><strong>Have a project in mind?</strong><span>Get a platform designed around your business.</span></div><div class="developer-contact-actions">{% if site_settings.get('support_phone') %}<a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">Talk to the developer <span aria-hidden="true">↗</span></a>{% endif %}{% if site_settings.get('support_email') %}<a href="mailto:{{ site_settings.get('support_email') }}">Email <span aria-hidden="true">↗</span></a>{% endif %}</div></div>
     {% endif %}
-    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="/about">About</a><a href="/how-to-use">How to use</a><a href="/contact">Contact us</a><a href="/rate-us">Rate PataMahali</a><a href="/privacy">Privacy</a></div>{% endif %}
+    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="/about">About</a><a href="/company">Toror Technology &amp; Innovations Ltd</a><a href="/how-to-use">How to use</a><a href="/contact">Contact us</a><a href="/rate-us">Rate PataMahali</a><a href="/privacy">Privacy</a></div>{% endif %}
     <div class="site-rating-footer"><span aria-hidden="true">★</span> {{ '%.1f'|format(site_rating_average|float) }} / 5 · {{ site_rating_count }} site rating{{ '' if site_rating_count == 1 else 's' }} · <a href="/rate-us">Rate PataMahali</a></div>
-    <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovation Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
+    <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
   </footer>
   {% endif %}
   <script>window.APP_CSRF={{ session.get('csrf_token','')|tojson }};</script>

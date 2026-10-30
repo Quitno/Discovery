@@ -1,33 +1,34 @@
 {% extends 'base.html' %}
-{% set page_title = 'Toror Technology and Innovations Limited | Software, POS & APIs' %}
-{% set meta_description = 'Toror Technology and Innovations Limited is a Kenyan technology company focused on custom software, POS and inventory systems, web applications, barcode APIs and digital integrations.' %}
+{% block title %}Toror Technology &amp; Innovations Ltd | Software Development in Kenya{% endblock %}
+{% block meta_description %}Toror Technology &amp; Innovations Ltd is a Kenyan software development and technology company building web applications, custom business software, POS and inventory tools, barcode data solutions and practical digital platforms.{% endblock %}
+{% block head %}
+<meta name="robots" content="index,follow,max-image-preview:large">
+<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'Organization','@id':public_base() ~ '/company#organization','name':'Toror Technology & Innovations Ltd','alternateName':['Toror Technology and Innovations Ltd','Toror Technology and Innovations','Toror TRT'],'url':public_base() ~ '/company','description':'A Kenyan technology company building and operating practical digital products, web platforms and business software.','areaServed':{'@type':'Country','name':'Kenya'},'knowsAbout':['custom software development','web applications','business automation','point of sale systems','retail and inventory software','barcode and product data tools','digital platforms']}|tojson }}</script>
+{% endblock %}
 {% block content %}
-<section class="company-page-intro">
-  <span class="home-eyebrow"><span class="eyebrow-dot"></span> COMPANY PROFILE</span>
-  <h1>Technology built for real work.</h1>
-  <p>{{ company_legal_name }} develops practical digital tools for businesses, retailers and software builders. The focus is clear: understand the need, build the system, put it to use and improve it.</p>
-  <div class="company-page-actions"><a class="button" href="{{ company_site_url }}/" target="_blank" rel="noopener noreferrer">Visit company website ↗</a><a class="button button-light" href="{{ url_for('index') }}">Explore Barcode Hub</a></div>
-</section>
-
-<section class="app-section company-services-section">
-  <div class="app-section-heading"><div><span class="section-kicker">WHAT WE BUILD</span><h2>Technology services and products</h2></div><p>Practical systems, explained in plain language.</p></div>
-  <div class="task-card-grid">
-    <article class="task-card"><div class="task-icon task-icon-blue">▤</div><h3>Custom business software</h3><p>Web applications, dashboards, portals and workflows organised around how a business operates.</p></article>
-    <article class="task-card"><div class="task-icon task-icon-green">▦</div><h3>POS and inventory systems</h3><p>Retail tools that can bring sales, stock records and barcode-driven product entry into one workflow.</p></article>
-    <article class="task-card"><div class="task-icon task-icon-purple">{ }</div><h3>APIs and integrations</h3><p>Connect software using structured data, web APIs and integrations between existing tools.</p></article>
-    <article class="task-card"><div class="task-icon task-icon-blue">↗</div><h3>Web platforms and deployment</h3><p>Responsive websites and application platforms designed to be clear, usable and maintainable.</p></article>
+<section class="page-shell pm-info-page toror-company-page">
+  <span class="eyebrow">TOROR TECHNOLOGY &amp; INNOVATIONS LTD · KENYA</span>
+  <h1>Toror Technology &amp; Innovations Ltd</h1>
+  <p class="toror-company-tagline">Practical technology. Useful digital products.</p>
+  <p><strong>Toror Technology &amp; Innovations Ltd</strong> (also referred to as Toror Technology and Innovations Ltd or Toror TRT) is a Kenyan technology company focused on building and operating digital products, web platforms and business software. Its work brings together practical problem-solving, accessible design and technology that supports everyday business and customer needs.</p>
+  <div class="notice-card"><strong>What the company works on</strong><p>Custom web applications, business portals, retail and inventory workflows, point-of-sale tools, product-data and barcode solutions, and online platforms.</p></div>
+  <h2>Digital products and platforms</h2>
+  <div class="toror-product-list">
+    <article class="notice-card"><h3><a href="/">PataMahali</a></h3><p>A Kenya-focused property discovery platform for rentals, homes for sale, land, hotels and short stays, shops, offices and warehouse spaces. Browse properties by county, constituency and neighbourhood.</p><a class="button button-primary" href="/homes">Explore PataMahali</a></article>
+    <article class="notice-card"><h3><a href="https://denmart.co.ke/" target="_blank" rel="noopener noreferrer">Denmart</a></h3><p>An online supermarket platform for browsing everyday shopping categories including groceries, drinks, household essentials and personal care products.</p><a class="button button-outline" href="https://denmart.co.ke/" target="_blank" rel="noopener noreferrer">Visit Denmart</a></article>
   </div>
+  <h2>Software development and digital solutions in Kenya</h2>
+  <p>Toror Technology &amp; Innovations Ltd works across custom software development, web application development, business automation, POS software, inventory management, barcode and product-data tools, and online marketplace development.</p>
+  <p>The company's technology focus includes:</p>
+  <ul>
+    <li>Custom business software, dashboards and web applications.</li>
+    <li>Point-of-sale, inventory and barcode-based retail workflows.</li>
+    <li>Online marketplaces, directories and customer-facing platforms.</li>
+    <li>Software integrations and digital tools designed around real operational needs.</li>
+  </ul>
+  <h2>Working in Kenya</h2>
+  <p>Toror Technology &amp; Innovations Ltd builds for practical use in the Kenyan market, with an emphasis on clear interfaces, mobile access and systems that can support the way local businesses and customers work.</p>
+  <p>For property discovery, visit <a href="/about">About PataMahali</a>. For PataMahali support, use the <a href="/contact">contact page</a>.</p>
 </section>
-
-<section class="company-featured-product">
-  <div class="company-product-badge">FEATURED PRODUCT</div>
-  <div><h2>Kenya Barcode Hub</h2><p>A product-data catalogue and paid REST API for POS developers, barcode scanner workflows, supermarkets, shop software and inventory applications. Search online or connect an app with an API key.</p><div class="company-credit-links"><a class="task-link" href="{{ url_for('catalogue') }}">Search product catalogue →</a><a class="task-link" href="{{ url_for('docs') }}">Read developer API guide →</a><a class="task-link" href="{{ url_for('pricing') }}">Compare API plans →</a></div></div>
-</section>
-
-<section class="company-search-copy">
-  <h2>Software development for Kenyan businesses</h2>
-  <p>Businesses looking for a POS system, inventory software, custom web application, barcode lookup API or software integration can explore the products and services above. The right solution depends on the workflow, data and users it needs to support.</p>
-  <p>For more information about the company, projects and contact options, visit the official company website.</p>
-  <a class="button" href="{{ company_site_url }}/" target="_blank" rel="noopener noreferrer">Open Toror Technology website ↗</a>
-</section>
+<style>.toror-company-tagline{font-size:1.15rem;font-weight:750;color:#381524}.toror-company-page h2{margin:30px 0 12px;color:#381524;font-size:1.35rem}.toror-company-page h3{margin:0 0 8px;font-size:1.15rem}.toror-company-page ul{padding-left:22px;line-height:1.85;color:#695c62}.toror-product-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.toror-product-list .notice-card{margin:0}.toror-company-page .button{margin-top:8px}@media(max-width:650px){.toror-product-list{grid-template-columns:1fr}}</style>
 {% endblock %}
