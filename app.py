@@ -186,6 +186,75 @@ SEO_CATEGORY_PAGES = {
     "land-and-plots-for-sale": {"category": "land_sale", "label": "Land and Plots for Sale", "short": "Land & plots", "description": "Find land for sale in Kenya, buy a plot, or compare residential plots, agricultural or farm land, commercial plots and industrial land. Narrow by county, constituency, ward, estate or neighbourhood, and check location and ownership information before paying."},
     "houses-and-property-for-sale": {"category": "property_sale", "label": "Houses, Apartments and Property for Sale", "short": "Property for sale", "description": "Find a house to buy in Kenya, compare homes for sale, flats, apartments, apartment blocks, commercial buildings and investment property. Search by county, constituency, ward and neighbourhood, and compare the details supplied by each advertiser."},
 }
+# Indicative planning ranges for a new website/app request. These are estimates,
+# not binding quotes; the final scope and price are confirmed with the requester.
+SITE_BUILD_TYPES = {
+    "business-website": {"label": "Business website", "min": 10000, "max": 20000},
+    "online-store": {"label": "Online shop / e-commerce", "min": 22000, "max": 45000},
+    "product-catalogue": {"label": "Product or service catalogue", "min": 15000, "max": 30000},
+    "directory": {"label": "Business or service directory", "min": 25000, "max": 55000},
+    "marketplace": {"label": "Online marketplace", "min": 45000, "max": 90000},
+    "booking-platform": {"label": "Booking or reservations website", "min": 30000, "max": 65000},
+    "web-app": {"label": "Web application / portal", "min": 35000, "max": 75000},
+    "mobile-app": {"label": "Mobile application", "min": 50000, "max": 110000},
+    "redesign": {"label": "Redesign an existing site", "min": 8000, "max": 22000},
+    "automation": {"label": "Business automation / integrations", "min": 15000, "max": 40000},
+    "seo": {"label": "SEO and search visibility", "min": 10000, "max": 30000},
+    "other": {"label": "Something else", "min": 10000, "max": 40000},
+}
+SITE_BUILD_PAGE_RANGES = {
+    "1-5": (0, 0), "6-10": (4000, 8000),
+    "11-20": (10000, 20000), "21+": (20000, 35000),
+}
+SITE_BUILD_COMPLEXITY = {
+    "basic": (0, 0), "standard": (6000, 12000), "advanced": (15000, 30000),
+}
+SITE_BUILD_CONTENT = {
+    "ready": (0, 0), "some-help": (2500, 6000), "need-help": (5000, 12000),
+}
+SITE_BUILD_TIMELINE = {"flexible": 1.0, "normal": 1.05, "urgent": 1.2}
+SITE_BUILD_FEATURES = {
+    "payments": {"label": "Online payments / M-PESA", "min": 5000, "max": 12000},
+    "accounts": {"label": "Customer or member accounts", "min": 4000, "max": 9000},
+    "catalogue": {"label": "Product, service or property catalogue", "min": 4000, "max": 10000},
+    "booking": {"label": "Bookings and appointments", "min": 5000, "max": 12000},
+    "inventory": {"label": "Inventory / stock management", "min": 6000, "max": 14000},
+    "delivery": {"label": "Delivery, dispatch or tracking", "min": 5000, "max": 12000},
+    "maps": {"label": "Maps and location search", "min": 2500, "max": 6000},
+    "dashboard": {"label": "Admin dashboard and reports", "min": 5000, "max": 12000},
+    "whatsapp": {"label": "WhatsApp / email notifications", "min": 2000, "max": 5000},
+}
+TOROR_NETWORK_LINKS = [
+    {"label": "Travel, tours & group retreats", "description": "Travel planning, experiences and events", "url": "https://travel.trorinovationstech.co.ke/"},
+    {"label": "OEdge rides & delivery", "description": "Rides, moving, delivery and errands", "url": "https://oedge.onrender.com/services"},
+    {"label": "TRT furniture & interiors", "description": "Furniture, lighting and home interiors", "url": "https://trt-isfa.onrender.com/"},
+    {"label": "Luxhari fashion", "description": "Fashion, modelling and accessories", "url": "https://luxhari.onrender.com/"},
+    {"label": "Denmart online supermarket", "description": "Groceries, drinks and household shopping", "url": "https://denmart.co.ke/"},
+    {"label": "Toror apps & downloads", "description": "Android applications and digital releases", "url": "https://apps.trorinovationstech.co.ke/"},
+    {"label": "Barcode tools", "description": "Barcode and product-data tools", "url": "https://barcode.trorinovationstech.co.ke/"},
+]
+
+def calculate_site_build_estimate(form):
+    """Recalculate the indicative estimate server-side; never trust browser totals."""
+    project_type = str(form.get("project_type", "business-website")).strip()
+    project = SITE_BUILD_TYPES.get(project_type, SITE_BUILD_TYPES["other"])
+    low, high = project["min"], project["max"]
+    page_low, page_high = SITE_BUILD_PAGE_RANGES.get(str(form.get("pages_count", "1-5")), (0, 0))
+    level_low, level_high = SITE_BUILD_COMPLEXITY.get(str(form.get("complexity", "basic")), (0, 0))
+    content_low, content_high = SITE_BUILD_CONTENT.get(str(form.get("content_status", "ready")), (0, 0))
+    low += page_low + level_low + content_low
+    high += page_high + level_high + content_high
+    selected_features = set(form.getlist("features") if hasattr(form, "getlist") else form.get("features", []))
+    for feature in selected_features:
+        config = SITE_BUILD_FEATURES.get(str(feature))
+        if config:
+            low += config["min"]
+            high += config["max"]
+    multiplier = SITE_BUILD_TIMELINE.get(str(form.get("timeline", "flexible")), 1.0)
+    low = int(round(low * multiplier / 500) * 500)
+    high = int(round(high * multiplier / 500) * 500)
+    return max(0, low), max(low, high)
+
 RECOVERY_QUESTIONS = (
     "What was the name of your first school?",
     "What town or village did you grow up in?",
@@ -408,6 +477,30 @@ CREATE TABLE IF NOT EXISTS site_reviews (
     FOREIGN KEY(reviewer_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_site_reviews_time ON site_reviews(created_at);
+CREATE TABLE IF NOT EXISTS site_build_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    email TEXT NOT NULL DEFAULT '',
+    business_name TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    project_type TEXT NOT NULL,
+    pages_count TEXT NOT NULL DEFAULT '1-5',
+    complexity TEXT NOT NULL DEFAULT 'basic',
+    features_json TEXT NOT NULL DEFAULT '[]',
+    content_status TEXT NOT NULL DEFAULT 'ready',
+    domain_status TEXT NOT NULL DEFAULT 'not-sure',
+    timeline TEXT NOT NULL DEFAULT 'flexible',
+    budget_range TEXT NOT NULL DEFAULT 'not-sure',
+    project_summary TEXT NOT NULL,
+    estimated_min INTEGER NOT NULL DEFAULT 0,
+    estimated_max INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'New',
+    admin_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_site_build_requests_status ON site_build_requests(status, created_at);
 """
 
 
@@ -1097,6 +1190,8 @@ def inject_globals():
         "listing_images": listing_images,
         "category_meta": CATEGORY_META,
         "seo_category_pages": SEO_CATEGORY_PAGES,
+        "toror_network_links": TOROR_NETWORK_LINKS,
+        "site_build_request_count": (get_db().execute("SELECT COUNT(*) FROM site_build_requests WHERE status IN ('New','Reviewing')").fetchone()[0] if request.endpoint and request.endpoint.startswith("admin_") else 0),
         "public_base": public_base,
         "public_categories": enabled_categories,
         "money": money,
@@ -1314,9 +1409,17 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
 
 @app.route("/")
 def index():
-    # The root page is intentionally a clean animated gateway only. Discovery
-    # photos, search and categories appear after Find is chosen.
-    return render_template("index.html", invite_url=public_base() + "/")
+    # Keep the brand gateway, but make the homepage a real, useful property
+    # discovery page for people and search crawlers rather than a two-button splash.
+    featured_counties = [
+        {"name": name, "slug": slugify(name)}
+        for name in ("Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Machakos", "Kajiado", "Uasin Gishu")
+        if name in COUNTY_CONSTITUENCIES
+    ]
+    return render_template(
+        "index.html", invite_url=public_base() + "/",
+        featured_listings=public_listings(limit=6), featured_counties=featured_counties,
+    )
 
 
 def build_listing_location(form, existing=None):
@@ -1880,6 +1983,73 @@ def how_to_use():
 @app.route("/contact")
 def contact_us():
     return render_template("contact.html")
+
+@app.route("/get-your-own-site", methods=["GET", "POST"])
+def get_your_own_site():
+    """Collect a website/app brief and show a live, server-verified planning range."""
+    estimate_min, estimate_max = calculate_site_build_estimate({})
+    submitted = request.args.get("submitted", "") == "1"
+    if request.method == "POST":
+        # Quiet honeypot: bots that fill the hidden field receive the same success flow.
+        if request.form.get("company_website", "").strip():
+            return redirect(url_for("get_your_own_site", submitted=1))
+        form = request.form
+        name = re.sub(r"\s+", " ", form.get("name", "").strip())[:100]
+        phone = form.get("phone", "").strip()[:50]
+        phone_digits = re.sub(r"\D", "", phone)
+        email = form.get("email", "").strip()[:160]
+        business_name = form.get("business_name", "").strip()[:150]
+        location = form.get("location", "").strip()[:120]
+        project_type = form.get("project_type", "other").strip()
+        project_summary = form.get("project_summary", "").strip()[:4000]
+        pages_count = form.get("pages_count", "1-5").strip()
+        complexity = form.get("complexity", "basic").strip()
+        content_status = form.get("content_status", "ready").strip()
+        domain_status = form.get("domain_status", "not-sure").strip()
+        timeline = form.get("timeline", "flexible").strip()
+        budget_range = form.get("budget_range", "not-sure").strip()
+        selected_features = sorted({value for value in form.getlist("features") if value in SITE_BUILD_FEATURES})
+        valid_email = not email or bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email))
+        valid = (
+            bool(name) and 9 <= len(phone_digits) <= 15 and valid_email
+            and project_type in SITE_BUILD_TYPES and pages_count in SITE_BUILD_PAGE_RANGES
+            and complexity in SITE_BUILD_COMPLEXITY and content_status in SITE_BUILD_CONTENT
+            and domain_status in {"not-sure", "have-domain", "need-domain", "have-hosting", "need-both"}
+            and timeline in SITE_BUILD_TIMELINE
+            and budget_range in {"not-sure", "under-10000", "10000-25000", "25000-50000", "50000-100000", "100000-plus"}
+            and len(project_summary) >= 20
+        )
+        if not valid:
+            flash("Please check your name, phone, email and project brief. The brief should describe what you need in at least a few words.", "warning")
+            estimate_min, estimate_max = calculate_site_build_estimate(form)
+            return render_template(
+                "get_your_own_site.html", estimate_min=estimate_min, estimate_max=estimate_max,
+                form_data=form, selected_features=set(selected_features), pricing_config={
+                    "types": SITE_BUILD_TYPES, "pages": SITE_BUILD_PAGE_RANGES,
+                    "complexity": SITE_BUILD_COMPLEXITY, "content": SITE_BUILD_CONTENT,
+                    "features": SITE_BUILD_FEATURES, "timeline": SITE_BUILD_TIMELINE,
+                }, submitted=False
+            ), 400
+        estimate_min, estimate_max = calculate_site_build_estimate(form)
+        stamp = now_iso()
+        cursor = get_db().execute(
+            "INSERT INTO site_build_requests(name,phone,email,business_name,location,project_type,pages_count,complexity,features_json,content_status,domain_status,timeline,budget_range,project_summary,estimated_min,estimated_max,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'New',?,?)",
+            (name, phone, email, business_name, location, project_type, pages_count, complexity,
+             json.dumps(selected_features), content_status, domain_status, timeline, budget_range,
+             project_summary, estimate_min, estimate_max, stamp, stamp)
+        )
+        request_id = cursor.lastrowid
+        log_event("site_build_request", request.path, json.dumps({"request_id": request_id, "project_type": project_type, "estimate_min": estimate_min, "estimate_max": estimate_max}))
+        flash(f"Your request has been received. Reference #{request_id}. The range is an initial estimate; we will confirm the final scope and price with you.", "success")
+        return redirect(url_for("get_your_own_site", submitted=1))
+    return render_template(
+        "get_your_own_site.html", estimate_min=estimate_min, estimate_max=estimate_max,
+        form_data={}, selected_features=set(), submitted=submitted,
+        pricing_config={"types": SITE_BUILD_TYPES, "pages": SITE_BUILD_PAGE_RANGES,
+            "complexity": SITE_BUILD_COMPLEXITY, "content": SITE_BUILD_CONTENT,
+            "features": SITE_BUILD_FEATURES, "timeline": SITE_BUILD_TIMELINE},
+    )
+
 
 @app.route("/rate-us", methods=["GET", "POST"])
 def rate_site():
@@ -2481,11 +2651,47 @@ def admin_dashboard():
         "interests": conn.execute("SELECT COUNT(*) FROM interests").fetchone()[0],
         "reports": conn.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0],
         "site_errors": conn.execute("SELECT COUNT(*) FROM site_errors WHERE status='open'").fetchone()[0],
+        "site_build_requests": conn.execute("SELECT COUNT(*) FROM site_build_requests WHERE status IN ('New','Reviewing')").fetchone()[0],
         "visitors_today": conn.execute("SELECT COUNT(DISTINCT CASE WHEN v.contact_phone != '' THEN 'phone:' || v.contact_phone WHEN v.user_id IS NOT NULL THEN 'account:' || v.user_id ELSE 'browser:' || v.visitor_key END) FROM visitor_events e JOIN visitor_sessions v ON v.visitor_key=e.visitor_key WHERE e.event_type='page_view' AND e.details != 'administrator' AND e.path NOT LIKE ? AND e.path NOT LIKE '/manage-admin%' AND e.created_at>=?", (ADMIN_ROOT + '%', day_start)).fetchone()[0],
     }
     listings = conn.execute("SELECT l.*,u.full_name AS partner_name,u.business_name FROM listings l JOIN users u ON u.id=l.owner_id ORDER BY l.posted_at DESC LIMIT 8").fetchall()
     latest_events = conn.execute("SELECT * FROM visitor_events ORDER BY id DESC LIMIT 10").fetchall()
     return render_template("admin_dashboard.html", stats=stats, listings=listings, events=latest_events)
+
+
+@app.route("/manage-admin/site-build-requests")
+@admin_required
+def admin_site_build_requests():
+    rows = get_db().execute(
+        "SELECT * FROM site_build_requests ORDER BY CASE status WHEN 'New' THEN 0 WHEN 'Reviewing' THEN 1 WHEN 'Contacted' THEN 2 ELSE 3 END, created_at DESC LIMIT 300"
+    ).fetchall()
+    requests_with_features = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["selected_features"] = [SITE_BUILD_FEATURES[key]["label"] for key in json.loads(item.get("features_json") or "[]") if key in SITE_BUILD_FEATURES]
+        except (TypeError, json.JSONDecodeError):
+            item["selected_features"] = []
+        item["project_label"] = SITE_BUILD_TYPES.get(item["project_type"], SITE_BUILD_TYPES["other"])["label"]
+        requests_with_features.append(item)
+    return render_template("admin_site_build_requests.html", requests=requests_with_features, page_title="Website & app requests")
+
+
+@app.post("/manage-admin/site-build-requests/<int:request_id>")
+@admin_required
+def admin_site_build_request_update(request_id: int):
+    row = get_db().execute("SELECT id FROM site_build_requests WHERE id=?", (request_id,)).fetchone()
+    if not row:
+        abort(404)
+    status = request.form.get("status", "New").strip()
+    if status not in {"New", "Reviewing", "Contacted", "Quoted", "Accepted", "Closed"}:
+        flash("Choose a valid request status.", "warning")
+        return redirect(url_for("admin_site_build_requests"))
+    note = request.form.get("admin_note", "").strip()[:3000]
+    get_db().execute("UPDATE site_build_requests SET status=?,admin_note=?,updated_at=? WHERE id=?", (status, note, now_iso(), request_id))
+    audit("site_build_request_updated", "site_build_request", request_id, f"Status: {status}")
+    flash(f"Website request #{request_id} updated.", "success")
+    return redirect(url_for("admin_site_build_requests") + f"#request-{request_id}")
 
 
 @app.route("/manage-admin/discoveries", methods=["GET", "POST"])
@@ -3364,6 +3570,7 @@ def sitemap_xml():
     locs = [
         base + "/", base + "/homes", base + "/partners", base + "/places",
         base + "/about", base + "/company", base + "/how-to-use", base + "/contact",
+        base + "/get-your-own-site",
     ]
     for county, constituencies in COUNTY_CONSTITUENCIES.items():
         county_path = url_for("county_page", county_slug=slugify(county))
@@ -3378,10 +3585,17 @@ def sitemap_xml():
     # Submit category/location combinations only when real active inventory supports them.
     # Broad county and constituency directories remain available regardless of inventory.
     rows = public_listings(limit=10000)
+    listing_lastmod = {}
     backed_county_categories = set()
     backed_constituency_categories = set()
     backed_area_categories = set()
     for row in rows:
+        try:
+            changed = (row["updated_at"] or row["posted_at"] or "")[:10]
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", changed):
+                listing_lastmod[base + url_for("listing_detail", listing_id=row["id"])] = changed
+        except (KeyError, TypeError):
+            pass
         if row["category"] in {info["category"] for info in SEO_CATEGORY_PAGES.values()}:
             cat_slug = next((slug for slug, info in SEO_CATEGORY_PAGES.items() if info["category"] == row["category"]), None)
             county_name = (row["county"] or "").strip()
@@ -3411,7 +3625,12 @@ def sitemap_xml():
             if ward and constituency and ward in ward_map(county).get(constituency, []):
                 locs.append(base + url_for("ward_page", county_slug=slugify(county), constituency_slug=slugify(constituency), ward_slug=slugify(ward)))
     locs = list(dict.fromkeys(locs))
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "".join(f"<url><loc>{escape(loc)}</loc></url>" for loc in locs) + "</urlset>"
+    xml_urls = []
+    for loc in locs:
+        lastmod = listing_lastmod.get(loc)
+        extra = f"<lastmod>{escape(lastmod)}</lastmod>" if lastmod else ""
+        xml_urls.append(f"<url><loc>{escape(loc)}</loc>{extra}</url>")
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "".join(xml_urls) + "</urlset>"
     return app.response_class(xml, mimetype="application/xml")
 
 
@@ -3425,12 +3644,20 @@ def llms_txt():
         "",
         "## Company", f"- Company profile: {base}/company",
         "- Company name variants: Toror Technology & Innovations Ltd; Toror Technology and Innovations Ltd; Toror TRT.",
+        "- Public Instagram profile: https://www.instagram.com/trtechnologyinnovations/",
         "- PataMahali is a Kenya-focused property discovery platform operated by Toror Technology & Innovations Ltd.",
         "- Denmart is an online supermarket platform associated with the Toror digital product portfolio: https://denmart.co.ke/",
+        "- Travel, tours and group retreats: https://travel.trorinovationstech.co.ke/",
+        "- OEdge rides, delivery and moving services: https://oedge.onrender.com/services",
+        "- TRT furniture and interiors: https://trt-isfa.onrender.com/",
+        "- Luxhari fashion and modelling: https://luxhari.onrender.com/",
+        "- Toror apps and downloads: https://apps.trorinovationstech.co.ke/",
+        "- Barcode tools: https://barcode.trorinovationstech.co.ke/",
         "",
         f"## {setting('site_name', 'PataMahali')}",
         "", setting("site_description", "Kenya property marketplace for houses, rentals, land and commercial space."), "",
         "## Core pages", f"- Home: {base}/", f"- Search properties: {base}/homes",
+        f"- Get your own website or app: {base}/get-your-own-site",
         f"- All counties and place directory: {base}/places", f"- Property partners: {base}/partners",
         *[f"- {info['label']}: {base}/property-search/{slug}" for slug, info in SEO_CATEGORY_PAGES.items()],
         "", "## Location coverage", "The directory includes all 47 Kenyan counties and their 290 constituencies, plus curated ward, estate, town, road and locality links where available. Exact localities can also be entered by property owners.",

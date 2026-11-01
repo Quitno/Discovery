@@ -21,7 +21,13 @@
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='img/patamahali-avatar.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261028-full-project-fixed-r15') }}">
   <title>{% block title %}{{ site_settings.get('site_name', 'PataMahali') }} · Find the right place{% endblock %}</title>
-  <style>:root{--brand:#2F706A;--accent:#C99648;}</style>
+  <style>
+    :root{--brand:#2F706A;--accent:#C99648;}
+    .main-nav .nav-site-builder{display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin:0 0 12px;padding:13px 14px;border:1px solid #d6e7e3;border-radius:12px;background:#f0f7f5;color:#173f3a!important;text-decoration:none!important}
+    .main-nav .nav-site-builder strong{font-size:1rem;font-weight:800}.main-nav .nav-site-builder small{font-size:.75rem;line-height:1.4;color:#536c68}
+    .main-nav .drawer-network-heading{padding:15px 12px 7px;color:#71807f;font-size:.68rem;font-weight:850;letter-spacing:.09em;border-top:1px solid #eef1f1;margin-top:8px}
+    .main-nav .nav-network-link{display:flex;justify-content:space-between;gap:10px}.main-nav .nav-network-link span{color:#7b9691}
+  </style>
   {% block head %}{% endblock %}
 </head>
 <body class="{{ 'landing-body' if request.endpoint == 'index' else ('admin-body' if (request.endpoint or '').startswith('admin_') else 'app-body') }} theme-{{ site_settings.get('public_theme','signature') }}">
@@ -58,7 +64,8 @@
       </div>
     </div>
     <nav class="main-nav" id="mainNav" data-nav aria-label="Site navigation">
-      <div class="drawer-heading"><strong>Categories</strong></div>
+      <a class="nav-site-builder" href="/get-your-own-site"><strong>Get your own site</strong><small>Choose what you need · see an instant estimate</small></a>
+      <div class="drawer-heading"><strong>Find property</strong><span>Search across Kenya</span></div>
       {% if 'residential' in public_categories %}<a href="/homes?category=residential">Rentals</a>{% endif %}
       {% if 'short_stay' in public_categories %}<a href="/homes?category=short_stay">Airbnb & short stays</a><a href="/homes?category=short_stay&amp;type=Hotel%20room">Hotels</a>{% endif %}
       {% if 'commercial' in public_categories %}<a href="/homes?category=commercial">Shops & offices</a>{% endif %}
@@ -66,8 +73,11 @@
       {% if 'land_sale' in public_categories %}<a href="/homes?category=land_sale">Land & plots</a>{% endif %}
       {% if 'property_sale' in public_categories %}<a href="/homes?category=property_sale">Property for sale</a>{% endif %}
       {% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}
-      <a href="/about">About PataMahali</a>
+      <div class="drawer-network-heading">OTHER TOROR PLATFORMS</div>
+      {% for network_site in toror_network_links %}<a class="nav-network-link" href="{{ network_site.url }}" target="_blank" rel="noopener noreferrer">{{ network_site.label }} <span aria-hidden="true">↗</span></a>{% endfor %}
+      <div class="drawer-network-heading">ABOUT &amp; SUPPORT</div>
       <a href="/company">Toror Technology &amp; Innovations Ltd</a>
+      <a href="/about">About PataMahali</a>
       <a href="/how-to-use">How to use PataMahali</a>
       <a href="/contact">Contact us</a>
       <a href="/rate-us">Rate PataMahali</a>
@@ -96,7 +106,7 @@
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
       <div class="footer-brand"><strong>{{ site_settings.get('site_name','PataMahali') }}</strong></div>
-      <div class="footer-links"><a href="/homes">Explore places</a><a href="/company">Toror Technology &amp; Innovations Ltd</a>{% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}<a href="/partner/register">List a property</a><a href="/privacy">Privacy notice</a><a href="/terms">Terms of use</a><a href="/qr/platform.png" target="_blank" rel="noopener">Invite QR</a></div>
+      <div class="footer-links"><a href="/homes">Explore properties</a><a href="/get-your-own-site">Get your own site</a><a href="/company">Toror Technology &amp; Innovations Ltd</a>{% if site_settings.get('show_partner_directory_enabled','1') == '1' %}<a href="/partners">Property partners</a>{% endif %}<a href="/partner/register">List a property</a><a href="/privacy">Privacy notice</a><a href="/terms">Terms of use</a><a href="/qr/platform.png" target="_blank" rel="noopener">Invite QR</a></div>
       <div class="footer-contact">{% if site_settings.get('support_phone') %}<p>Site support: <a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">WhatsApp</a></p>{% endif %}{% if site_settings.get('support_email') %}<p><a href="mailto:{{ site_settings.get('support_email') }}">{{ site_settings.get('support_email') }}</a></p>{% endif %}<button type="button" class="button button-small button-outline" data-install-pwa hidden>Install app</button></div>
     </div>
     {% endif %}
@@ -110,7 +120,7 @@
     {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') and (site_settings.get('support_phone') or site_settings.get('support_email')) %}
     <div class="developer-contact-strip"><div><strong>Have a project in mind?</strong><span>Get a platform designed around your business.</span></div><div class="developer-contact-actions">{% if site_settings.get('support_phone') %}<a href="https://wa.me/{{ site_settings.get('support_phone','')|replace('+','')|replace(' ','')|replace('-','')|replace('(','')|replace(')','') }}" target="_blank" rel="noopener noreferrer">Talk to the developer <span aria-hidden="true">↗</span></a>{% endif %}{% if site_settings.get('support_email') %}<a href="mailto:{{ site_settings.get('support_email') }}">Email <span aria-hidden="true">↗</span></a>{% endif %}</div></div>
     {% endif %}
-    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="/about">About</a><a href="/company">Toror Technology &amp; Innovations Ltd</a><a href="/how-to-use">How to use</a><a href="/contact">Contact us</a><a href="/rate-us">Rate PataMahali</a><a href="/privacy">Privacy</a></div>{% endif %}
+    {% if request.endpoint == 'index' %}<div class="footer-links footer-home-links"><a href="/about">About</a><a href="/company">Toror Technology &amp; Innovations Ltd</a><a href="/get-your-own-site">Get your own site</a><a href="/how-to-use">How to use</a><a href="/contact">Contact us</a><a href="/rate-us">Rate PataMahali</a><a href="/privacy">Privacy</a></div>{% endif %}
     <div class="site-rating-footer"><span aria-hidden="true">★</span> {{ '%.1f'|format(site_rating_average|float) }} / 5 · {{ site_rating_count }} site rating{{ '' if site_rating_count == 1 else 's' }} · <a href="/rate-us">Rate PataMahali</a></div>
     <div class="footer-bottom"><span>© {{ current_year }} Toror Technology &amp; Innovations Ltd · PataMahali Property Rentals. All rights reserved.</span></div>
   </footer>
