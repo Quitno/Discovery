@@ -1409,17 +1409,10 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
 
 @app.route("/")
 def index():
-    # Keep the brand gateway, but make the homepage a real, useful property
-    # discovery page for people and search crawlers rather than a two-button splash.
-    featured_counties = [
-        {"name": name, "slug": slugify(name)}
-        for name in ("Nairobi", "Kiambu", "Mombasa", "Nakuru", "Kisumu", "Machakos", "Kajiado", "Uasin Gishu")
-        if name in COUNTY_CONSTITUENCIES
-    ]
-    return render_template(
-        "index.html", invite_url=public_base() + "/",
-        featured_listings=public_listings(limit=6), featured_counties=featured_counties,
-    )
+    # Keep the original animated two-action gateway. Property discovery and
+    # category content remain inside /homes; the public SEO signals live in
+    # metadata, the sitemap, and the dedicated indexable pages.
+    return render_template("index.html", invite_url=public_base() + "/")
 
 
 def build_listing_location(form, existing=None):
@@ -1592,8 +1585,9 @@ def homes():
         "no_match": not bool(results), "sort_nearby": bool(user_lat and user_lon),
     }
     log_event("property_search", request.path, json.dumps(details))
+    show_preview_cards = not any((q, location, min_price, max_price, min_beds))
     return render_template(
-        "homes.html", listings=results, preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=location), q=q, category=category, property_type=property_type,
+        "homes.html", listings=results, preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=""), show_preview_cards=show_preview_cards, q=q, category=category, property_type=property_type,
         location=location, min_price=min_price, max_price=max_price, bedrooms=min_beds,
         types=CATEGORY_META.get(category, {}).get("types", []),
         sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
@@ -3507,7 +3501,7 @@ def manifest():
         "short_name": setting("site_name", "PataMahali")[:12],
         "description": setting("site_description", "Verified property marketplace"),
         "start_url": "/", "scope": "/", "display": "standalone",
-        "background_color": "#FBF7F2", "theme_color": "#6A1B35",
+        "background_color": "#F7F5F0", "theme_color": "#242321",
         "icons": [{"src": logo_src, "sizes": "512x512" if logo_type == "image/png" else "any", "type": logo_type, "purpose": "any maskable"}],
     }
     return app.response_class(json.dumps(body), mimetype="application/manifest+json")

@@ -2651,3 +2651,61 @@ body.app-body .image-fallback-exhausted{object-fit:cover!important}
   body.app-body .category-sidebar,
   body.app-body .category-sidebar-backdrop { transition: none !important; }
 }
+
+
+/* PataMahali clean release palette: charcoal, warm ivory and restrained gold. */
+:root {
+  --brand:#292825 !important; --brand-dark:#171716 !important;
+  --brand-soft:#F2EEE6 !important; --accent:#C5A15B !important;
+  --pm-maroon:#292825 !important; --pm-maroon-deep:#171716 !important;
+  --pm-blush:#E9DFC9 !important; --pm-ivory:#F7F5F0 !important;
+  --ink:#292825 !important; --muted:#6D685F !important;
+}
+body.app-body {background:#F7F5F0 !important;color:#292825 !important;}
+body.app-body .site-header {background:#FFFFFF !important;color:#292825 !important;border-bottom:1px solid #E9E3D8 !important;}
+body.app-body .brand-copy,body.app-body .brand-copy strong {color:#292825 !important;}
+body.app-body .main-nav {background:#FFFFFF !important;border-right:1px solid #E8E2D8 !important;}
+body.app-body .main-nav>a,body.app-body .main-nav .nav-inline {color:#39362F !important;border-bottom-color:#F0ECE5 !important;}
+body.app-body .main-nav>a:hover,body.app-body .main-nav .nav-inline:hover {background:#F7F3EA !important;color:#292825 !important;}
+body.app-body .drawer-heading strong,body.app-body .eyebrow,body.app-body .text-link {color:#8B6C32 !important;}
+body.app-body .category-sidebar {background:#FFFFFF !important;border-color:#E9E3D8 !important;}
+body.app-body .category-nav-link.is-active {background:#F5F0E5 !important;border-color:#E8D9B9 !important;color:#292825 !important;}
+body.app-body .category-nav-icon {color:#8B6C32 !important;background:#FBF8F1 !important;border-color:#EAE1D0 !important;}
+body.app-body .button-primary,body.app-body .finder-search-button {background:#292825 !important;border-color:#292825 !important;color:#FFFFFF !important;}
+body.app-body .button-primary:hover,body.app-body .finder-search-button:hover {background:#111110 !important;border-color:#111110 !important;}
+body.app-body input:focus,body.app-body select:focus,body.app-body textarea:focus {border-color:#C5A15B !important;box-shadow:0 0 0 3px rgba(197,161,91,.16) !important;}
+body.app-body .site-footer {background:#F0EDE6 !important;color:#454139 !important;border-top:1px solid #E4DDD0 !important;}
+body.app-body .site-footer a,body.app-body .footer-home-links a {color:#80622D !important;}
+body.app-body .footer-bottom {color:#777166 !important;border-top-color:#DED7CA !important;}
+body.app-body .pm-checkin-strip,body.app-body .developer-contact-strip {background:#FFFFFF !important;border-color:#E9E3D8 !important;color:#39362F !important;}
+body.app-body .pm-checkin-dot {background:#C5A15B !important;box-shadow:0 0 0 4px rgba(197,161,91,.15) !important;}
+body.landing-body {background:#171716 !important;color:#F7F3EA !important;--brand:#292825;--brand-dark:#171716;--accent:#C5A15B;}
+body.landing-body .pm-welcome {
+  background:radial-gradient(ellipse at 50% 14%,rgba(197,161,91,.17),transparent 34%),
+             radial-gradient(ellipse at 12% 85%,rgba(255,255,255,.035),transparent 35%),
+             linear-gradient(145deg,#171716 0%,#24221D 55%,#171716 100%) !important;
+  color:#F7F3EA !important;
+}
+body.landing-body .pm-welcome-mark {background:#242321 !important;border:1px solid rgba(232,211,169,.24) !important;box-shadow:0 12px 36px rgba(0,0,0,.28) !important;}
+body.landing-body .pm-welcome h1 {text-shadow:0 5px 22px rgba(0,0,0,.24) !important;}
+body.landing-body .pm-welcome h1 .pm-title-letter {text-shadow:0 0 18px color-mix(in srgb,var(--letter-color,#E9C477) 26%,transparent) !important;}
+body.landing-body .pm-title-underline {background:linear-gradient(90deg,#C5A15B,#F0D9A8,#C5A15B) !important;}
+body.landing-body .pm-gateway {min-width:142px !important;min-height:48px !important;border:1px solid #D6B875 !important;border-radius:9px !important;background:#C5A15B !important;color:#201E19 !important;box-shadow:0 8px 24px rgba(0,0,0,.22) !important;font-weight:800 !important;}
+body.landing-body .pm-gateway-list {background:transparent !important;color:#F7F3EA !important;border-color:rgba(247,243,234,.62) !important;}
+body.landing-body .pm-gateway:hover {transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,0,0,.3) !important;}
+body.landing-body .pm-popular-top a,body.landing-body .pm-rail-link {color:#977437 !important;}
+body.landing-body .pm-popular-buttons a {border-color:#E7DFD0 !important;color:#39362F !important;background:#FFFFFF !important;}
+body.landing-body .pm-photo-discovery {background:#F7F5F0 !important;}
+body.landing-body .pm-photo-intro h2,body.landing-body .pm-photo-rail-heading h3 {color:#292825 !important;}
+body.landing-body .pm-photo-intro p,body.landing-body .pm-photo-rail-heading p {color:#6D685F !important;}
+body.landing-body .site-footer {background:#F0EDE6 !important;color:#454139 !important;}
+body.landing-body .site-footer a {color:#80622D !important;}
+.unverified-preview-heading {margin:22px 0 12px;}
+.unverified-preview-heading h2,.finder-no-results h2 {margin:0 0 6px;font-size:1.15rem;color:#292825;}
+.unverified-preview-heading p,.finder-no-results p {margin:0;color:#6D685F;line-height:1.55;}
+.finder-no-results {margin:18px 0;padding:22px;border:1px solid #E9E3D8;border-radius:14px;background:#FFFFFF;}
+.finder-no-results .button {display:inline-flex;margin-top:14px;}
+@media(max-width:650px) {
+  body.landing-body .pm-gateway {min-width:0 !important;width:clamp(132px,42vw,170px) !important;min-height:50px !important;padding:10px 12px !important;font-size:.92rem !important;}
+  body.landing-body .pm-welcome-gateways {gap:10px !important;margin-top:28px !important;}
+}

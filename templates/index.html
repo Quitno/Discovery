@@ -1,68 +1,30 @@
 {% extends 'base.html' %}
-{% block title %}Houses for Rent in Kenya, Land for Sale & Property Listings | PataMahali{% endblock %}
-{% block meta_description %}Find houses for rent in Kenya, bedsitters, apartments, Airbnb stays, hotels, land and plots for sale, shops, offices and warehouses. Search verified property listings by county and neighbourhood on PataMahali, a Toror Technology & Innovations Ltd platform.{% endblock %}
+{% block title %}PataMahali Kenya | Houses for Rent, Property for Sale, Land &amp; Stays{% endblock %}
+{% block meta_description %}Find houses for rent, apartments, bedsitters, Airbnb stays, hotels, land and plots for sale, shops, offices and warehouses across Kenya on PataMahali. Search by county, town and neighbourhood.{% endblock %}
 {% block head %}
-<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
-<script type="application/ld+json">{{ {'@context':'https://schema.org','@graph':[
-  {'@type':'Organization','@id':public_base() ~ '/company#organization','name':'Toror Technology & Innovations Ltd','alternateName':['Toror Technology and Innovations Ltd','Toror Technology & Innovations','Toror TRT'],'url':public_base() ~ '/company','description':'A Kenyan technology company building and operating practical digital products, web platforms and business software.','areaServed':{'@type':'Country','name':'Kenya'},'sameAs':['https://www.instagram.com/trtechnologyinnovations/']},
-  {'@type':'WebSite','@id':public_base() ~ '/#website','name':'PataMahali','alternateName':'Pata Mahali','url':public_base() ~ '/','description':'Kenyan property discovery platform for houses for rent, apartments, bedsitters, land for sale, hotels, Airbnb, shops, offices and warehouses.','publisher':{'@id':public_base() ~ '/company#organization'}},
-  {'@type':'WebPage','@id':public_base() ~ '/#webpage','url':public_base() ~ '/','name':'Houses for Rent in Kenya, Land for Sale and Property Listings | PataMahali','isPartOf':{'@id':public_base() ~ '/#website'},'about':{'@type':'Thing','name':'Property search and real estate in Kenya'}}
-]}|tojson }}</script>
-<style>
-.pm-home-seo{max-width:1180px;margin:0 auto;padding:34px 18px 58px;color:#263338}
-.pm-home-build-inline{display:inline-flex;margin-top:13px;padding:8px 13px;border:1px solid rgba(255,255,255,.48);border-radius:999px;color:#fff;text-decoration:none;font-size:.84rem;font-weight:750}.pm-home-build-inline:hover{background:rgba(255,255,255,.12)}
-.pm-home-intro{max-width:790px;margin:0 auto 24px;text-align:center}.pm-home-intro .eyebrow{color:#53716d}.pm-home-intro h2{margin:9px 0 10px;font-size:clamp(1.55rem,3vw,2.35rem);line-height:1.15;letter-spacing:-.035em;color:#1c3434}.pm-home-intro p{margin:0;color:#657578;line-height:1.7}
-.pm-home-search{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(160px,.8fr) auto;gap:9px;max-width:850px;margin:22px auto 33px;padding:10px;background:#fff;border:1px solid #e3e9e8;border-radius:15px;box-shadow:0 9px 28px rgba(25,55,55,.06)}
-.pm-home-search input,.pm-home-search select{width:100%;min-height:48px;border:1px solid #e4e9e8;border-radius:9px;padding:0 13px;background:#fff;color:#263338;font:inherit;min-width:0}.pm-home-search button{min-height:48px;padding:0 21px;border:0;border-radius:9px;background:#244f4b;color:#fff;font-weight:800;cursor:pointer}
-.pm-home-section{margin:38px 0}.pm-home-section-head{display:flex;align-items:end;justify-content:space-between;gap:15px;margin-bottom:14px}.pm-home-section-head h2{margin:0;color:#213c3a;font-size:1.38rem}.pm-home-section-head p{margin:5px 0 0;color:#687777;font-size:.92rem;line-height:1.5}.pm-home-section-head>a{color:#2e625d;font-weight:750;text-decoration:none;white-space:nowrap}
-.pm-home-category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pm-home-category{display:block;padding:17px;border:1px solid #e4eae8;border-radius:13px;background:#fff;text-decoration:none;color:inherit;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}.pm-home-category:hover{transform:translateY(-2px);border-color:#bfd4cf;box-shadow:0 9px 24px rgba(30,65,60,.07)}.pm-home-category strong{display:block;color:#274b47;font-size:1rem}.pm-home-category p{margin:7px 0 0;color:#687777;font-size:.86rem;line-height:1.55}.pm-home-category span{display:inline-block;margin-top:11px;color:#39756d;font-size:.81rem;font-weight:800}
-.pm-home-location-grid{display:flex;flex-wrap:wrap;gap:9px}.pm-home-location-grid a{padding:10px 14px;border:1px solid #e1e9e6;border-radius:999px;background:#fff;color:#385650;text-decoration:none;font-size:.9rem;font-weight:700}
-.pm-home-listing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.pm-home-listing{overflow:hidden;border:1px solid #e2e8e6;border-radius:13px;background:#fff}.pm-home-listing img{display:block;width:100%;height:170px;object-fit:cover;background:#edf1ef}.pm-home-listing-copy{padding:13px}.pm-home-listing-copy strong{display:block;color:#253d3a;line-height:1.4}.pm-home-listing-copy p{margin:6px 0;color:#6b7775;font-size:.83rem}.pm-home-listing-copy b{color:#244f4b;font-size:.96rem}.pm-home-empty-note{padding:17px;border:1px dashed #cbd9d5;border-radius:12px;color:#657572;background:#fbfdfc;line-height:1.6}
-.pm-home-trust{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;padding:22px;border-radius:16px;background:#f2f7f5;border:1px solid #dfeae6}.pm-home-trust h2{margin:0 0 8px;color:#1e4540;font-size:1.25rem}.pm-home-trust p{margin:0;color:#5f706e;line-height:1.65}.pm-home-trust ul{margin:0;padding-left:19px;color:#526662;line-height:1.75;font-size:.9rem}
-.pm-network-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.pm-network-grid a{padding:14px;border:1px solid #e3e9e7;border-radius:12px;color:#294743;background:#fff;text-decoration:none}.pm-network-grid strong{display:block}.pm-network-grid small{display:block;margin-top:4px;color:#71807d;line-height:1.4}.pm-home-builder{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 24px;border-radius:16px;background:#1d4541;color:#fff}.pm-home-builder h2{margin:0 0 6px;font-size:1.3rem}.pm-home-builder p{margin:0;color:#d5e4df;line-height:1.55}.pm-home-builder>a{flex:0 0 auto;padding:12px 17px;border-radius:9px;background:#fff;color:#244b45;text-decoration:none;font-weight:850}
-@media(max-width:760px){.pm-home-search{grid-template-columns:1fr}.pm-home-category-grid,.pm-home-listing-grid,.pm-network-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pm-home-trust{grid-template-columns:1fr}.pm-home-builder{align-items:flex-start;flex-direction:column}.pm-home-builder>a{width:100%;text-align:center}}
-@media(max-width:460px){.pm-home-category-grid,.pm-home-listing-grid,.pm-network-grid{grid-template-columns:1fr}.pm-home-section-head{align-items:flex-start;flex-direction:column}.pm-home-seo{padding-inline:13px}.pm-home-listing img{height:190px}}
-</style>
+<meta name="robots" content="index,follow,max-image-preview:large">
+<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'WebSite','name':'PataMahali','description':'Find places to live, stay, work and invest across Kenya.','url':public_base() + '/','publisher':{'@id':public_base() + '/company#organization'},'potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?q={search_term_string}','query-input':'required name=search_term_string'}}|tojson }}</script>
 {% endblock %}
 {% block content %}
 <section class="pm-welcome" aria-labelledby="pm-welcome-title">
   <div class="pm-welcome-glow" aria-hidden="true"></div>
   <div class="pm-welcome-inner">
     <div class="pm-welcome-mark" aria-hidden="true">{% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="">{% else %}<img src="/icon.svg" alt="">{% endif %}</div>
-    <h1 id="pm-welcome-title">PataMahali: Find houses, rentals, land and property across Kenya</h1>
+    <h1 id="pm-welcome-title" aria-label="Pata Mahali"><span class="pm-letter-mark" aria-hidden="true">{% for letter in 'Pata Mahali' %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ '&nbsp;'|safe if letter == ' ' else letter }}</span>{% endfor %}</span></h1>
     <div class="pm-title-underline" aria-hidden="true"></div>
-    <p class="pm-welcome-tagline">Find a place to rent, buy, stay or do business.</p>
-    <div class="pm-welcome-gateways" aria-label="Choose how to continue">
-      <a class="pm-gateway pm-gateway-find" href="/homes"><span>Find property</span></a>
-      <a class="pm-gateway pm-gateway-list" href="/partner/register"><span>Post a property</span></a>
+    <div class="pm-welcome-gateways" aria-label="Choose how to enter">
+      <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}" aria-label="Find property"><span>Find property</span></a>
+      <a class="pm-gateway pm-gateway-list" href="{{ url_for('partner_dashboard') if current_user and current_user['role'] in ['owner','agent','host','business'] else url_for('partner_register') }}" aria-label="Post property"><span>Post property</span></a>
     </div>
-    <p class="pm-company-credit">A Kenyan digital platform by <a href="/company">Toror Technology &amp; Innovations Ltd</a></p>
-    <a class="pm-home-build-inline" href="/get-your-own-site">Need a website or app? Get your own site ↗</a>
   </div>
-</section>
-<section class="pm-home-seo">
-  <div class="pm-home-intro"><span class="eyebrow">PROPERTY DISCOVERY · KENYA</span><h2>Find houses for rent, land for sale and places to stay</h2><p>Search homes and apartments, bedsitters, studios, Airbnb and hotels, land and plots, shops, offices and warehouses. Browse by county and neighbourhood, compare advertised prices and contact property partners.</p></div>
-  <form class="pm-home-search" action="/homes" method="get" role="search" aria-label="Search property across Kenya">
-    <input type="search" name="q" maxlength="120" placeholder="What are you looking for? e.g. 2-bedroom house, bedsitter, plot" aria-label="Property search terms">
-    <select name="category" aria-label="Property category"><option value="residential">Houses &amp; rentals</option><option value="short_stay">Airbnb &amp; hotels</option><option value="land_sale">Land &amp; plots for sale</option><option value="property_sale">Property for sale</option><option value="commercial">Shops &amp; offices</option><option value="industrial">Warehouses &amp; godowns</option></select>
-    <button type="submit">Search properties</button>
-  </form>
-  <section class="pm-home-section" aria-labelledby="pm-categories-title"><div class="pm-home-section-head"><div><h2 id="pm-categories-title">Explore property categories</h2><p>Choose exactly what you need. Each category has its own search page.</p></div><a href="/homes">Open property finder ↗</a></div>
-    <div class="pm-home-category-grid">
-      {% for slug, meta in seo_category_pages.items() %}{% if meta['category'] in public_categories %}<a class="pm-home-category" href="{{ url_for('property_search_page', category_slug=slug) }}"><strong>{{ meta['label'] }} across Kenya</strong><p>{{ meta['description'] }}</p><span>Explore {{ meta['short'] }} ↗</span></a>{% endif %}{% endfor %}
-    </div>
-  </section>
-  <section class="pm-home-section" aria-labelledby="pm-locations-title"><div class="pm-home-section-head"><div><h2 id="pm-locations-title">Start house hunting by location</h2><p>Explore county property directories and narrow your search to local areas.</p></div><a href="/places">All 47 counties ↗</a></div><div class="pm-home-location-grid">{% for item in featured_counties %}<a href="{{ url_for('county_page', county_slug=item.slug) }}">{{ item.name }} County</a>{% endfor %}</div></section>
-  <section class="pm-home-section" aria-labelledby="pm-live-listings-title"><div class="pm-home-section-head"><div><h2 id="pm-live-listings-title">Recently published verified properties</h2><p>Only genuine owner or agent submissions that passed the platform's publication checks appear here.</p></div><a href="/homes">Browse all listings ↗</a></div>
-    {% if featured_listings %}<div class="pm-home-listing-grid">{% for item in featured_listings %}{% set photo_files = listing_images(item) %}<a class="pm-home-listing" href="{{ url_for('listing_detail', listing_id=item['id']) }}">{% if photo_files %}<img src="{{ url_for('listing_media', filename=photo_files[0]) }}" alt="{{ item['title'] }} in {{ item['location_name'] }}" loading="lazy">{% else %}<div class="pm-home-empty-note">Property details available</div>{% endif %}<div class="pm-home-listing-copy"><strong>{{ item['title'] }}</strong><p>{{ item['location_name'] }}{% if item['county'] %}, {{ item['county'] }} County{% endif %}</p><b>{{ money(item['price_amount']) }} {{ item['price_period'] }}</b></div></a>{% endfor %}</div>{% else %}<div class="pm-home-empty-note">New verified listings will appear here as owners and agents publish properties and complete the review process. You can still explore the categories and county directories above.</div>{% endif %}
-  </section>
-  <section class="pm-home-section pm-home-trust" aria-label="How PataMahali property verification works"><div><h2>Property search with clearer trust signals</h2><p>PataMahali brings together property adverts from registered owners and agents. Published listings must pass account, payment and property-review checks. Always visit the property, confirm the advertiser's authority and verify documents independently before making payment.</p></div><ul><li>Search by county, constituency and neighbourhood.</li><li>Compare advertised prices and property details.</li><li>Open individual listings for photos and contact options.</li><li>Report a property that has been taken or has inaccurate details.</li></ul></section>
-  <section class="pm-home-section" aria-labelledby="pm-network-title"><div class="pm-home-section-head"><div><h2 id="pm-network-title">More digital platforms from Toror</h2><p>PataMahali is part of a wider network of independent services and products.</p></div><a href="/company">About Toror Technology ↗</a></div><div class="pm-network-grid">{% for item in toror_network_links %}<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer"><strong>{{ item.label }}</strong><small>{{ item.description }}</small></a>{% endfor %}</div></section>
-  <section class="pm-home-builder"><div><h2>Need a website, online shop or app of your own?</h2><p>Choose the type of project, select the features you need and see an indicative KSh estimate before submitting your brief.</p></div><a href="/get-your-own-site">Get your own site ↗</a></section>
 </section>
 {% endblock %}
 {% block scripts %}
 <script>
-(()=>{const el=document.querySelector('.pm-welcome h1');if(el){el.classList.add('pm-brand-heading');}})();
+(()=>{
+ const letters=[...document.querySelectorAll('.pm-title-letter')];
+ const palette=['#E9C477','#F0A46F','#E77F68','#F4DAB5','#FFF1D0','#D4A45F','#D99B8F','#F8F4EA'];
+ for(const el of letters){if(el.textContent.trim()){el.style.setProperty('--letter-color',palette[Math.floor(Math.random()*palette.length)]);}}
+})();
 </script>
 {% endblock %}

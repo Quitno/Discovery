@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}{% if category == 'residential' %}Houses for Rent, Bedsitters &amp; Apartments in Kenya{% elif category == 'short_stay' and property_type == 'Hotel room' %}Hotels &amp; Guest Houses in Kenya{% elif category == 'short_stay' %}Airbnb, BnBs &amp; Short-Stay Accommodation in Kenya{% elif category == 'commercial' %}Shops, Offices &amp; Commercial Space for Rent in Kenya{% elif category == 'industrial' %}Warehouses, Godowns &amp; Industrial Space in Kenya{% elif category == 'land_sale' %}Land &amp; Plots for Sale in Kenya{% elif category == 'property_sale' %}Houses &amp; Apartments for Sale in Kenya{% else %}Find Property in Kenya{% endif %} | PataMahali{% endblock %}
-{% block meta_description %}Find {{ {'residential':'homes and rentals','short_stay':'hotels, BnBs and furnished short stays','commercial':'shops and offices','industrial':'warehouses and godowns','land_sale':'land and plots for sale','property_sale':'property for sale'}.get(category,'property') }}{% if location %} in {{ location }}{% elif q %} matching {{ q }}{% endif %} across Kenya. Filter by county, area, property type, rent and bedrooms, and contact verified property owners and agents directly through this platform.{% endblock %}
+
 {% block meta_description %}{% if category == 'residential' %}Browse houses for rent in Kenya, bedsitters, rooms to let, studios and apartments. Filter rental properties by location, bedrooms and price on PataMahali.{% elif category == 'short_stay' and property_type == 'Hotel room' %}Explore hotel rooms, guest houses and accommodation in Kenya. Compare location, facilities, advertised prices and host details on PataMahali.{% elif category == 'short_stay' %}Find Airbnb, furnished apartments, holiday homes, BnBs and short-stay accommodation in Kenya. Search by county and local area on PataMahali.{% elif category == 'commercial' %}Find shops, offices, stalls and commercial premises for rent in Kenya. Explore available business spaces by county and neighbourhood on PataMahali.{% elif category == 'industrial' %}Browse warehouses, godowns, storage facilities and industrial spaces in Kenya. Compare location, size and asking price on PataMahali.{% elif category == 'land_sale' %}Explore land and plots for sale in Kenya, including residential, agricultural and commercial land. Search by county and location on PataMahali.{% elif category == 'property_sale' %}Browse houses, apartments and other property for sale in Kenya. Compare advertised property details and locations on PataMahali.{% else %}Search property for rent or sale across Kenya on PataMahali.{% endif %}{% endblock %}
 {% block head %}<meta name="robots" content="index,follow,max-image-preview:large"><meta property="og:title" content="{{ {'residential':'Homes & rentals','short_stay':'Hotels & short stays','commercial':'Shops & offices','industrial':'Warehouses & godowns','land_sale':'Land & plots','property_sale':'Property for sale'}.get(category,'Property search') }} across Kenya"><meta property="og:description" content="{{ self.meta_description()|striptags|trim }}">{% endblock %}
 {% block content %}
@@ -66,7 +66,9 @@
       {% if sorted_by_distance or fuzzy_used %}<div class="finder-result-flags">{% if sorted_by_distance %}<span>Nearest first</span>{% endif %}{% if fuzzy_used %}<span>Close matches</span>{% endif %}</div>{% endif %}
       {% if listings %}
         <div class="property-grid">{% for item in listings %}{% include '_listing_card.html' %}{% endfor %}</div>
-      {% else %}
+      {% endif %}
+      {% if show_preview_cards and preview_cards %}
+        <div class="unverified-preview-heading"><h2>Explore property examples</h2><p>These photo previews are unverified and are not confirmed available listings.</p></div>
         <div class="unverified-preview-grid" aria-label="Unverified property previews">
           {% for card in preview_cards %}
           <article class="unverified-preview-card">
@@ -78,6 +80,8 @@
           </article>
           {% endfor %}
         </div>
+      {% elif not listings %}
+        <div class="finder-no-results"><h2>No live matches for these filters yet</h2><p>Try another area or widen the price and bedroom filters. Only current public listings appear in filtered results.</p><a class="button button-primary" href="{{ url_for('homes', category=category or 'residential') }}">Clear filters</a></div>
       {% endif %}
     </section>
     {% if site_settings.get('promo_enabled','0') == '1' and (site_settings.get('promo_title') or site_settings.get('promo_text') or site_settings.get('promo_image') or promo_embed_url) %}
