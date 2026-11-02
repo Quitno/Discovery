@@ -12,6 +12,7 @@ import uuid
 import hmac
 import hashlib
 import re
+import random
 from difflib import SequenceMatcher
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -75,6 +76,7 @@ ADMIN_PATH = "promise212324"  # Fixed private admin entry; do not configure thro
 ADMIN_ROOT = "/" + ADMIN_PATH
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 MAX_FILE_BYTES = int(os.environ.get("MAX_FILE_BYTES", str(12 * 1024 * 1024)))
+MAX_LISTING_IMAGES = 12
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_DOC_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
 
@@ -1366,7 +1368,10 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
         section = next((item for item in PHOTO_SECTIONS if item["category"] == category), None)
     if not section:
         section = PHOTO_SECTIONS[0]
-    cards = section.get("cards", [])
+    # Rotate discovery photography on every fresh page response so the shelves feel active.
+    # This only changes unverified preview order; real listings keep their ranking.
+    cards = list(section.get("cards", []))
+    random.shuffle(cards)
     if limit is not None:
         cards = cards[:limit]
 
@@ -2438,8 +2443,12 @@ def partner_new_listing():
         if latitude is None or longitude is None:
             flash("Add the property's map coordinates to help house seekers reach the real location. You can save this listing, but it cannot be approved until its location is checked.", "info")
         image_names = []
+        selected_image_files = [file for file in request.files.getlist("images") if file and file.filename]
+        if len(selected_image_files) > MAX_LISTING_IMAGES:
+            flash(f"Choose no more than {MAX_LISTING_IMAGES} photos for one property. The first photo becomes the cover image.", "error")
+            return render_template("listing_form.html", form=request.form, categories=CATEGORY_META, price_periods=PRICE_PERIODS, location_catalog=selector_data())
         try:
-            for file in request.files.getlist("images")[:8]:
+            for file in selected_image_files:
                 if file and file.filename:
                     image_names.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
         except ValueError as exc:
@@ -2508,11 +2517,15 @@ def partner_edit_listing(listing_id):
         names = [name for name in original_names if name not in remove_names]
         try:
             additions = []
-            for file in request.files.getlist("images")[:8]:
-                if file and file.filename:
-                    additions.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
+            selected_files = [file for file in request.files.getlist("images") if file and file.filename]
+            remaining_slots = max(0, MAX_LISTING_IMAGES - len(names))
+            if len(selected_files) > remaining_slots:
+                flash(f"This property can have up to {MAX_LISTING_IMAGES} photos in total. Remove a saved photo or select fewer new photos.", "error")
+                return redirect(url_for("partner_edit_listing", listing_id=listing_id))
+            for file in selected_files:
+                additions.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
             if additions:
-                names = (names + additions)[-8:]
+                names = names + additions
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("partner_edit_listing", listing_id=listing_id))
@@ -2753,15 +2766,18 @@ def admin_edit_listing(listing_id):
             return redirect(url_for("admin_edit_listing", listing_id=listing_id))
         images = listing_images(row)
         additions = []
+        selected_files = [file for file in request.files.getlist("images") if file and file.filename]
+        if len(images) + len(selected_files) > MAX_LISTING_IMAGES:
+            flash(f"A property can have up to {MAX_LISTING_IMAGES} photos in total. Remove photos before adding more.", "error")
+            return redirect(url_for("admin_edit_listing", listing_id=listing_id))
         try:
-            for file in request.files.getlist("images")[:8]:
-                if file and file.filename:
-                    additions.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
+            for file in selected_files:
+                additions.append(save_upload(file, LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS))
         except ValueError as exc:
             for name in additions: (LISTING_UPLOAD_DIR / name).unlink(missing_ok=True)
             flash(str(exc), "error")
             return redirect(url_for("admin_edit_listing", listing_id=listing_id))
-        images = (images + additions)[-8:]
+        images = images + additions
         changed_category = category != row["category"]
         payment_status = "pending" if changed_category else row["payment_status"]
         payment_reference = "" if changed_category else row["payment_reference"]

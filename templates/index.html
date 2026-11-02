@@ -1,21 +1,69 @@
 {% extends 'base.html' %}
-{% block title %}PataMahali Kenya | Houses for Rent, Property for Sale, Land &amp; Stays{% endblock %}
-{% block meta_description %}Find houses for rent, apartments, bedsitters, Airbnb stays, hotels, land and plots for sale, shops, offices and warehouses across Kenya on PataMahali. Search by county, town and neighbourhood.{% endblock %}
+{% block title %}PataMahali Kenya | Property Platform by Toror Technology &amp; Innovations Ltd{% endblock %}
+{% block meta_description %}PataMahali, a Kenyan property discovery platform by Toror Technology &amp; Innovations Ltd. Find houses for rent, apartments, bedsitters, Airbnb stays, hotels, land and plots for sale, shops, offices and warehouses across Kenya.{% endblock %}
 {% block head %}
 <meta name="robots" content="index,follow,max-image-preview:large">
-<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'WebSite','name':'PataMahali','description':'Find places to live, stay, work and invest across Kenya.','url':public_base() + '/','publisher':{'@id':public_base() + '/company#organization'},'potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?q={search_term_string}','query-input':'required name=search_term_string'}}|tojson }}</script>
+<meta name="googlebot" content="index,follow,max-image-preview:large">
+<script type="application/ld+json">{{ {'@context':'https://schema.org','@graph':[{'@type':'Organization','@id':public_base() ~ '/company#organization','name':'Toror Technology & Innovations Ltd','alternateName':['Toror Technology and Innovations Ltd','Toror Technology and Innovations','Toror TRT'],'url':public_base() ~ '/company','description':'A Kenyan technology company building and operating practical digital products, web platforms and business software.','areaServed':{'@type':'Country','name':'Kenya'},'sameAs':['https://www.instagram.com/trtechnologyinnovations/']},{'@type':'WebSite','@id':public_base() ~ '/#website','name':'PataMahali','description':'A Kenyan property discovery platform for homes, rentals, stays, land and commercial spaces.','url':public_base() ~ '/','publisher':{'@id':public_base() ~ '/company#organization'},'potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?q={search_term_string}','query-input':'required name=search_term_string'}}]}|tojson }}</script>
 {% endblock %}
 {% block content %}
 <section class="pm-welcome" aria-labelledby="pm-welcome-title">
   <div class="pm-welcome-glow" aria-hidden="true"></div>
   <div class="pm-welcome-inner">
     <div class="pm-welcome-mark" aria-hidden="true">{% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="">{% else %}<img src="/icon.svg" alt="">{% endif %}</div>
-    <h1 id="pm-welcome-title" aria-label="Pata Mahali"><span class="pm-letter-mark" aria-hidden="true">{% for letter in 'Pata Mahali' %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ '&nbsp;'|safe if letter == ' ' else letter }}</span>{% endfor %}</span></h1>
+    <h1 id="pm-welcome-title" aria-label="PataMahali"><span class="pm-letter-mark" aria-hidden="true">{% for letter in 'PataMahali' %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ letter }}</span>{% endfor %}</span></h1>
     <div class="pm-title-underline" aria-hidden="true"></div>
     <div class="pm-welcome-gateways" aria-label="Choose how to enter">
       <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}" aria-label="Find property"><span>Find property</span></a>
       <a class="pm-gateway pm-gateway-list" href="{{ url_for('partner_dashboard') if current_user and current_user['role'] in ['owner','agent','host','business'] else url_for('partner_register') }}" aria-label="Post property"><span>Post property</span></a>
     </div>
+  </div>
+</section>
+
+<section class="pm-network-section" aria-labelledby="pm-network-title">
+  <div class="pm-network-inner">
+    <div class="pm-network-heading">
+      <div>
+        <span class="pm-network-eyebrow">THE TOROR DIGITAL NETWORK</span>
+        <h2 id="pm-network-title">More useful platforms. One connected network.</h2>
+        <p>PataMahali is a Kenyan property platform by <a href="{{ url_for('company_profile') }}">Toror Technology &amp; Innovations Ltd</a>. Explore other services and products from the same technology company.</p>
+      </div>
+      <a class="pm-network-company-link" href="{{ url_for('company_profile') }}">Meet the company <span aria-hidden="true">↗</span></a>
+    </div>
+    <div class="pm-network-carousel" data-network-carousel aria-label="Toror products and services">
+      <button class="pm-network-arrow pm-network-prev" type="button" data-network-prev aria-label="Scroll to previous platforms">‹</button>
+      <div class="pm-network-track" data-network-track tabindex="0" aria-label="Swipe or scroll to explore platforms">
+        {% for item in toror_network_links %}
+        <a class="pm-network-card" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" style="--network-index:{{ loop.index0 }}">
+          <span class="pm-network-card-top"><span class="pm-network-card-mark" aria-hidden="true">{{ item.label[:1]|upper }}</span><span class="pm-network-card-kicker">TOROR PLATFORM</span></span>
+          <strong>{{ item.label }}</strong>
+          <span class="pm-network-card-description">{{ item.description }}</span>
+          <span class="pm-network-card-open">Explore platform <span aria-hidden="true">↗</span></span>
+        </a>
+        {% endfor %}
+      </div>
+      <button class="pm-network-arrow pm-network-next" type="button" data-network-next aria-label="Scroll to next platforms">›</button>
+    </div>
+    <div class="pm-network-bottomline"><span>Swipe on mobile or use the arrows to explore.</span><a href="{{ url_for('company_profile') }}">View Toror Technology &amp; Innovations Ltd</a></div>
+  </div>
+</section>
+
+<section class="pm-search-discovery" aria-labelledby="pm-search-discovery-title">
+  <div class="pm-search-discovery-inner">
+    <span class="pm-network-eyebrow">PROPERTY DISCOVERY ACROSS KENYA</span>
+    <h2 id="pm-search-discovery-title">Find a place to rent, buy, stay or do business.</h2>
+    <p>Search houses for rent, bedsitters, apartments, furnished stays, hotels, land and plots, shops, offices and warehouses on PataMahali. Narrow your search by county, town, estate and neighbourhood, then open a property to view its photographs, features, price and contact details.</p>
+    <nav class="pm-search-category-links" aria-label="Popular property searches">
+      <a href="{{ url_for('homes', category='residential') }}">Houses &amp; rentals</a>
+      <a href="{{ url_for('homes', category='short_stay') }}">Airbnb &amp; short stays</a>
+      <a href="{{ url_for('homes', category='short_stay', type='Hotel room') }}">Hotels</a>
+      <a href="{{ url_for('homes', category='land_sale') }}">Land &amp; plots</a>
+      <a href="{{ url_for('homes', category='property_sale') }}">Property for sale</a>
+      <a href="{{ url_for('homes', category='commercial') }}">Shops &amp; offices</a>
+      <a href="{{ url_for('homes', category='industrial') }}">Warehouses</a>
+      <a href="{{ url_for('places_index') }}">Browse all 47 counties</a>
+    </nav>
+    <div class="pm-search-discovery-footer"><span>A Kenyan digital property platform operated by Toror Technology &amp; Innovations Ltd.</span><a href="{{ url_for('company_profile') }}">Company profile ↗</a></div>
   </div>
 </section>
 {% endblock %}

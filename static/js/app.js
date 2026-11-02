@@ -487,3 +487,153 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(tick);
   });
 });
+
+
+// Mobile-friendly Toror platform carousel: automatic, but pauses for touch, hover and keyboard use.
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-network-carousel]').forEach((carousel) => {
+    const track = carousel.querySelector('[data-network-track]');
+    const previous = carousel.querySelector('[data-network-prev]');
+    const next = carousel.querySelector('[data-network-next]');
+    if (!track || track.children.length < 2) return;
+
+    const gapSize = () => {
+      const styles = window.getComputedStyle(track);
+      return Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
+    };
+    const stepSize = () => {
+      const card = track.querySelector('.pm-network-card');
+      return card ? card.getBoundingClientRect().width + gapSize() : track.clientWidth;
+    };
+    const move = (direction) => {
+      const step = Math.max(180, stepSize());
+      const end = Math.max(0, track.scrollWidth - track.clientWidth);
+      if (direction > 0 && track.scrollLeft >= end - 12) {
+        track.scrollTo({left: 0, behavior: 'smooth'});
+      } else if (direction < 0 && track.scrollLeft <= 12) {
+        track.scrollTo({left: end, behavior: 'smooth'});
+      } else {
+        track.scrollBy({left: direction * step, behavior: 'smooth'});
+      }
+    };
+    previous?.addEventListener('click', () => move(-1));
+    next?.addEventListener('click', () => move(1));
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let timer = 0;
+    let resumeTimer = 0;
+    const stop = () => {
+      if (timer) window.clearInterval(timer);
+      timer = 0;
+      if (resumeTimer) window.clearTimeout(resumeTimer);
+      resumeTimer = 0;
+    };
+    const start = () => {
+      if (reduceMotion || timer || track.scrollWidth <= track.clientWidth + 8) return;
+      timer = window.setInterval(() => move(1), 4400);
+    };
+    const pauseBriefly = () => {
+      stop();
+      if (!reduceMotion) resumeTimer = window.setTimeout(start, 9000);
+    };
+    carousel.addEventListener('mouseenter', stop);
+    carousel.addEventListener('mouseleave', start);
+    carousel.addEventListener('focusin', stop);
+    carousel.addEventListener('focusout', start);
+    track.addEventListener('touchstart', pauseBriefly, {passive: true});
+    track.addEventListener('pointerdown', pauseBriefly);
+    window.addEventListener('resize', () => {
+      if (track.scrollWidth <= track.clientWidth + 8) stop();
+      else start();
+    }, {passive: true});
+    start();
+  });
+
+  // Preview selected property photographs and explain the cover-photo order before upload.
+  document.querySelectorAll('[data-listing-photo-input]').forEach((input) => {
+    const preview = document.querySelector('[data-listing-photo-preview]');
+    const grid = document.querySelector('[data-listing-photo-preview-grid]');
+    const status = document.querySelector('[data-listing-photo-status]');
+    if (!preview || !grid) return;
+    const maxImages = Number(input.dataset.maxImages || 12);
+    const originalCount = Number(input.dataset.existingCount || 0);
+    const updateSelection = () => {
+      const files = Array.from(input.files || []).filter((file) => file && file.type.startsWith('image/'));
+      const removed = document.querySelectorAll('input[name="remove_images"]:checked').length;
+      const currentCount = Math.max(0, originalCount - removed);
+      const allowed = Math.max(0, maxImages - currentCount);
+      const invalid = files.length > allowed;
+      input.setCustomValidity(invalid ? `This property can have ${maxImages} photos in total. ${allowed} new photo${allowed === 1 ? '' : 's'} can still be added.` : '');
+      if (status) status.textContent = invalid
+        ? `Too many selected: ${currentCount} saved + ${files.length} new. Select no more than ${allowed} new photo${allowed === 1 ? '' : 's'}.`
+        : files.length ? `${currentCount + files.length} of ${maxImages} photos selected. ${currentCount ? 'New photos will follow the saved photos.' : 'The first selected photo will be the cover.'}` : '';
+      grid.replaceChildren();
+      if (!files.length) { preview.hidden = true; return; }
+      preview.hidden = false;
+      files.forEach((file, index) => {
+        const card = document.createElement('figure');
+        card.className = 'listing-photo-preview-item';
+        const image = document.createElement('img');
+        const objectUrl = URL.createObjectURL(file);
+        image.src = objectUrl;
+        image.alt = `Selected property photo ${index + 1}`;
+        image.onload = () => URL.revokeObjectURL(objectUrl);
+        const badge = document.createElement('figcaption');
+        badge.textContent = currentCount === 0 && index === 0 ? 'COVER PHOTO' : `PHOTO ${currentCount + index + 1}`;
+        card.append(image, badge);
+        grid.appendChild(card);
+      });
+    };
+    input.addEventListener('change', updateSelection);
+    document.querySelectorAll('input[name="remove_images"]').forEach((checkbox) => checkbox.addEventListener('change', updateSelection));
+    updateSelection();
+  });
+
+  // Property detail viewer: the first uploaded photo is the cover; the rest open in one gallery.
+  document.querySelectorAll('[data-property-gallery]').forEach((gallery) => {
+    const dialog = gallery.querySelector('[data-property-gallery-dialog]');
+    const mainLink = gallery.querySelector('[data-gallery-open]');
+    const mainImage = mainLink?.querySelector('img');
+    const viewerImage = dialog?.querySelector('[data-gallery-current-image]');
+    const caption = dialog?.querySelector('[data-gallery-dialog-caption]');
+    const thumbs = Array.from(gallery.querySelectorAll('[data-gallery-thumb]'));
+    const photos = thumbs.map((thumb) => ({
+      src: thumb.dataset.gallerySrc,
+      alt: thumb.dataset.galleryAlt || 'Property photograph'
+    })).filter((photo) => photo.src);
+    if (!dialog || !mainLink || !mainImage || !viewerImage || !photos.length) return;
+    let activeIndex = 0;
+    const selectPhoto = (index) => {
+      activeIndex = (index + photos.length) % photos.length;
+      const selected = photos[activeIndex];
+      mainImage.src = selected.src;
+      mainImage.alt = selected.alt;
+      mainLink.href = selected.src;
+      mainLink.dataset.galleryIndex = String(activeIndex);
+      viewerImage.src = selected.src;
+      viewerImage.alt = selected.alt;
+      if (caption) caption.textContent = `Photo ${activeIndex + 1} of ${photos.length}`;
+      thumbs.forEach((thumb, thumbIndex) => {
+        const active = thumbIndex === activeIndex;
+        thumb.classList.toggle('is-active', active);
+        thumb.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    };
+    const openAt = (index) => {
+      selectPhoto(index);
+      if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+      else if (!dialog.open) window.open(photos[activeIndex].src, '_blank', 'noopener');
+    };
+    mainLink.addEventListener('click', (event) => { event.preventDefault(); openAt(Number(mainLink.dataset.galleryIndex || 0)); });
+    thumbs.forEach((thumb, index) => thumb.addEventListener('click', () => openAt(index)));
+    dialog.querySelector('[data-gallery-close]')?.addEventListener('click', () => dialog.close());
+    dialog.querySelector('[data-gallery-prev]')?.addEventListener('click', () => selectPhoto(activeIndex - 1));
+    dialog.querySelector('[data-gallery-next]')?.addEventListener('click', () => selectPhoto(activeIndex + 1));
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowLeft') { event.preventDefault(); selectPhoto(activeIndex - 1); }
+      if (event.key === 'ArrowRight') { event.preventDefault(); selectPhoto(activeIndex + 1); }
+    });
+    selectPhoto(0);
+  });
+});
