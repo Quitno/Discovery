@@ -2822,3 +2822,18 @@ body.landing-body #main-content {display:block!important;flex:none!important;wid
 body.landing-body .pm-welcome {display:flex!important;height:100svh!important;min-height:100svh!important;max-height:100svh!important;overflow:hidden!important;margin:0!important;padding:18px 14px!important}
 body.landing-body .pm-welcome-inner {max-width:720px!important}
 body.landing-body .pm-network-section,body.landing-body .pm-search-discovery {display:block!important;position:relative!important;visibility:visible!important;opacity:1!important}
+
+/* Additive cards for externally published adverts; existing listing cards and site animations remain unchanged. */
+.source-inventory-section{margin:24px 0 8px;padding-top:20px;border-top:1px solid var(--line)}
+.source-inventory-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}
+.source-inventory-heading h2{font-size:1.25rem;margin:4px 0 5px}
+.source-inventory-heading p{font-size:.84rem;color:var(--muted);margin:0;max-width:700px}
+.source-inventory-count{white-space:nowrap;border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:.75rem;font-weight:800;color:var(--muted)}
+.source-inventory-disclaimer{margin:0 0 15px;padding:11px 13px;border:1px solid #e6ddc8;border-left:3px solid #b28b4d;border-radius:9px;background:#fbf8f0;color:#65583f;font-size:.78rem;line-height:1.55}
+.source-photo-chip{background:#eef1f5;color:#3e526b}
+.source-checked-tag{display:inline-flex;align-items:center;gap:4px;border:1px solid #d8e0e8;border-radius:999px;padding:4px 8px;background:#f1f4f7;color:#43556b;font-size:.7rem;font-weight:800}
+.source-photo-fallback{display:none;position:absolute;inset:0;align-items:center;justify-content:center;padding:18px;text-align:center;color:var(--muted);font-size:.82rem;font-weight:700;background:#eef1ea}
+.source-photo-unavailable .source-photo-fallback{display:flex}
+.source-advertiser-line{font-size:.73rem;color:var(--muted);line-height:1.45;min-height:2.9em;margin:0 0 11px}
+.source-property-card .property-title{cursor:default}
+@media(max-width:680px){.source-inventory-heading{align-items:flex-start;flex-direction:column;gap:8px}.source-inventory-count{order:-1}.source-advertiser-line{min-height:0}}
