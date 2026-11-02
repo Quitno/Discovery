@@ -44,6 +44,7 @@ if not any(_pm_gallery_dir.glob("*.webp")):
     except Exception as _pm_gallery_exc:
         print(f"WARNING: PataMahali gallery cache could not be built at startup: {_pm_gallery_exc}")
 PHOTO_SECTIONS = _pm_photo_rails.PHOTO_SECTIONS
+from source_listings import SOURCE_PROPERTY_SEEDS
 from places import (
     COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
     county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
@@ -340,22 +341,6 @@ CREATE TABLE IF NOT EXISTS listings (
     views INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(owner_id) REFERENCES users(id)
 );
-CREATE TABLE IF NOT EXISTS house_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    email TEXT NOT NULL DEFAULT '',
-    area TEXT NOT NULL,
-    property_type TEXT NOT NULL DEFAULT 'Any suitable home',
-    bedrooms TEXT NOT NULL DEFAULT '',
-    max_budget REAL,
-    move_in TEXT NOT NULL DEFAULT '',
-    notes TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'new',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_house_requests_status_created ON house_requests(status, created_at);
 CREATE TABLE IF NOT EXISTS interests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     listing_id INTEGER NOT NULL,
@@ -519,6 +504,34 @@ CREATE TABLE IF NOT EXISTS site_build_requests (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_site_build_requests_status ON site_build_requests(status, created_at);
+CREATE TABLE IF NOT EXISTS source_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL DEFAULT 'residential',
+    property_type TEXT NOT NULL DEFAULT 'Other home',
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    price_amount REAL NOT NULL DEFAULT 0,
+    price_period TEXT NOT NULL DEFAULT 'per month',
+    bedrooms INTEGER,
+    bathrooms INTEGER,
+    floor_area TEXT NOT NULL DEFAULT '',
+    location_name TEXT NOT NULL,
+    county TEXT NOT NULL DEFAULT '',
+    local_area TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    advertiser TEXT NOT NULL DEFAULT '',
+    source_reference TEXT NOT NULL DEFAULT '',
+    source_added_at TEXT NOT NULL DEFAULT '',
+    source_checked_at TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_source_listings_public ON source_listings(active, category, county, local_area, price_amount);
 """
 
 
@@ -532,61 +545,6 @@ def connect_db(path: Path = DB_PATH) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 30000")
     return conn
-
-
-def seed_pilot_demo_inventory(conn) -> None:
-    """Seed clearly-labelled, non-contactable sample cards for the Nairobi/Kiambu pilot.
-
-    These are interface examples, not verified or available properties. A persistent
-    setting remembers an admin's decision to clear them so a restart never recreates them.
-    """
-    marker = conn.execute("SELECT value FROM settings WHERE key='demo_inventory_seed_status'").fetchone()
-    if marker:
-        return
-    demo_email = "patamahali-demo-owner@example.invalid"
-    owner = conn.execute("SELECT id FROM users WHERE email=?", (demo_email,)).fetchone()
-    if owner:
-        owner_id = owner["id"]
-    else:
-        cur = conn.execute(
-            """INSERT INTO users(role,account_type,full_name,business_name,email,phone,
-               password_hash,verified,suspended,created_at)
-               VALUES('owner','owner','PataMahali Demo Account','PataMahali Demonstration Inventory',?,?,?,0,0,?)""",
-            (demo_email, "", generate_password_hash(secrets.token_urlsafe(24)), now_iso()),
-        )
-        owner_id = cur.lastrowid
-
-    # Prices are deliberately illustrative. No contact details, coordinates or claims
-    # of inspection are attached to any demonstration card.
-    records = [
-        ("Bedsitter", "Compact bedsitter · Kahawa West", "Kahawa West, Roysambu, Nairobi", "Nairobi", "Roysambu", "Kahawa West", 8500, 0, 0, 1, "demo-apartment-building.webp", "A sample rental card showing how a compact bedsitter can be described. The room, rent and availability are fictional interface data."),
-        ("1-bedroom apartment", "One-bedroom apartment · Zimmerman", "Zimmerman, Roysambu, Nairobi", "Nairobi", "Roysambu", "Zimmerman", 14500, 1, 1, 1, "demo-modern-interior.webp", "A sample one-bedroom description for testing the listing layout. This is not a real advertised home and must not be used to plan a viewing."),
-        ("2-bedroom apartment", "Two-bedroom apartment · Roysambu", "Roysambu, Roysambu, Nairobi", "Nairobi", "Roysambu", "Roysambu", 28000, 2, 1, 1, "demo-apartment-building.webp", "A demonstration listing with example bedroom, bathroom and price fields. All property details are invented for software testing."),
-        ("Bedsitter", "Bedsitter-style rental · Githurai 45", "Githurai 45, Ruiru, Kiambu", "Kiambu", "Ruiru", "Githurai 45", 7500, 0, 0, 1, "demo-neighbourhood-hero.webp", "A sample listing to test searching by Githurai and comparing entry-level rental filters. Not a real property offer."),
-        ("1-bedroom apartment", "One-bedroom flat · Ruiru", "Ruiru, Ruiru, Kiambu", "Kiambu", "Ruiru", "Ruiru", 16000, 1, 1, 1, "demo-modern-interior.webp", "A demonstration property profile for the Ruiru search flow. Its photographs, rent and availability are not an actual advert."),
-        ("2-bedroom apartment", "Two-bedroom apartment · Membley", "Membley, Ruiru, Kiambu", "Kiambu", "Ruiru", "Membley", 32000, 2, 2, 1, "demo-apartment-building.webp", "A sample two-bedroom profile to demonstrate amenities and location detail. This listing is not available for enquiry or viewing."),
-        ("Bedsitter", "Bedsitter-style home · Juja", "Juja, Juja, Kiambu", "Kiambu", "Juja", "Juja", 7000, 0, 0, 1, "demo-neighbourhood-hero.webp", "A demo entry for testing lower-budget searches around Juja. The displayed figure is illustrative only."),
-        ("3+ bedroom house", "Family home · Thika Town", "Thika Town, Thika Town, Kiambu", "Kiambu", "Thika Town", "Thika Town", 48000, 3, 2, 1, "demo-apartment-building.webp", "A sample family-home profile for trying bedroom and budget filters. It is not a real property advertisement."),
-        ("2-bedroom apartment", "Two-bedroom home · Ruaka", "Ruaka, Kiambaa, Kiambu", "Kiambu", "Kiambaa", "Ruaka", 35000, 2, 2, 1, "demo-modern-interior.webp", "A demonstration entry for Ruaka searches. The property description and price are made up to preview the product experience."),
-        ("3+ bedroom house", "Three-bedroom home · Kahawa Sukari", "Kahawa Sukari, Ruiru, Kiambu", "Kiambu", "Ruiru", "Kahawa Sukari", 55000, 3, 2, 1, "demo-apartment-building.webp", "A sample family-home card used to test the search experience. This home is not verified, listed or available."),
-    ]
-    timestamp = now_iso()
-    for prop_type, title, location, county, constituency, area, price, beds, baths, _unused, image, description in records:
-        exists = conn.execute("SELECT id FROM listings WHERE owner_id=? AND title=? AND is_sample=1", (owner_id, title)).fetchone()
-        if exists:
-            continue
-        conn.execute(
-            """INSERT INTO listings(owner_id,category,property_type,title,description,price_amount,
-               price_period,deposit_amount,bedrooms,bathrooms,location_name,county,constituency,
-               local_area,images,status,approval_status,payment_status,fee_amount,property_verified,
-               posted_at,updated_at,last_confirmed_at,expires_at,is_sample,admin_rank)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0)""",
-            (owner_id,"residential",prop_type,title,description,price,"per month",None,beds,baths,
-             location,county,constituency,area,json.dumps([image]),"available","demo","demo",0,0,
-             timestamp,timestamp,"","",),
-        )
-    conn.execute("INSERT INTO settings(key,value) VALUES('demo_inventory_seed_status','seeded')")
-    print("PataMahali: clearly-labelled demonstration inventory prepared for the Nairobi/Kiambu pilot.")
 
 
 def init_db() -> None:
@@ -633,6 +591,54 @@ def init_db() -> None:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key, str(value)))
+        # Remove only the fictional sample rows created by the previous pilot
+        # under its private, reserved demo-owner email. Do not touch any real
+        # owner's listings or any rows from any other account.
+        demo_cleanup_flag = conn.execute("SELECT value FROM settings WHERE key='previous_demo_pilot_cleanup'").fetchone()
+        if not demo_cleanup_flag or demo_cleanup_flag[0] != "1":
+            demo_owner = conn.execute(
+                "SELECT id FROM users WHERE email='patamahali-demo-owner@example.invalid'"
+            ).fetchone()
+            if demo_owner:
+                demo_ids = [r[0] for r in conn.execute(
+                    "SELECT id FROM listings WHERE owner_id=? AND COALESCE(is_sample,0)=1",
+                    (demo_owner[0],)
+                ).fetchall()]
+                if demo_ids:
+                    marks = ",".join("?" for _ in demo_ids)
+                    for child_table in ("interests", "reports", "ratings", "boost_requests"):
+                        conn.execute(f"DELETE FROM {child_table} WHERE listing_id IN ({marks})", tuple(demo_ids))
+                    conn.execute(f"DELETE FROM listings WHERE id IN ({marks})", tuple(demo_ids))
+                conn.execute(
+                    "DELETE FROM users WHERE id=? AND NOT EXISTS(SELECT 1 FROM listings WHERE owner_id=?) AND NOT EXISTS(SELECT 1 FROM visitor_sessions WHERE user_id=?)",
+                    (demo_owner[0], demo_owner[0], demo_owner[0])
+                )
+            conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('previous_demo_pilot_cleanup','1')")
+
+        # Additive, separately managed public-source inventory. Per-advert seed
+        # markers let us add later batches without recreating an advert that the
+        # admin has already removed.
+        seeded_at = now_iso()
+        for item in SOURCE_PROPERTY_SEEDS:
+            seed_marker = "source_ad_seeded:" + item["source_key"]
+            already_seeded = conn.execute("SELECT value FROM settings WHERE key=?", (seed_marker,)).fetchone()
+            if already_seeded and already_seeded[0] == "1":
+                continue
+            conn.execute("""INSERT OR IGNORE INTO source_listings(
+                source_key,category,property_type,title,description,price_amount,price_period,
+                bedrooms,bathrooms,floor_area,location_name,county,local_area,image_url,
+                source_url,source_name,advertiser,source_reference,source_added_at,
+                source_checked_at,active,display_order,created_at,updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)""", (
+                item["source_key"], "residential", item["property_type"], item["title"],
+                item["description"], item["price_amount"], item["price_period"],
+                item["bedrooms"], item["bathrooms"], item["floor_area"],
+                item["location_name"], item["county"], item["local_area"], item["image_url"],
+                item["source_url"], item["source_name"], item["advertiser"],
+                item["source_reference"], item["source_added_at"], item["source_checked_at"],
+                item["display_order"], seeded_at, seeded_at
+            ))
+            conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?, '1')", (seed_marker,))
         # The prior default was 14 days; switch that default to the requested one-month term.
         conn.execute("UPDATE settings SET value='30' WHERE key='listing_expiry_days' AND value='14'")
         # If this database ever held the old Discovery brand, rename only that legacy value.
@@ -693,9 +699,9 @@ def init_db() -> None:
                 print(f"Password (copy now; stored as a hash): {password}")
                 print("Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables and keep these credentials private.\n")
 
-        # Seed an explicitly disclosed, non-contactable pilot inventory only once.
-        # Real owner listings still have to pass all existing verification gates.
-        seed_pilot_demo_inventory(conn)
+        # Do not seed pretend property records or generic demonstration photos.
+        # The homepage photo galleries are discovery imagery only; public inventory
+        # must come from real owner submissions that pass the existing approval rules.
         conn.execute("PRAGMA journal_mode = WAL")
 
 
@@ -1053,16 +1059,14 @@ def freshness_threshold() -> str:
     return (datetime.now(timezone.utc) - timedelta(days=listing_lifecycle_days())).replace(microsecond=0).isoformat()
 
 
-def is_public_listing(row, allow_demo: bool = False) -> bool:
+def is_public_listing(row) -> bool:
     if not row:
         return False
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=?", (row["owner_id"],)).fetchone()
     expiry = row["expires_at"] if "expires_at" in row.keys() else ""
     still_in_term = bool(expiry and expiry > now_iso())
     sample = bool("is_sample" in row.keys() and row["is_sample"])
-    if sample:
-        return bool(allow_demo and owner and not owner["suspended"] and row["status"] == "available" and row["approval_status"] == "demo")
-    return bool(owner and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["status"] == "available" and still_in_term and owner["verified"] and row["property_verified"])
+    return bool(owner and not sample and not owner["suspended"] and row["payment_status"] == "paid" and row["approval_status"] == "approved" and row["status"] == "available" and still_in_term and owner["verified"] and row["property_verified"])
 
 
 def log_event(event_type: str, path: str, details: str = "") -> None:
@@ -1330,20 +1334,6 @@ def save_upload(file, target_dir: Path, allowed: set[str]) -> str:
         raise ValueError(f"{original} is not a valid supported image. Upload a real JPG, PNG or WebP file.") from exc
 
 
-def demo_listing_results(where: str = "", params: tuple = (), limit: int = 80):
-    """Return sample-only rows for the clearly-labelled pilot demonstration shelf."""
-    sql = """SELECT l.*,u.full_name AS partner_name,u.business_name,u.role AS partner_role,
-                    u.verified AS partner_verified,
-                    (SELECT ROUND(AVG(r.stars),1) FROM ratings r WHERE r.listing_id=l.id) AS rating_average,
-                    (SELECT COUNT(*) FROM ratings r WHERE r.listing_id=l.id) AS rating_count
-             FROM listings l JOIN users u ON u.id=l.owner_id
-             WHERE l.is_sample=1 AND l.status='available' AND u.suspended=0"""
-    if where:
-        sql += " AND " + where
-    sql += " ORDER BY CASE WHEN COALESCE(l.admin_rank,0)>0 THEN 0 ELSE 1 END, l.posted_at DESC LIMIT ?"
-    return get_db().execute(sql, (*params, limit)).fetchall()
-
-
 def public_listings(where: str = "", params: tuple = (), limit: int = 100):
     sql = """
         SELECT l.*,u.full_name AS partner_name,u.business_name,u.role AS partner_role,u.verified AS partner_verified,
@@ -1501,13 +1491,10 @@ def build_discovery_previews(category="residential", property_type="", limit=Non
 
 @app.route("/")
 def index():
-    live_count = get_db().execute("""SELECT COUNT(*) FROM listings l JOIN users u ON u.id=l.owner_id
-        WHERE l.status='available' AND l.approval_status='approved' AND l.payment_status='paid'
-        AND l.property_verified=1 AND u.verified=1 AND u.suspended=0 AND COALESCE(l.is_sample,0)=0
-        AND l.expires_at<>'' AND l.expires_at>?""", (now_iso(),)).fetchone()[0]
-    demo_count = get_db().execute("SELECT COUNT(*) FROM listings WHERE is_sample=1 AND status='available'").fetchone()[0]
-    log_event("landing_view", request.path, json.dumps({"live_listings": live_count, "demo_examples": demo_count}))
-    return render_template("index.html", invite_url=public_base() + "/", live_listing_count=live_count, demo_listing_count=demo_count)
+    # Keep the original animated two-action gateway. Property discovery and
+    # category content remain inside /homes; the public SEO signals live in
+    # metadata, the sitemap, and the dedicated indexable pages.
+    return render_template("index.html", invite_url=public_base() + "/")
 
 
 def build_listing_location(form, existing=None):
@@ -1584,6 +1571,56 @@ def _listing_search_text(row) -> str:
     )) + " " + category_label
 
 
+def source_public_listings(category: str, property_type: str = "", q: str = "", location: str = "",
+                           min_price: str = "", max_price: str = "", min_beds: str = ""):
+    """Return third-party source adverts separately from PataMahali-verified stock."""
+    if category != "residential":
+        return []
+    clauses = ["active=1", "category=?"]
+    params = [category]
+    if property_type:
+        # Keep externally sourced homes aligned with the original finder types.
+        if property_type.casefold() in {"2-bedroom apartment", "two-bedroom apartment"}:
+            clauses.append("bedrooms=2")
+        elif property_type.casefold() == "3+ bedroom house":
+            clauses.append("COALESCE(bedrooms,0)>=3 AND (lower(property_type) LIKE '%house%' OR lower(property_type) LIKE '%townhouse%' OR lower(property_type) LIKE '%maisonette%')")
+        elif property_type.casefold() in {"3-bedroom apartment", "three-bedroom apartment"}:
+            clauses.append("COALESCE(bedrooms,0)=3")
+        elif property_type.casefold() not in {"other home", "other"}:
+            clauses.append("lower(property_type) LIKE ?")
+            params.append(f"%{property_type.casefold()}%")
+    if q:
+        # Normalize hyphens so a search for "2 bedroom" also finds titles such as
+        # "2-Bedroom Apartment" without weakening the rest of the match.
+        normalized_q = q.casefold().replace("-", " ").strip()
+        clauses.append("(replace(lower(title),'-',' ') LIKE ? OR replace(lower(description),'-',' ') LIKE ? OR lower(location_name) LIKE ? OR lower(county) LIKE ? OR lower(local_area) LIKE ? OR lower(advertiser) LIKE ?)")
+        params.extend([f"%{normalized_q}%", f"%{normalized_q}%", f"%{q.casefold()}%", f"%{q.casefold()}%", f"%{q.casefold()}%", f"%{q.casefold()}%"])
+    if location:
+        clauses.append("(lower(location_name) LIKE ? OR lower(county) LIKE ? OR lower(local_area) LIKE ?)")
+        params.extend([f"%{location.casefold()}%"] * 3)
+    if min_price:
+        try:
+            clauses.append("price_amount>=?")
+            params.append(max(0, float(min_price)))
+        except (TypeError, ValueError):
+            pass
+    if max_price:
+        try:
+            clauses.append("price_amount<=?")
+            params.append(max(0, float(max_price)))
+        except (TypeError, ValueError):
+            pass
+    if min_beds:
+        try:
+            clauses.append("COALESCE(bedrooms,0)>=?")
+            params.append(max(0, int(min_beds)))
+        except (TypeError, ValueError):
+            pass
+    sql = "SELECT * FROM source_listings WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY display_order ASC, source_checked_at DESC, id DESC LIMIT 100"
+    return get_db().execute(sql, tuple(params)).fetchall()
+
+
 @app.route("/homes")
 def homes():
     q = request.args.get("q", "").strip()[:120]
@@ -1651,15 +1688,13 @@ def homes():
         clauses.append("(l.location_name LIKE ? OR l.landmarks LIKE ? OR l.county LIKE ? OR l.constituency LIKE ? OR l.ward LIKE ? OR l.local_area LIKE ?)")
         params.extend([f"%{location}%"] * 6)
     where = " AND ".join(clauses)
-    real_results = public_listings(where, tuple(params), 300)
-    demo_results = demo_listing_results(where, tuple(params), 80)
-    results = list(real_results) + list(demo_results)
+    results = public_listings(where, tuple(params), 300)
     fuzzy_used = False
     user_lat, user_lon = request.args.get("lat", ""), request.args.get("lon", "")
     if not results and (q or location):
         # Search within other exact filters first. This handles common typos such as
         # "Ruyaka" for "Ruaka" and "apartmant" for "apartment".
-        candidates = list(public_listings(base_where, tuple(base_params), 600)) + list(demo_listing_results(base_where, tuple(base_params), 120))
+        candidates = public_listings(base_where, tuple(base_params), 600)
         search_text = " ".join(x for x in (q, location) if x)
         scored = []
         for candidate in candidates:
@@ -1675,9 +1710,6 @@ def homes():
             results = sorted(results, key=lambda r: haversine_km(latf, lonf, r["latitude"], r["longitude"]) if r["latitude"] is not None and r["longitude"] is not None else 1e9)
         except (ValueError, TypeError):
             user_lat, user_lon = "", ""
-    # Count the rows actually displayed, including typo-tolerant fallback matches.
-    live_count = sum(1 for row in results if not row["is_sample"])
-    demo_count = sum(1 for row in results if row["is_sample"])
     details = {
         "q": q, "category": category, "type": property_type, "location": location,
         "min_price": min_price, "max_price": max_price, "bedrooms": min_beds,
@@ -1685,18 +1717,34 @@ def homes():
         "no_match": not bool(results), "sort_nearby": bool(user_lat and user_lon),
     }
     log_event("property_search", request.path, json.dumps(details))
+    source_results = source_public_listings(category, property_type, q, location, min_price, max_price, min_beds)
     show_preview_cards = not any((q, location, min_price, max_price, min_beds))
+    if category == "residential":
+        search_place = location[:55].strip()
+        if search_place:
+            seo_page_title = f"Houses and Apartments for Rent in {search_place}, Kenya | PataMahali"
+            seo_meta_description = f"Search houses, apartments and rentals in {search_place}, Kenya. Compare advertised rent, bedrooms, location and listing details on PataMahali. Confirm availability and terms with each advertiser."
+        else:
+            seo_page_title = "Houses for Rent, Bedsitters and Apartments in Kenya | PataMahali"
+            seo_meta_description = "Find houses for rent, apartments, bedsitters and family homes across Kenya. Search by county, estate and neighbourhood, then compare rent, bedrooms and location on PataMahali."
+    else:
+        seo_page_title = "Property Search in Kenya | PataMahali"
+        seo_meta_description = f"Search {CATEGORY_META.get(category, {}).get('label', 'property')} across Kenya by area, type and asking price on PataMahali."
     return render_template(
-        "homes.html", listings=results, preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=""), show_preview_cards=show_preview_cards, q=q, category=category, property_type=property_type,
+        "homes.html", listings=results, source_listings=source_results,
+        source_inventory_count=len(source_results), seo_page_title=seo_page_title,
+        seo_meta_description=seo_meta_description,
+        preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=""), show_preview_cards=show_preview_cards, q=q, category=category, property_type=property_type,
         location=location, min_price=min_price, max_price=max_price, bedrooms=min_beds,
         types=CATEGORY_META.get(category, {}).get("types", []),
         sorted_by_distance=bool(user_lat and user_lon), fuzzy_used=fuzzy_used,
-        live_count=live_count, demo_count=demo_count,
         category_meta=category_meta,
         photo_section=(next((section for section in PHOTO_SECTIONS if section["category"] == category and section.get("type") == property_type), None) if property_type else next((section for section in PHOTO_SECTIONS if section["category"] == category and not section.get("type")), None)) or next((section for section in PHOTO_SECTIONS if section["category"] == category), None),
         external_searches=external_property_searches(" ".join(x for x in (q, location) if x), category),
         featured_area_cards=[
-            {"name":"Nairobi","slug":"nairobi"}, {"name":"Kiambu","slug":"kiambu"}
+            {"name":"Nairobi","slug":"nairobi"}, {"name":"Kiambu","slug":"kiambu"},
+            {"name":"Mombasa","slug":"mombasa"}, {"name":"Nakuru","slug":"nakuru"},
+            {"name":"Kisumu","slug":"kisumu"}, {"name":"Uasin Gishu","slug":"uasin-gishu"}
         ],
     )
 
@@ -1960,7 +2008,7 @@ def property_search_page(category_slug: str, county_slug: str | None = None, con
 @app.route("/listing/<int:listing_id>")
 def listing_detail(listing_id: int):
     row = get_db().execute("SELECT l.*,u.full_name AS partner_name,u.business_name,u.role AS partner_role,u.phone AS partner_phone,u.email AS partner_email,u.contact_preference AS contact_preference,u.website_url AS website_url,u.social_url AS social_url,u.verified AS partner_verified FROM listings l JOIN users u ON l.owner_id=u.id WHERE l.id=?", (listing_id,)).fetchone()
-    if not row or not is_public_listing(row, allow_demo=True):
+    if not row or not is_public_listing(row):
         abort(404)
     get_db().execute("UPDATE listings SET views=views+1 WHERE id=?", (listing_id,))
     log_event("listing_view", request.path, json.dumps({"listing_id": listing_id, "category": row["category"]}))
@@ -2046,59 +2094,6 @@ def report_taken(listing_id: int):
     audit("listing_reported_taken", "listing", listing_id, reason)
     flash("Thank you. The listing has been hidden while the report is reviewed by an administrator.", "success")
     return redirect(url_for("homes"))
-
-
-@app.route("/request-house", methods=["GET", "POST"])
-def request_house():
-    if request.method == "POST":
-        full_name = request.form.get("full_name", "").strip()[:120]
-        phone = request.form.get("phone", "").strip()[:40]
-        email = request.form.get("email", "").strip()[:160]
-        area = request.form.get("area", "").strip()[:180]
-        property_type = request.form.get("property_type", "Any suitable home").strip()[:100]
-        bedrooms = request.form.get("bedrooms", "").strip()[:10]
-        move_in = request.form.get("move_in", "").strip()[:40]
-        notes = request.form.get("notes", "").strip()[:1500]
-        raw_budget = request.form.get("max_budget", "").strip().replace(",", "")
-        try:
-            budget = float(raw_budget) if raw_budget else None
-            if budget is not None and (budget < 0 or budget > 1_000_000_000): raise ValueError
-        except ValueError:
-            flash("Enter a valid maximum monthly budget.", "error")
-            return render_template("request_house.html", form=request.form), 400
-        if not full_name or not phone or not area:
-            flash("Please add your name, phone number and preferred area.", "error")
-            return render_template("request_house.html", form=request.form), 400
-        stamp = now_iso()
-        cur = get_db().execute(
-            "INSERT INTO house_requests(full_name,phone,email,area,property_type,bedrooms,max_budget,move_in,notes,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'new',?,?)",
-            (full_name,phone,email,area,property_type,bedrooms,budget,move_in,notes,stamp,stamp),
-        )
-        log_event("house_request_submitted", request.path, json.dumps({"request_id":cur.lastrowid,"area":area,"property_type":property_type}))
-        audit("house_request_submitted", "house_request", cur.lastrowid, f"Area={area}; type={property_type}")
-        flash("Your house request has been received and added to the PataMahali request queue.", "success")
-        return redirect(url_for("request_house", received="1"))
-    return render_template("request_house.html", form={})
-
-
-@app.route("/manage-admin/house-requests")
-@admin_required
-def admin_house_requests():
-    rows = get_db().execute("SELECT * FROM house_requests ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'contacted' THEN 1 WHEN 'matched' THEN 2 ELSE 3 END, created_at DESC LIMIT 500").fetchall()
-    return render_template("admin_house_requests.html", requests=rows, page_title="House requests")
-
-
-@app.post("/manage-admin/house-requests/<int:request_id>/action")
-@admin_required
-def admin_house_request_action(request_id):
-    row = get_db().execute("SELECT id FROM house_requests WHERE id=?", (request_id,)).fetchone()
-    if not row: abort(404)
-    status = request.form.get("status", "new")
-    if status not in {"new", "contacted", "matched", "closed", "spam"}: status = "new"
-    get_db().execute("UPDATE house_requests SET status=?,updated_at=? WHERE id=?", (status,now_iso(),request_id))
-    audit("house_request_status_changed", "house_request", request_id, status)
-    flash("House request updated.", "success")
-    return redirect(url_for("admin_house_requests") + f"#request-{request_id}")
 
 
 @app.route("/privacy")
@@ -2861,6 +2856,32 @@ def admin_market_discovery_delete(item_id):
     return redirect(url_for("admin_listings"))
 
 
+@app.route("/manage-admin/source-listings", methods=["GET", "POST"])
+@admin_required
+def admin_source_listings():
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "delete_all":
+            deleted = get_db().execute("DELETE FROM source_listings").rowcount
+            audit("source_inventory_cleared", "source_listings", 0, f"Removed {deleted} source-checked adverts")
+            flash(f"Removed {deleted} imported source adverts. They will not be re-added on restart.", "success")
+        return redirect(url_for("admin_source_listings"))
+    rows = get_db().execute("SELECT * FROM source_listings ORDER BY display_order,id").fetchall()
+    return render_template("admin_source_listings.html", source_rows=rows, page_title="Public-source listings")
+
+
+@app.post("/manage-admin/source-listings/<int:item_id>/delete")
+@admin_required
+def admin_source_listing_delete(item_id: int):
+    row = get_db().execute("SELECT title FROM source_listings WHERE id=?", (item_id,)).fetchone()
+    if not row:
+        abort(404)
+    get_db().execute("DELETE FROM source_listings WHERE id=?", (item_id,))
+    audit("source_listing_removed", "source_listing", item_id, row["title"])
+    flash("Imported source advert removed. Your own listings were not changed.", "success")
+    return redirect(url_for("admin_source_listings"))
+
+
 @app.route("/manage-admin/listings")
 @admin_required
 def admin_listings():
@@ -2875,23 +2896,7 @@ def admin_listings():
     if clauses: sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY l.posted_at DESC LIMIT 300"
     listings = get_db().execute(sql, params).fetchall()
-    demo_count = get_db().execute("SELECT COUNT(*) FROM listings WHERE is_sample=1").fetchone()[0]
-    return render_template("admin_listings.html", listings=listings, status=status, category=category, demo_count=demo_count)
-
-
-@app.post("/manage-admin/listings/demo/clear")
-@admin_required
-def admin_demo_inventory_clear():
-    ids = [row["id"] for row in get_db().execute("SELECT id FROM listings WHERE is_sample=1").fetchall()]
-    if ids:
-        audit("demo_inventory_cleared", "listing_batch", "all", f"Permanently deleted {len(ids)} demonstration listing(s)")
-        get_db().execute("DELETE FROM listings WHERE is_sample=1")
-    get_db().execute("UPDATE settings SET value='cleared' WHERE key='demo_inventory_seed_status'")
-    demo_owner = get_db().execute("SELECT id FROM users WHERE email='patamahali-demo-owner@example.invalid'").fetchone()
-    if demo_owner:
-        get_db().execute("DELETE FROM users WHERE id=? AND NOT EXISTS(SELECT 1 FROM listings WHERE owner_id=?)", (demo_owner["id"], demo_owner["id"]))
-    flash(f"Removed {len(ids)} demonstration listing(s). They will not be recreated on the next restart.", "success")
-    return redirect(url_for("admin_listings"))
+    return render_template("admin_listings.html", listings=listings, status=status, category=category)
 
 
 @app.route("/manage-admin/listings/<int:listing_id>/edit", methods=["GET", "POST"])
@@ -3027,13 +3032,6 @@ def admin_listing_action(listing_id):
             flash("Listing reinstated by administrator.", "success")
         else:
             flash("This listing does not meet all publication checks and cannot be reinstated.", "error")
-    elif action == "delete_demo":
-        if not row["is_sample"]:
-            flash("Only demonstration records can be permanently deleted from this control.", "error")
-        else:
-            get_db().execute("DELETE FROM listings WHERE id=? AND is_sample=1", (listing_id,))
-            audit("demo_listing_deleted", "listing", listing_id, "Demonstration-only record permanently deleted")
-            flash("Demonstration listing deleted. No customer-owned listing was affected.", "success")
     elif action == "remove":
         get_db().execute("UPDATE listings SET status='removed',approval_status='rejected',updated_at=? WHERE id=?", (now_iso(), listing_id))
         audit("listing_removed", "listing", listing_id, request.form.get("reason", "")[:500])
@@ -3601,22 +3599,12 @@ def listing_media(filename):
     owner = get_db().execute("SELECT verified,suspended FROM users WHERE id=(SELECT owner_id FROM listings WHERE id=?)", (row["id"],)).fetchone()
     # Photos for unapproved listings are visible only to the owning partner or admin.
     is_sample = bool("is_sample" in row.keys() and row["is_sample"])
-    if is_sample:
-        if row["status"] != "available" or row["approval_status"] != "demo" or not owner or owner["suspended"]:
+    if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and not is_sample and not (owner and owner["suspended"]) and row["property_verified"] and owner and owner["verified"]):
+        user = get_current_user()
+        listing_owner = get_db().execute("SELECT owner_id FROM listings WHERE id=?", (row["id"],)).fetchone()
+        if not user or (user["role"] != "admin" and user["id"] != listing_owner["owner_id"]):
             abort(404)
-        scene_name = filename.removeprefix("demo-")
-        if scene_name not in {"apartment-building.webp", "modern-interior.webp", "neighbourhood-hero.webp", "residential-land.webp"}:
-            abort(404)
-        scene_path = BASE_DIR / "static" / "img" / "property-scenes" / scene_name
-        if not scene_path.is_file(): abort(404)
-        response = send_from_directory(scene_path.parent, scene_name, max_age=86400)
-    else:
-        if not (row["status"] == "available" and row["approval_status"] == "approved" and row["payment_status"] == "paid" and not (owner and owner["suspended"]) and row["property_verified"] and owner and owner["verified"]):
-            user = get_current_user()
-            listing_owner = get_db().execute("SELECT owner_id FROM listings WHERE id=?", (row["id"],)).fetchone()
-            if not user or (user["role"] != "admin" and user["id"] != listing_owner["owner_id"]):
-                abort(404)
-        response = send_from_directory(LISTING_UPLOAD_DIR, filename, max_age=86400)
+    response = send_from_directory(LISTING_UPLOAD_DIR, filename, max_age=86400)
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 

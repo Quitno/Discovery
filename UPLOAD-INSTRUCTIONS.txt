@@ -1,66 +1,73 @@
-PATAMAHALI ORGANIC SEO + TOROR GATEWAY + WEBSITE REQUEST FORM PATCH
+PATAMAHALI — ORIGINAL SITE RESTORE + PUBLIC-SOURCE RENTAL PILOT
 
-This is a PATCH ONLY. It contains the changed files, not the complete project.
+IMPORTANT: This package is rebuilt from your original Discovery-main (1).zip.
+It is NOT the earlier redesigned house-hunting pilot. The original homepage,
+customer navigation, existing property cards, organic content, animations,
+current property listings and original verification process are preserved.
 
-UPLOAD THESE FILES TO THE ROOT OF YOUR EXISTING GITHUB REPOSITORY:
+WHAT THIS BUILD ADDS
+- Eight public rental adverts from Kenya Property Centre, including apartments,
+  a five-bedroom family house and two four-bedroom townhouses in Ruiru.
+- Their cards appear as an additional section in the existing /homes residential
+  finder. Original owner/agent listings remain in the original listing cards.
+- Cards include the exact advert photo URL, asking rent, bedrooms/bathrooms,
+  location, named advertiser, public reference, check date and a link to the
+  original advert.
+- The label is "Advert source checked", NOT PataMahali "Property verified".
+  The adverts were visible on their source pages on 2 November 2026. PataMahali
+  has not independently inspected these homes, verified the advertiser's
+  authority or confirmed current availability.
+- A new Admin > Source listings page removes one imported advert or all eight.
+  These records are stored separately from partner listings. The per-ad seed
+  markers remember deletions so removed adverts do not return after restart.
+- The SEO titles and descriptions for the home page, residential finder and
+  county/constituency/locality pages are improved. Existing robots.txt,
+  sitemap.xml, canonical URLs, page body, homepage layout and animations remain.
+- A one-time safe cleanup removes only sample records created by the previous
+  pilot under the exact reserved demo account email
+  patamahali-demo-owner@example.invalid. It does not delete any other owner's
+  records, users, properties, uploaded images or documents.
 
-1. app.py
-2. templates/about.html
-3. templates/admin_base.html
-4. templates/admin_dashboard.html
-5. templates/admin_site_build_requests.html   [NEW FILE]
-6. templates/base.html
-7. templates/company.html
-8. templates/get_your_own_site.html           [NEW FILE]
-9. templates/homes.html
-10. templates/index.html
-11. templates/privacy.html
+DEPLOY THIS BUILD
+1. Back up the production database using the site's admin backup function and
+   keep a copy outside Render.
+2. Extract this ZIP and open the Discovery-main folder.
+3. Copy ALL files and folders inside Discovery-main into the ROOT of your
+   existing GitHub repository connected to Render. Replace matching source
+   files and add new files. Do not create a nested Discovery-main folder.
+4. Commit and push to the same branch Render already deploys.
+5. Keep your existing Render environment variables and persistent disk. Do not
+   delete /var/data, the production SQLite database, uploaded photos/documents,
+   or secrets. The ZIP does not contain your production database.
+6. After deployment, test /, /homes,
+   /homes?category=residential&location=Ruiru,
+   /homes?category=residential&location=Baba%20Dogo, /robots.txt and
+   /sitemap.xml. Sign in to Admin and open Source listings.
+7. When ready, remove an advert or all imported adverts under Admin > Source
+   listings. Do not use the ordinary Properties delete controls for this.
 
-Keep the folder paths exactly as shown. Replace files with the same names and
-add the two new template files. Do not delete or replace any other project
-files, uploads, database, Procfile, requirements.txt, or Render settings.
+IMPORTANT LIMITS
+- Public source adverts are not a live feed. Prices or availability may change,
+  and adverts may be withdrawn after the check date. Re-open the original source
+  before relying on any details.
+- Images are hotlinked from the source platform's image host, not re-hosted.
+  A browser or source-host policy may block external image display. Obtain any
+  needed permission for long-term use of third-party photographs.
+- This workspace cannot inspect your production database, so it cannot prove
+  that none of these eight source adverts duplicates one of your own listings.
+  Check the finder after deployment and remove any duplicate under Admin >
+  Source listings. Your own listing rows are not modified by this code.
+- No code can guarantee Google ranking or immediate indexing. After deployment,
+  submit the existing sitemap in Google Search Console and inspect the home,
+  residential finder and useful county/locality pages for indexing and errors.
+- This workspace could not launch a live Flask server; run the post-deployment
+  smoke tests above before announcing the updated site.
 
-WHAT THIS PATCH ADDS
-- Turns the homepage into a real property-discovery landing page with a search
-  form, six property categories, Kenyan county entry points and approved live
-  listings only.
-- Strengthens page titles and descriptions for houses/rentals, short stays,
-  land, property sales, commercial premises and warehouses.
-- Keeps category/location SEO pages tied to the existing county hierarchy and
-  real inventory rules already in the app. It does not create fake property
-  pages or pretend sample properties are available.
-- Strengthens Toror Technology & Innovations Ltd identity and connections to
-  PataMahali, Denmart and the other Toror platforms.
-- Restores Toror network links on the public home page, company page and menu.
-- Adds the public /get-your-own-site project request form with an interactive
-  indicative KES estimate, plus private admin review at
-  /manage-admin/site-build-requests.
-- Adds an additive SQLite table for the new requests; existing tables and
-  records are not dropped or rewritten.
-- Updates the privacy notice to describe project brief collection.
-
-DEPLOYMENT
-1. Make a backup using the existing admin backup function before replacing files.
-2. Upload/replace the 11 listed files in GitHub, preserving the templates/ path.
-3. Commit to the branch used by Render and allow the service to deploy.
-4. Test /, /homes, /company and /get-your-own-site.
-5. Submit a test project brief, then sign in to the private admin area and open
-   Website & app requests. Delete or close the test enquiry after verifying it.
-6. Ensure Render persistent storage is mounted for the application's database
-   before relying on submitted project enquiries. If the admin shows a storage
-   warning, resolve that first.
-7. In Google Search Console, submit sitemap.xml and inspect the home page,
-   /homes, /company and key property category pages.
-
-ESTIMATE NOTE
-The displayed KES ranges are indicative starter estimates configured in app.py.
-They are not approved contractual prices. Review and adjust SITE_BUILD_TYPES,
-SITE_BUILD_PAGE_RANGES, SITE_BUILD_COMPLEXITY, SITE_BUILD_CONTENT,
-SITE_BUILD_FEATURES and SITE_BUILD_TIMELINE to match Toror's actual rates before
-promoting the quote form as a final price list.
-
-SEO EXPECTATION
-This improves crawlable structure, topical relevance, useful navigation and
-lead capture. It cannot guarantee a #1 Google ranking or instant indexing.
-Do not add copied listing text, fake vacancies, keyword-stuffed pages, paid
-link schemes or autogenerated near-duplicate location pages.
+IF THE EARLIER PILOT WAS ALREADY UPLOADED TO GITHUB
+After replacing the complete project, remove these obsolete files if they are
+still present from the first pilot. They are not used by this restored build:
+- PATAMAHALI-HOUSEHUNT-PILOT-UPDATE-2026-11-02.md
+- static/css/patamahali-pilot.css
+- templates/admin_house_requests.html
+- templates/request_house.html
+Do not delete other templates, styles, images or uploaded files.

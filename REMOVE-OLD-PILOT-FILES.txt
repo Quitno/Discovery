@@ -1,0 +1,11 @@
+Only remove these four obsolete files from the GitHub repository if they remain
+from the previous redesigned pilot. The restored original project does not use
+them:
+
+PATAMAHALI-HOUSEHUNT-PILOT-UPDATE-2026-11-02.md
+static/css/patamahali-pilot.css
+templates/admin_house_requests.html
+templates/request_house.html
+
+Do not delete anything else. In particular, keep the original templates,
+static assets, property records in the database, user uploads and Render disk.
