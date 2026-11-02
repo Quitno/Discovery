@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Request a Home | PataMahali{% endblock %}
+{% block meta_description %}Tell PataMahali what kind of rental home you need, where you want to live and your budget.{% endblock %}
+{% block head %}<meta name="robots" content="noindex,follow">{% endblock %}
+{% block content %}
+<section class="page-shell request-house-page">
+  <div class="request-house-intro"><span class="eyebrow">PERSONAL HOUSE-HUNTING REQUEST</span><h1>Tell us what home you're looking for.</h1><p>Share the details that matter. Your request goes into the PataMahali house-request queue, where it can be reviewed as genuine properties are onboarded.</p><div class="request-house-promise"><strong>No deposit. No pressure.</strong><span>Submitting this form does not reserve a property or commit you to a payment.</span></div></div>
+  <form method="post" class="request-house-form">
+    {{ csrf_field() }}
+    {% if request.args.get('received') %}<div class="request-house-success"><strong>Your request has been received.</strong><span>Thank you. You can return to browsing or update your needs by sending another request.</span></div>{% endif %}
+    <div class="form-grid">
+      <label>Your name *<input name="full_name" required maxlength="120" value="{{ form.get('full_name','') }}" placeholder="Full name"></label>
+      <label>Phone / WhatsApp *<input name="phone" required maxlength="40" value="{{ form.get('phone','') }}" placeholder="07xx xxx xxx"></label>
+      <label class="full-span">Email (optional)<input type="email" name="email" maxlength="160" value="{{ form.get('email','') }}" placeholder="you@example.com"></label>
+      <label class="full-span">Preferred area or neighbourhood *<input name="area" required maxlength="180" value="{{ form.get('area','') }}" placeholder="e.g. Ruaka, Kahawa West, Ruiru, Roysambu"></label>
+      <label>What kind of home?<select name="property_type">{% for value in ['Any suitable home','Bedsitter','Single room','Studio apartment','1-bedroom apartment','2-bedroom apartment','3+ bedroom house','Maisonette / townhouse','Furnished apartment'] %}<option value="{{ value }}" {% if form.get('property_type','Any suitable home')==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+      <label>Bedrooms<select name="bedrooms"><option value="">No preference</option>{% for value in ['0','1','2','3','4+'] %}<option value="{{ value }}" {% if form.get('bedrooms','')==value %}selected{% endif %}>{{ 'Bedsitter / room' if value=='0' else value }}</option>{% endfor %}</select></label>
+      <label>Maximum monthly budget (KES)<input type="number" name="max_budget" min="0" step="500" value="{{ form.get('max_budget','') }}" placeholder="e.g. 25000"></label>
+      <label>When do you need to move?<select name="move_in"><option value="">Not sure yet</option>{% for value in ['Immediately','Within 2 weeks','Within 1 month','Within 2 months','Flexible'] %}<option value="{{ value }}" {% if form.get('move_in','')==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+      <label class="full-span">Anything else we should know?<textarea name="notes" rows="4" maxlength="1500" placeholder="Near a bus route, ground floor, parking, water reliability…">{{ form.get('notes','') }}</textarea></label>
+    </div>
+    <button class="button button-primary button-wide" type="submit">Send my house request <span aria-hidden="true">↗</span></button>
+    <p class="small muted">Your phone number is used to follow up on this request and is not displayed publicly.</p>
+  </form>
+</section>
+{% endblock %}
