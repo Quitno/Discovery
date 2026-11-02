@@ -1,72 +1,78 @@
 {% extends 'base.html' %}
-{% block title %}Find a Home in Nairobi & Kiambu | PataMahali{% endblock %}
-{% block meta_description %}House hunting made more direct. Search rentals in Nairobi and Kiambu by neighbourhood, rent and bedrooms, or tell PataMahali what kind of home you need.{% endblock %}
+{% block title %}Find Houses for Rent and Property in Kenya | PataMahali{% endblock %}
+{% block meta_description %}Find houses for rent in Kenya, bedsitters, apartments, homes for sale, land and plots, shops and offices. Search by county, constituency, estate and neighbourhood on PataMahali, a Kenyan house-hunting platform.{% endblock %}
 {% block head %}
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="googlebot" content="index,follow,max-image-preview:large">
-<script type="application/ld+json">{{ {'@context':'https://schema.org','@type':'WebSite','name':'PataMahali','url':public_base() ~ '/','description':'A practical Kenyan house-hunting service focused on neighbourhood-level home searches.','potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?category=residential&location={search_term_string}','query-input':'required name=search_term_string'}}|tojson }}</script>
+<script type="application/ld+json">{{ {'@context':'https://schema.org','@graph':[{'@type':'Organization','@id':public_base() ~ '/company#organization','name':'Toror Technology & Innovations Ltd','alternateName':['Toror Technology and Innovations Ltd','Toror Technology and Innovations','Toror TRT'],'url':public_base() ~ '/company','description':'A Kenyan technology company building and operating practical digital products, web platforms and business software.','areaServed':{'@type':'Country','name':'Kenya'},'sameAs':['https://www.instagram.com/trtechnologyinnovations/']},{'@type':'WebSite','@id':public_base() ~ '/#website','name':'PataMahali','description':'A Kenyan property discovery platform for homes, rentals, stays, land and commercial spaces.','url':public_base() ~ '/','publisher':{'@id':public_base() ~ '/company#organization'},'potentialAction':{'@type':'SearchAction','target':public_base() ~ '/homes?q={search_term_string}','query-input':'required name=search_term_string'}}]}|tojson }}</script>
 {% endblock %}
 {% block content %}
-<div class="pilot-home">
-  <header class="pilot-topbar">
-    <a class="pilot-brand" href="/" aria-label="PataMahali home"><span class="pilot-brand-mark">P</span><span><strong>PataMahali</strong><small>Find a place that feels right.</small></span></a>
-    <nav class="pilot-top-actions" aria-label="Main links"><a href="{{ url_for('homes', category='residential') }}">Find a home</a><a class="pilot-owner-link" href="{{ url_for('partner_register') }}">List your property <span aria-hidden="true">↗</span></a></nav>
-  </header>
-
-  <section class="pilot-hero">
-    <div class="pilot-hero-copy">
-      <span class="pilot-eyebrow"><span></span> A more practical way to house-hunt</span>
-      <h1>Less scrolling.<br><em>More finding.</em></h1>
-      <p>Start with the neighbourhood you want to live in. Compare the rent, space and details that matter — without getting lost in a thousand unrelated listings.</p>
-      <form class="pilot-hero-search" action="{{ url_for('homes') }}" method="get">
-        <input type="hidden" name="category" value="residential">
-        <label for="pilot-home-area">Where are you looking?</label>
-        <div class="pilot-search-control"><span aria-hidden="true">⌖</span><input id="pilot-home-area" name="location" placeholder="Try Ruaka, Ruiru, Roysambu…" autocomplete="address-level2"><button type="submit">Find homes <span aria-hidden="true">↗</span></button></div>
-        <small>Search by estate, town or neighbourhood.</small>
-      </form>
-      <div class="pilot-popular-areas"><span>Popular starting points</span><div><a href="{{ url_for('homes', category='residential', location='Roysambu') }}">Roysambu</a><a href="{{ url_for('homes', category='residential', location='Ruaka') }}">Ruaka</a><a href="{{ url_for('homes', category='residential', location='Ruiru') }}">Ruiru</a><a href="{{ url_for('homes', category='residential', location='Juja') }}">Juja</a><a href="{{ url_for('homes', category='residential', location='Thika') }}">Thika</a></div></div>
+<section class="pm-welcome" aria-labelledby="pm-welcome-title">
+  <div class="pm-welcome-glow" aria-hidden="true"></div>
+  <div class="pm-welcome-inner">
+    <div class="pm-welcome-mark" aria-hidden="true">{% if site_settings.get('site_logo') %}<img src="{{ url_for('branding_media', filename=site_settings.get('site_logo')) }}" alt="">{% else %}<img src="/icon.svg" alt="">{% endif %}</div>
+    <h1 id="pm-welcome-title" aria-label="PataMahali"><span class="pm-letter-mark" aria-hidden="true">{% for letter in 'PataMahali' %}<span class="pm-title-letter" style="--letter-index:{{ loop.index0 }}">{{ letter }}</span>{% endfor %}</span></h1>
+    <div class="pm-title-underline" aria-hidden="true"></div>
+    <div class="pm-welcome-gateways" aria-label="Choose how to enter">
+      <a class="pm-gateway pm-gateway-find" href="{{ url_for('homes') }}" aria-label="Find property"><span>Find property</span></a>
+      <a class="pm-gateway pm-gateway-list" href="{{ url_for('partner_dashboard') if current_user and current_user['role'] in ['owner','agent','host','business'] else url_for('partner_register') }}" aria-label="Post property"><span>Post property</span></a>
     </div>
-    <div class="pilot-hero-visual" aria-label="Residential neighbourhood photograph">
-      <img src="{{ url_for('static', filename='img/property-scenes/neighbourhood-hero.webp') }}" alt="Residential neighbourhood setting" fetchpriority="high">
-      <div class="pilot-photo-note"><span class="pilot-photo-note-dot"></span><span><strong>Start close to home</strong><small>Nairobi · Kiambu pilot</small></span></div>
+  </div>
+</section>
+
+<section class="pm-network-section" aria-labelledby="pm-network-title">
+  <div class="pm-network-inner">
+    <div class="pm-network-heading">
+      <div>
+        <span class="pm-network-eyebrow">THE TOROR DIGITAL NETWORK</span>
+        <h2 id="pm-network-title">More useful platforms. One connected network.</h2>
+        <p>PataMahali is a Kenyan property platform by <a href="{{ url_for('company_profile') }}">Toror Technology &amp; Innovations Ltd</a>. Explore other services and products from the same technology company.</p>
+      </div>
+      <a class="pm-network-company-link" href="{{ url_for('company_profile') }}">Meet the company <span aria-hidden="true">↗</span></a>
     </div>
-  </section>
-
-  {% if demo_listing_count and not live_listing_count %}
-  <div class="pilot-demo-disclosure"><span class="pilot-demo-symbol">i</span><p><strong>Launch preview is active.</strong> The sample homes used to test the website are clearly marked and are not available properties. Genuine owner listings will appear only after review.</p></div>
-  {% elif live_listing_count %}
-  <div class="pilot-live-note"><span class="pilot-live-dot"></span>{{ live_listing_count }} currently verified live listing{{ '' if live_listing_count == 1 else 's' }} across the platform.</div>
-  {% endif %}
-
-  <section class="pilot-intent-section">
-    <div class="pilot-section-heading"><div><span class="pilot-eyebrow">MAKE YOUR SEARCH SPECIFIC</span><h2>What kind of home do you need?</h2></div><a href="{{ url_for('homes', category='residential') }}">All rentals <span aria-hidden="true">↗</span></a></div>
-    <div class="pilot-intent-grid">
-      <a href="{{ url_for('homes', category='residential', type='Bedsitter') }}"><span class="pilot-intent-icon">01</span><strong>Bedsitters</strong><small>Simple, independent spaces</small></a>
-      <a href="{{ url_for('homes', category='residential', type='1-bedroom apartment') }}"><span class="pilot-intent-icon">02</span><strong>One bedroom</strong><small>A little more room</small></a>
-      <a href="{{ url_for('homes', category='residential', type='2-bedroom apartment') }}"><span class="pilot-intent-icon">03</span><strong>Two bedrooms</strong><small>Space to share or grow</small></a>
-      <a href="{{ url_for('homes', category='residential', type='3+ bedroom house') }}"><span class="pilot-intent-icon">04</span><strong>Family homes</strong><small>Three bedrooms and beyond</small></a>
+    <div class="pm-network-carousel" data-network-carousel aria-label="Toror products and services">
+      <button class="pm-network-arrow pm-network-prev" type="button" data-network-prev aria-label="Scroll to previous platforms">‹</button>
+      <div class="pm-network-track" data-network-track tabindex="0" aria-label="Swipe or scroll to explore platforms">
+        {% for item in toror_network_links %}
+        <a class="pm-network-card" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" style="--network-index:{{ loop.index0 }}">
+          <span class="pm-network-card-top"><span class="pm-network-card-mark" aria-hidden="true">{{ item.label[:1]|upper }}</span><span class="pm-network-card-kicker">TOROR PLATFORM</span></span>
+          <strong>{{ item.label }}</strong>
+          <span class="pm-network-card-description">{{ item.description }}</span>
+          <span class="pm-network-card-open">Explore platform <span aria-hidden="true">↗</span></span>
+        </a>
+        {% endfor %}
+      </div>
+      <button class="pm-network-arrow pm-network-next" type="button" data-network-next aria-label="Scroll to next platforms">›</button>
     </div>
-  </section>
+    <div class="pm-network-bottomline"><span>Swipe on mobile or use the arrows to explore.</span><a href="{{ url_for('company_profile') }}">View Toror Technology &amp; Innovations Ltd</a></div>
+  </div>
+</section>
 
-  <section class="pilot-area-section">
-    <div class="pilot-section-heading"><div><span class="pilot-eyebrow">START WITH THE AREA</span><h2>Two counties. Neighbourhood by neighbourhood.</h2><p>We are narrowing the first pilot so the search can become useful before expanding across Kenya.</p></div></div>
-    <div class="pilot-area-grid">
-      <a class="pilot-area-card pilot-area-nairobi" href="{{ url_for('county_page', county_slug='nairobi') }}"><span>COUNTY 01</span><strong>Nairobi</strong><small>Roysambu · Kasarani · Embakasi · Westlands</small><b>Explore Nairobi <i>↗</i></b></a>
-      <a class="pilot-area-card pilot-area-kiambu" href="{{ url_for('county_page', county_slug='kiambu') }}"><span>COUNTY 02</span><strong>Kiambu</strong><small>Ruaka · Ruiru · Juja · Thika · Kikuyu</small><b>Explore Kiambu <i>↗</i></b></a>
-    </div>
-    <p class="pilot-area-expand">Looking elsewhere in Kenya? <a href="{{ url_for('places_index') }}">Browse all 47 counties</a>.</p>
-  </section>
-
-  <section class="pilot-request-band">
-    <div><span class="pilot-eyebrow">DON'T SEE WHAT YOU NEED?</span><h2>Tell us what you're looking for.</h2><p>Share your preferred area, budget and bedroom needs. Your request is saved in the PataMahali house-request queue so it can be followed up as suitable listings come in.</p></div>
-    <a href="{{ url_for('request_house') }}">Request a home <span aria-hidden="true">↗</span></a>
-  </section>
-
-  <section class="pilot-how-section">
-    <div class="pilot-section-heading"><div><span class="pilot-eyebrow">A BETTER WAY TO LOOK</span><h2>Simple steps. Clearer decisions.</h2></div></div>
-    <div class="pilot-how-grid"><div><span>1</span><strong>Choose your area</strong><p>Start with the estate or town that suits your daily life.</p></div><div><span>2</span><strong>Compare the essentials</strong><p>Look at rent, bedrooms, amenities and location details together.</p></div><div><span>3</span><strong>Check before you pay</strong><p>Genuine listings pass account, property and admin checks. Always view before making payment.</p></div></div>
-  </section>
-
-  <footer class="pilot-footer"><a class="pilot-brand" href="/"><span class="pilot-brand-mark">P</span><span><strong>PataMahali</strong><small>House hunting, made more human.</small></span></a><div><a href="{{ url_for('partner_register') }}">For property owners</a><a href="{{ url_for('contact_us') }}">Contact</a><a href="{{ url_for('company_profile') }}">Toror Technology &amp; Innovations Ltd</a></div><small>© {{ current_year }} Toror Technology &amp; Innovations Ltd. All rights reserved.</small></footer>
-</div>
+<section class="pm-search-discovery" aria-labelledby="pm-search-discovery-title">
+  <div class="pm-search-discovery-inner">
+    <span class="pm-network-eyebrow">PROPERTY DISCOVERY ACROSS KENYA</span>
+    <h2 id="pm-search-discovery-title">Find a place to rent, buy, stay or do business.</h2>
+    <p>Search houses for rent, bedsitters, apartments, furnished stays, hotels, land and plots, shops, offices and warehouses on PataMahali. Narrow your search by county, town, estate and neighbourhood, then open a property to view its photographs, features, price and contact details.</p>
+    <nav class="pm-search-category-links" aria-label="Popular property searches">
+      <a href="{{ url_for('homes', category='residential') }}">Houses &amp; rentals</a>
+      <a href="{{ url_for('homes', category='short_stay') }}">Airbnb &amp; short stays</a>
+      <a href="{{ url_for('homes', category='short_stay', type='Hotel room') }}">Hotels</a>
+      <a href="{{ url_for('homes', category='land_sale') }}">Land &amp; plots</a>
+      <a href="{{ url_for('homes', category='property_sale') }}">Property for sale</a>
+      <a href="{{ url_for('homes', category='commercial') }}">Shops &amp; offices</a>
+      <a href="{{ url_for('homes', category='industrial') }}">Warehouses</a>
+      <a href="{{ url_for('places_index') }}">Browse all 47 counties</a>
+    </nav>
+    <div class="pm-search-discovery-footer"><span>A Kenyan digital property platform operated by Toror Technology &amp; Innovations Ltd.</span><a href="{{ url_for('company_profile') }}">Company profile ↗</a></div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(()=>{
+ const letters=[...document.querySelectorAll('.pm-title-letter')];
+ const palette=['#E9C477','#F0A46F','#E77F68','#F4DAB5','#FFF1D0','#D4A45F','#D99B8F','#F8F4EA'];
+ for(const el of letters){if(el.textContent.trim()){el.style.setProperty('--letter-color',palette[Math.floor(Math.random()*palette.length)]);}}
+})();
+</script>
 {% endblock %}

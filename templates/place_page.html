@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% set place_label = area if area else county %}
 {% set page_suffix = 'County' if page_kind=='county' else ('Constituency' if page_kind=='constituency' else 'area') %}
-{% block title %}{{ place_label }}{% if page_kind=='county' %} County{% endif %} property search · {{ site_settings.get('site_name','PataMahali') }}{% endblock %}
-{% block meta_description %}{{ summary }} Browse rentals, houses for sale, hotels, short stays, shops, warehouses and land in {{ place_label }}{% if page_kind!='county' %}, {{ county }} County{% endif %}, Kenya. Open a finer area or browse locally published property listings.{% endblock %}
+{% block title %}{% if page_kind=='county' %}Houses, Rentals and Property in {{ place_label }} County, Kenya{% elif page_kind=='constituency' %}Houses and Property in {{ place_label }}, {{ county }} County{% else %}Property and House Search in {{ place_label }}, {{ county }} County{% endif %} | PataMahali{% endblock %}
+{% block meta_description %}{{ summary }} Find houses for rent, apartments, homes for sale, land, shops and commercial spaces in {{ place_label }}{% if page_kind!='county' %}, {{ county }} County{% endif %}, Kenya. Search by estate, ward, road or nearby landmark on PataMahali.{% endblock %}
 {% block head %}
 <meta name="robots" content="{{ 'index,follow,max-image-preview:large' if page_kind != 'locality' or listings else 'noindex,follow' }}">
 <meta property="og:type" content="website">
