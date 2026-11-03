@@ -503,3 +503,40 @@ SOURCE_PROPERTY_SEEDS = [{'source_key': 'kpc-70246-baba-dogo-2026-11-02',
   'source_added_at': '8 October 2026',
   'source_checked_at': '2026-11-02',
   'display_order': 220}]
+
+
+# Clean PataMahali-facing copy. Source names, reference codes and source URLs remain
+# available only in the private admin inventory; they are not printed to visitors.
+SOURCE_PUBLIC_DESCRIPTIONS = {
+    "kpc-70246-baba-dogo-2026-11-02": "Unfurnished two-bedroom apartments off Thika Road in Baba Dogo, Ruaraka. The stated monthly rent includes a KSh 7,500 service charge.",
+    "kpc-69063-yaya-kilimani-2026-11-02": "Three-bedroom apartment in the Yaya area of Kilimani, with separate living and dining areas, an island kitchen, backup generator, lifts and swimming pool.",
+    "kpc-69850-gemland-westlands-2026-11-02": "Furnished two-bedroom apartment at Gemland Residence on Ring Road, Westlands. Features include a fitted kitchen, washing machine, balcony, parking, Wi-Fi, swimming pool and gym. Electricity is separate.",
+    "kpc-68908-ruiru-kamiti-road-2026-11-02": "Two-bedroom apartments on Ruiru Kamiti Road, between Kenya Prisons and Ruiru Quickmart. Different floor areas and bathroom layouts are available in the same development.",
+    "kpc-69904-northlands-ruiru-2026-11-02": "Two-bedroom apartment in Northland City, Ruiru, with ensuite bedrooms, fitted kitchen, guest washroom, heat pump and a balcony overlooking the garden.",
+    "kpc-69406-shalom-gardens-ruiru-2026-11-02": "Five-bedroom family house in Shalom Gardens, Kamakis, Ruiru. It has ensuite bedrooms, a self-contained one-bedroom staff quarter, semi-open-plan kitchen, home office or library and landscaped garden.",
+    "kpc-69030-varsity-estate-ruiru-2026-11-02": "Four-bedroom townhouse in Varsity Estate, Ruiru, with a master ensuite, staff quarter, spacious living and dining areas, modern kitchen, private compound and parking.",
+    "kpc-68345-kamiti-road-ruiru-2026-11-02": "Four-bedroom townhouse on Kamiti Road, Ruiru, in a gated estate, with a private compound, living and dining areas, kitchen and parking.",
+    "cribhunter-juja-muchatha-bedsitter-8500-2026-11-02": "Modern bedsitter in Muchatha near JKUAT Main Gate Stage, convenient for students and working professionals.",
+    "cribhunter-thika-landless-2bed-18000-2026-11-02": "Two-bedroom flat at Executive Homes on Landless Road, Thika, with one bathroom.",
+    "cribhunter-eldoret-stendi-kisa-bedsitter-5000-2026-11-02": "Newly built bedsitter near Eldoret International Airport along Stendi Kisa–Yala Road, in a fenced compound with water and access to the main road.",
+    "cribhunter-eldoret-hawaii-bedsitter-6500-2026-11-02": "Bedsitter in Hawaii Estate, Eldoret.",
+    "cribhunter-eldoret-subaru-bedsitter-7500-2026-11-02": "Bedsitter at Subaru Residentials, C51, Eldoret, in a fenced compound with water and access to the main road.",
+    "cribhunter-eldoret-farmers-street-bedsitter-6000-2026-11-02": "Bedsitter near Autocraft Subaru on Farmers Street, Eldoret.",
+    "cribhunter-eldoret-onebed-14000-2026-11-02": "One-bedroom, one-bathroom apartment for rent in Eldoret.",
+    "cribhunter-kisumu-riat-bedsitter-6500-2026-11-02": "Bedsitter or studio in Riat Hills, Kisumu.",
+    "cribhunter-kisumu-riat-dago-onebed-14500-2026-11-02": "One-bedroom, two-bathroom apartment in the Riat and Dago area of East Kisumu.",
+    "irentlist-mombasa-bamburi-bedsitter-6000-2026-11-02": "Bedsitter in Bamburi, near Naivas, Mombasa County.",
+    "capitalcare-nakuru-pipeline-onebed-14000-2026-11-02": "One-bedroom, two-bathroom apartment at New City Apartments in Pipeline Estate, Naka, Nakuru.",
+    "jumuika-nyeri-rware-bedsitter-7000-2026-11-02": "Newly built, unfurnished 25 m² bedsitter on Gakere Road in Rware, Nyeri Town, with parking and a stated reliable water supply.",
+    "cribhunter-diani-kona-ya-musa-2bed-16000-2026-11-02": "Two-bedroom, two-bathroom apartment at Kona ya Musa in Diani, Kwale County.",
+    "cribhunter-malindi-sunpark-onebed-20000-2026-11-02": "One-bedroom, one-bathroom apartment in Sun Park, Malindi, Kilifi County.",
+}
+
+# One advertised development has multiple apartment layouts and asking prices.
+# These choices are taken from the advertised details, not inferred.
+SOURCE_UNIT_OPTIONS = {
+    "kpc-68908-ruiru-kamiti-road-2026-11-02": [
+        {"label": "64 m² · 1 bathroom", "bedrooms": 2, "bathrooms": 1, "floor_area": "64 m²", "price_amount": 30000, "price_note": "KSh 30,000–33,000 per month"},
+        {"label": "75 m² · 2 bathrooms", "bedrooms": 2, "bathrooms": 2, "floor_area": "75 m²", "price_amount": 38000, "price_note": "KSh 38,000 per month"},
+    ]
+}

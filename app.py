@@ -44,7 +44,7 @@ if not any(_pm_gallery_dir.glob("*.webp")):
     except Exception as _pm_gallery_exc:
         print(f"WARNING: PataMahali gallery cache could not be built at startup: {_pm_gallery_exc}")
 PHOTO_SECTIONS = _pm_photo_rails.PHOTO_SECTIONS
-from source_listings import SOURCE_PROPERTY_SEEDS
+from source_listings import SOURCE_PROPERTY_SEEDS, SOURCE_PUBLIC_DESCRIPTIONS, SOURCE_UNIT_OPTIONS
 from places import (
     COUNTY_CONSTITUENCIES, COUNTY_SUMMARIES, FINE_AREAS, all_known_localities,
     county_by_slug, county_fine_areas, constituency_by_slug, selector_data,
@@ -70,7 +70,8 @@ LISTING_UPLOAD_DIR = DATA_DIR / "uploads" / "listings"
 PRIVATE_DOC_DIR = DATA_DIR / "private_documents"
 BRANDING_DIR = DATA_DIR / "uploads" / "branding"
 PROMO_DIR = DATA_DIR / "uploads" / "promotions"
-for directory in (BACKUP_DIR, LISTING_UPLOAD_DIR, PRIVATE_DOC_DIR, BRANDING_DIR, PROMO_DIR):
+SOURCE_LISTING_UPLOAD_DIR = DATA_DIR / "uploads" / "source-listings"
+for directory in (BACKUP_DIR, LISTING_UPLOAD_DIR, PRIVATE_DOC_DIR, BRANDING_DIR, PROMO_DIR, SOURCE_LISTING_UPLOAD_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 ADMIN_PATH = "promise212324"  # Fixed private admin entry; do not configure through Render variables.
@@ -526,6 +527,8 @@ CREATE TABLE IF NOT EXISTS source_listings (
     source_reference TEXT NOT NULL DEFAULT '',
     source_added_at TEXT NOT NULL DEFAULT '',
     source_checked_at TEXT NOT NULL DEFAULT '',
+    gallery_images TEXT NOT NULL DEFAULT '[]',
+    unit_options TEXT NOT NULL DEFAULT '[]',
     active INTEGER NOT NULL DEFAULT 1,
     display_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -577,6 +580,10 @@ def init_db() -> None:
                 "is_sample": "INTEGER NOT NULL DEFAULT 0",
                 "admin_rank": "INTEGER NOT NULL DEFAULT 0",
             },
+            "source_listings": {
+                "gallery_images": "TEXT NOT NULL DEFAULT '[]'",
+                "unit_options": "TEXT NOT NULL DEFAULT '[]'",
+            },
             "visitor_sessions": {
                 "visit_count": "INTEGER NOT NULL DEFAULT 1",
                 "last_visit_at": "TEXT NOT NULL DEFAULT ''",
@@ -622,20 +629,27 @@ def init_db() -> None:
         for item in SOURCE_PROPERTY_SEEDS:
             seed_marker = "source_ad_seeded:" + item["source_key"]
             already_seeded = conn.execute("SELECT value FROM settings WHERE key=?", (seed_marker,)).fetchone()
+            public_description = SOURCE_PUBLIC_DESCRIPTIONS.get(item["source_key"], item["description"])
+            unit_options = SOURCE_UNIT_OPTIONS.get(item["source_key"], [])
             if already_seeded and already_seeded[0] == "1":
+                # Refresh the visitor-facing wording and known unit choices without
+                # re-creating an advert deliberately deleted by the administrator.
+                conn.execute("UPDATE source_listings SET description=?,unit_options=? WHERE source_key=?",
+                             (public_description, json.dumps(unit_options, ensure_ascii=False), item["source_key"]))
                 continue
             conn.execute("""INSERT OR IGNORE INTO source_listings(
                 source_key,category,property_type,title,description,price_amount,price_period,
                 bedrooms,bathrooms,floor_area,location_name,county,local_area,image_url,
                 source_url,source_name,advertiser,source_reference,source_added_at,
-                source_checked_at,active,display_order,created_at,updated_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)""", (
+                source_checked_at,gallery_images,unit_options,active,display_order,created_at,updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)""", (
                 item["source_key"], "residential", item["property_type"], item["title"],
-                item["description"], item["price_amount"], item["price_period"],
+                public_description, item["price_amount"], item["price_period"],
                 item["bedrooms"], item["bathrooms"], item["floor_area"],
                 item["location_name"], item["county"], item["local_area"], item["image_url"],
                 item["source_url"], item["source_name"], item["advertiser"],
                 item["source_reference"], item["source_added_at"], item["source_checked_at"],
+                "[]", json.dumps(unit_options, ensure_ascii=False),
                 item["display_order"], seeded_at, seeded_at
             ))
             conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?, '1')", (seed_marker,))
@@ -731,7 +745,7 @@ def create_full_backup_archive(destination: Path) -> Path:
         create_db_snapshot(snapshot)
         with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             archive.write(snapshot, "database/patamahali.sqlite3")
-            for folder in (LISTING_UPLOAD_DIR, PRIVATE_DOC_DIR, BRANDING_DIR, PROMO_DIR):
+            for folder in (LISTING_UPLOAD_DIR, PRIVATE_DOC_DIR, BRANDING_DIR, PROMO_DIR, SOURCE_LISTING_UPLOAD_DIR):
                 if not folder.exists():
                     continue
                 for file_path in folder.rglob("*"):
@@ -745,7 +759,7 @@ def create_full_backup_archive(destination: Path) -> Path:
                 "Security note: this archive may contain personal data, identity documents, and account records. "
                 "Keep it in a private, encrypted location.\n"
                 "Restore note: first make a fresh backup of the destination. Move database/patamahali.sqlite3 to "
-                "DATA_DIR/patamahali.sqlite3, then restore uploads/listings, uploads/branding, uploads/promotions, "
+                "DATA_DIR/patamahali.sqlite3, then restore uploads/listings, uploads/source-listings, uploads/branding, uploads/promotions, "
                 "and private_documents to the same relative paths under DATA_DIR. Run application migrations after restoring.\n"
             )
             archive.writestr("RECOVERY-README.txt", manifest)
@@ -1596,6 +1610,50 @@ def source_public_listings(category: str, property_type: str = "", q: str = "", 
     return get_db().execute(sql, tuple(params)).fetchall()
 
 
+def source_photo_entries(item):
+    """Return PataMahali gallery entries, with an uploaded exterior before interiors."""
+    try:
+        saved = json.loads(item["gallery_images"] or "[]")
+    except (TypeError, ValueError, KeyError):
+        saved = []
+    saved = [photo for photo in saved if isinstance(photo, dict) and photo.get("file")]
+    exterior = [photo for photo in saved if str(photo.get("label", "")).casefold() == "exterior"]
+    other_saved = [photo for photo in saved if photo not in exterior]
+    entries = []
+    for photo in exterior:
+        entries.append({"src": url_for("source_listing_media", filename=photo["file"]), "label": "Exterior"})
+    if item["image_url"]:
+        entries.append({"src": item["image_url"], "label": "Property photo"})
+    for photo in other_saved:
+        entries.append({"src": url_for("source_listing_media", filename=photo["file"]), "label": photo.get("label") or "Interior"})
+    # Preserve order while removing duplicate URLs.
+    unique, seen = [], set()
+    for photo in entries:
+        if photo["src"] and photo["src"] not in seen:
+            unique.append(photo); seen.add(photo["src"])
+    return unique[:MAX_LISTING_IMAGES]
+
+
+def source_unit_options(item):
+    try:
+        options = json.loads(item["unit_options"] or "[]")
+        return [x for x in options if isinstance(x, dict)] if isinstance(options, list) else []
+    except (TypeError, ValueError, KeyError):
+        return []
+
+
+@app.route("/property/<int:item_id>")
+def source_listing_detail(item_id: int):
+    item = get_db().execute("SELECT * FROM source_listings WHERE id=? AND active=1", (item_id,)).fetchone()
+    if not item:
+        abort(404)
+    photos = source_photo_entries(item)
+    unit_options = source_unit_options(item)
+    canonical_url = public_base() + request.path
+    return render_template("source_listing_detail.html", item=item, photos=photos,
+                           unit_options=unit_options, canonical_url=canonical_url)
+
+
 @app.route("/homes")
 def homes():
     q = request.args.get("q", "").strip()[:120]
@@ -1705,8 +1763,10 @@ def homes():
     else:
         seo_page_title = "Property Search in Kenya | PataMahali"
         seo_meta_description = f"Search {CATEGORY_META.get(category, {}).get('label', 'property')} across Kenya by area, type and asking price on PataMahali."
+    source_photo_map = {row["id"]: source_photo_entries(row) for row in source_results}
     return render_template(
         "homes.html", listings=results, source_listings=source_results,
+        source_photo_map=source_photo_map,
         source_inventory_count=len(source_results), seo_page_title=seo_page_title,
         seo_meta_description=seo_meta_description,
         preview_cards=build_discovery_previews(category, property_type, limit=None, location_filter=""), show_preview_cards=show_preview_cards, q=q, category=category, property_type=property_type,
@@ -2831,27 +2891,123 @@ def admin_market_discovery_delete(item_id):
     return redirect(url_for("admin_listings"))
 
 
+def remove_orphaned_source_uploads(filenames):
+    """Remove uploaded source-gallery files only when no listing still uses them."""
+    names = {Path(str(name)).name for name in filenames if name}
+    if not names:
+        return
+    referenced = set()
+    rows = get_db().execute("SELECT gallery_images FROM source_listings").fetchall()
+    for row in rows:
+        try:
+            photos = json.loads(row["gallery_images"] or "[]")
+        except (TypeError, ValueError, KeyError):
+            photos = []
+        for photo in photos if isinstance(photos, list) else []:
+            if isinstance(photo, dict) and photo.get("file"):
+                referenced.add(Path(str(photo["file"])).name)
+    for name in names - referenced:
+        (SOURCE_LISTING_UPLOAD_DIR / name).unlink(missing_ok=True)
+
+
 @app.route("/manage-admin/source-listings", methods=["GET", "POST"])
 @admin_required
 def admin_source_listings():
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "delete_all":
+            old_rows = get_db().execute("SELECT gallery_images FROM source_listings").fetchall()
+            old_files = []
+            for old_row in old_rows:
+                try:
+                    old_gallery = json.loads(old_row["gallery_images"] or "[]")
+                except (TypeError, ValueError, KeyError):
+                    old_gallery = []
+                old_files.extend(photo.get("file") for photo in old_gallery if isinstance(photo, dict) and photo.get("file"))
             deleted = get_db().execute("DELETE FROM source_listings").rowcount
+            remove_orphaned_source_uploads(old_files)
             audit("source_inventory_cleared", "source_listings", 0, f"Removed {deleted} source-checked adverts")
-            flash(f"Removed {deleted} imported source adverts. They will not be re-added on restart.", "success")
+            flash(f"Removed {deleted} imported properties. They will not be re-added on restart.", "success")
         return redirect(url_for("admin_source_listings"))
     rows = get_db().execute("SELECT * FROM source_listings ORDER BY display_order,id").fetchall()
-    return render_template("admin_source_listings.html", source_rows=rows, page_title="Public-source listings")
+    source_photo_counts = {row["id"]: len(source_photo_entries(row)) for row in rows}
+    return render_template("admin_source_listings.html", source_rows=rows,
+                           source_photo_counts=source_photo_counts, page_title="Imported properties")
+
+
+@app.route("/manage-admin/source-listings/<int:item_id>/photos", methods=["GET", "POST"])
+@admin_required
+def admin_source_listing_photos(item_id: int):
+    row = get_db().execute("SELECT * FROM source_listings WHERE id=?", (item_id,)).fetchone()
+    if not row:
+        abort(404)
+    if request.method == "POST":
+        try:
+            gallery = json.loads(row["gallery_images"] or "[]")
+            if not isinstance(gallery, list):
+                gallery = []
+            remove_names = set(request.form.getlist("remove_images"))
+            removed = [x for x in gallery if isinstance(x, dict) and x.get("file") in remove_names]
+            gallery = [x for x in gallery if not (isinstance(x, dict) and x.get("file") in remove_names)]
+            uploaded = []
+            cover_file = request.files.get("cover_photo")
+            if cover_file and cover_file.filename:
+                filename = save_upload(cover_file, SOURCE_LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS)
+                uploaded.append(filename)
+                gallery = [x for x in gallery if str(x.get("label", "")).casefold() != "exterior"]
+                gallery.insert(0, {"file": filename, "label": "Exterior"})
+            interior_label = request.form.get("interior_label", "Interior")
+            if interior_label not in {"Living room", "Bedroom", "Kitchen", "Bathroom", "Balcony", "Staircase / floor", "Floor plan", "Other interior"}:
+                interior_label = "Interior"
+            interior_files = [f for f in request.files.getlist("interior_photos") if f and f.filename]
+            if len(gallery) + len(interior_files) > MAX_LISTING_IMAGES:
+                raise ValueError(f"A property can show up to {MAX_LISTING_IMAGES} photos. Remove a few before adding more.")
+            for photo_file in interior_files:
+                filename = save_upload(photo_file, SOURCE_LISTING_UPLOAD_DIR, ALLOWED_IMAGE_EXTENSIONS)
+                uploaded.append(filename)
+                gallery.append({"file": filename, "label": interior_label})
+            if len(gallery) + (1 if row["image_url"] else 0) > MAX_LISTING_IMAGES:
+                raise ValueError(f"A property can show up to {MAX_LISTING_IMAGES} photos including its existing main photo.")
+            get_db().execute("UPDATE source_listings SET gallery_images=?,updated_at=? WHERE id=?",
+                             (json.dumps(gallery, ensure_ascii=False), now_iso(), item_id))
+            remove_orphaned_source_uploads(old.get("file") for old in removed)
+            audit("source_listing_photos_updated", "source_listing", item_id, f"Saved {len(gallery)} uploaded gallery photos")
+            flash("Property photos updated.", "success")
+            return redirect(url_for("admin_source_listing_photos", item_id=item_id))
+        except ValueError as exc:
+            for filename in locals().get("uploaded", []):
+                (SOURCE_LISTING_UPLOAD_DIR / filename).unlink(missing_ok=True)
+            flash(str(exc), "error")
+    row = get_db().execute("SELECT * FROM source_listings WHERE id=?", (item_id,)).fetchone()
+    return render_template("admin_source_listing_photos.html", item=row,
+                           uploaded_photos=json.loads(row["gallery_images"] or "[]"),
+                           page_title="Property photo gallery")
+
+
+@app.route("/source-media/<path:filename>")
+def source_listing_media(filename):
+    if Path(filename).name != filename or Path(filename).suffix.lower().lstrip(".") not in ALLOWED_IMAGE_EXTENSIONS:
+        abort(404)
+    if not get_db().execute("SELECT 1 FROM source_listings WHERE gallery_images LIKE ? AND active=1 LIMIT 1", (f"%{filename}%",)).fetchone():
+        abort(404)
+    response = send_from_directory(SOURCE_LISTING_UPLOAD_DIR, filename, max_age=86400)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.post("/manage-admin/source-listings/<int:item_id>/delete")
 @admin_required
 def admin_source_listing_delete(item_id: int):
-    row = get_db().execute("SELECT title FROM source_listings WHERE id=?", (item_id,)).fetchone()
+    row = get_db().execute("SELECT title,gallery_images FROM source_listings WHERE id=?", (item_id,)).fetchone()
     if not row:
         abort(404)
+    try:
+        old_gallery = json.loads(row["gallery_images"] or "[]")
+    except (TypeError, ValueError, KeyError):
+        old_gallery = []
+    old_files = [photo.get("file") for photo in old_gallery if isinstance(photo, dict) and photo.get("file")]
     get_db().execute("DELETE FROM source_listings WHERE id=?", (item_id,))
+    remove_orphaned_source_uploads(old_files)
     audit("source_listing_removed", "source_listing", item_id, row["title"])
     flash("Imported source advert removed. Your own listings were not changed.", "success")
     return redirect(url_for("admin_source_listings"))
