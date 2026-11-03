@@ -1233,32 +1233,7 @@ def inject_globals():
             label, target = label.strip(), safe_external_url(target.strip())
             if label and target and not is_competitor_property_portal_url(target):
                 header_resource_links.append({"label": label[:55], "url": target})
-    # Public counter counts only recorded public browsers. Never seed a fake public
-    # visitor figure, and exclude current/legacy admin routes even if they were
-    # visited before an administrator authenticated.
-    try:
-        public_checkins = int(get_db().execute(
-            "SELECT COUNT(*) FROM visitor_sessions WHERE role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
-            (ADMIN_ROOT.rstrip('/') + '%',)
-        ).fetchone()[0])
-        # Include this public browser on its first response: page-view tracking runs
-        # after the template response is rendered. Admin pages and admins are never
-        # included in this projected public count.
-        path_admin_root = ADMIN_ROOT.rstrip('/') or '/'
-        request_is_admin_path = (request.path == path_admin_root or request.path.startswith(path_admin_root + '/') or request.path == '/manage-admin' or request.path.startswith('/manage-admin/'))
-        active_user = get_current_user()
-        active_key = current_visitor_key()
-        if not request_is_admin_path and not (active_user and active_user['role'] == 'admin') and active_key:
-            known = get_db().execute(
-                "SELECT 1 FROM visitor_sessions WHERE visitor_key=? AND role != 'administrator' AND last_path NOT LIKE ? AND last_path NOT LIKE '/manage-admin%'",
-                (active_key, ADMIN_ROOT.rstrip('/') + '%')
-            ).fetchone()
-            if not known:
-                public_checkins += 1
-    except Exception:
-        public_checkins = 0
     return {
-        "public_checkins": public_checkins,
         "site_settings": settings,
         "header_resource_links": header_resource_links,
         "header_popular_categories": [] if request.endpoint == "index" or (request.endpoint or "").startswith("admin_") else popular_category_buttons(4),
