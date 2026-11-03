@@ -1,0 +1,11 @@
+{% extends 'admin_base.html' %}{% block admin_content %}
+<div class="admin-panel"><div class="admin-panel-head"><div><h2>{{ item['title'] }}</h2><p>{{ item['location_name'] }} · {{ money(item['price_amount']) }} {{ item['price_period'] }}</p></div><a class="button button-small button-outline" href="{{ url_for('admin_source_listings') }}">Back to imported properties</a></div>
+<form method="post" enctype="multipart/form-data" class="form-grid source-photo-admin-form">{{ csrf_field() }}
+  <label class="full-span">Exterior / building-front photograph (shown first)<input type="file" name="cover_photo" accept="image/jpeg,image/png,image/webp"><small class="field-help">Use a genuine exterior photograph of this exact building or house. This becomes the first image.</small></label>
+  <label>Interior photo type<select name="interior_label">{% for label in ['Living room','Bedroom','Kitchen','Bathroom','Balcony','Staircase / floor','Floor plan','Other interior'] %}<option>{{ label }}</option>{% endfor %}</select></label>
+  <label class="full-span">Interior photographs<input type="file" name="interior_photos" accept="image/jpeg,image/png,image/webp" multiple><small class="field-help">Select several photos of this same property. Add them in the order you want them displayed.</small></label>
+  <div class="full-span"><button class="button button-primary" type="submit">Save property gallery</button></div>
+</form>
+{% if uploaded_photos %}<div class="admin-panel-head"><div><h2>Uploaded gallery photographs</h2><p>Select any photograph you no longer want on this property.</p></div></div><form method="post" class="source-gallery-remove-form">{{ csrf_field() }}<div class="review-image-strip source-admin-gallery">{% for photo in uploaded_photos %}<label class="source-admin-photo"><img src="{{ url_for('source_listing_media', filename=photo['file']) }}" alt="{{ photo.get('label','Property') }} photo"><span>{{ photo.get('label','Interior') }}</span><input type="checkbox" name="remove_images" value="{{ photo['file'] }}"> Remove</label>{% endfor %}</div><button class="button button-small button-outline danger-outline" type="submit">Remove selected photos</button></form>{% endif %}
+</div>
+{% endblock %}

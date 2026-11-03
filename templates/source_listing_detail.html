@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}{{ item['title'] }} in {{ item['location_name'] }} | PataMahali{% endblock %}
+{% block meta_description %}{{ item['title'] }} in {{ item['location_name'] }}. View property photographs, layout details and monthly rent on PataMahali.{% endblock %}
+{% block social_image %}{% if photos %}<meta property="og:image" content="{{ photos[0]['src'] }}"><meta property="og:image:alt" content="{{ item['title']|e }}">{% endif %}{% endblock %}
+{% block head %}<meta name="robots" content="index,follow,max-image-preview:large"><link rel="canonical" href="{{ canonical_url }}">{% if photos %}<meta property="og:title" content="{{ item['title']|e }} | PataMahali"><meta property="og:description" content="{{ item['title']|e }} in {{ item['location_name']|e }}. View photos and property details on PataMahali.">{% endif %}{% endblock %}
+{% block content %}
+<div class="page-shell breadcrumb source-breadcrumb"><a href="{{ url_for('index') }}">Home</a><span>/</span><a href="{{ url_for('homes', category='residential') }}">Rentals</a><span>/</span><span>{{ item['title'] }}</span></div>
+<section class="page-shell detail-layout source-detail-layout">
+  <div class="detail-main">
+    {% if photos %}
+    <div class="property-gallery source-property-gallery" data-property-gallery>
+      <button type="button" class="gallery-main source-gallery-main" data-gallery-open data-gallery-index="0" aria-label="View photos of {{ item['title'] }}">
+        <img src="{{ photos[0]['src'] }}" alt="{{ (photos[0]['label'] ~ ' photograph of ' ~ item['title']) if photos[0]['label'] else item['title'] ~ ' property photograph' }}" fetchpriority="high" decoding="async" referrerpolicy="no-referrer">
+        <span class="gallery-count">{{ photos|length }} photo{{ '' if photos|length==1 else 's' }}</span>
+      </button>
+      {% if photos|length > 1 %}
+      <div class="gallery-thumbs" aria-label="Property photographs">
+        {% for photo in photos %}<button type="button" class="gallery-thumb{{ ' is-active' if loop.first else '' }}" data-gallery-thumb data-gallery-index="{{ loop.index0 }}" data-gallery-src="{{ photo['src'] }}" data-gallery-alt="{{ photo['label'] }} photograph of {{ item['title'] }}" aria-label="View {{ photo['label'] or ('photo ' ~ loop.index) }}" aria-pressed="{{ 'true' if loop.first else 'false' }}"><img src="{{ photo['src'] }}" alt="" loading="lazy"><span>{{ photo['label'] or ('Photo ' ~ loop.index) }}</span></button>{% endfor %}
+      </div>
+      {% else %}
+      <div class="source-photo-caption">{{ photos[0]['label'] or 'Property photograph' }}</div>
+      {% endif %}
+      <dialog class="property-gallery-dialog source-photo-dialog" data-property-gallery-dialog aria-label="Property photographs">
+        <div class="property-gallery-dialog-inner">
+          <div class="property-gallery-dialog-head"><span data-gallery-dialog-caption>{{ photos[0]['label'] or 'Photo 1' }} · 1 of {{ photos|length }}</span><button type="button" data-gallery-close aria-label="Close gallery">×</button></div>
+          <div class="property-gallery-dialog-stage source-photo-stage"><img data-gallery-current-image src="{{ photos[0]['src'] }}" alt="{{ item['title'] }} property photograph"></div>
+          {% if photos|length > 1 %}<div class="gallery-thumbs source-dialog-thumbs">{% for photo in photos %}<button type="button" class="gallery-thumb{{ ' is-active' if loop.first else '' }}" data-gallery-dialog-thumb data-gallery-index="{{ loop.index0 }}" data-gallery-src="{{ photo['src'] }}" data-gallery-alt="{{ photo['label'] }} photograph of {{ item['title'] }}" aria-label="View {{ photo['label'] or ('photo ' ~ loop.index) }}" aria-pressed="{{ 'true' if loop.first else 'false' }}"><img src="{{ photo['src'] }}" alt="" loading="lazy"><span>{{ photo['label'] or ('Photo ' ~ loop.index) }}</span></button>{% endfor %}</div>{% endif %}
+        </div>
+      </dialog>
+    </div>
+    {% else %}
+    <div class="gallery-main source-no-photo"><div class="image-placeholder">Photos unavailable</div></div>
+    {% endif %}
+
+    <div class="detail-heading source-detail-heading">
+      <div><span class="eyebrow">{{ item['property_type'] }}</span><h1>{{ item['title'] }}</h1><p class="detail-location">{{ item['location_name'] }}</p></div>
+      <div class="detail-price source-detail-price" data-source-detail-price><strong>{{ money(item['price_amount']) }}</strong><small>{{ item['price_period'] }}</small></div>
+    </div>
+    <div class="verification-row"><span class="verified-tag">✓ Details checked</span>{% if item['bedrooms'] is not none %}<span class="date-tag">{{ item['bedrooms'] }} bedroom{{ '' if item['bedrooms']==1 else 's' }}</span>{% endif %}{% if item['bathrooms'] %}<span class="date-tag">{{ item['bathrooms'] }} bathroom{{ '' if item['bathrooms']==1 else 's' }}</span>{% endif %}</div>
+
+    {% if unit_options %}
+    <section class="detail-section source-unit-section">
+      <h2>Available layouts</h2>
+      <div class="source-unit-options" data-source-unit-options>
+        {% for option in unit_options %}
+        <button type="button" class="source-unit-option{{ ' is-selected' if loop.first else '' }}" data-source-unit-option data-price-label="{{ option['price_note'] }}" data-bedrooms="{{ option.get('bedrooms', item['bedrooms'] or '') }}" data-bathrooms="{{ option.get('bathrooms', item['bathrooms'] or '') }}" data-floor-area="{{ option.get('floor_area', '') }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">
+          <strong>{{ option['label'] }}</strong><span>{{ option['price_note'] }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="facts-grid source-facts-grid">
+      <div class="fact-item"><small>Property type</small><strong>{{ item['property_type'] }}</strong></div>
+      {% if item['bedrooms'] is not none %}<div class="fact-item"><small>Bedrooms</small><strong data-detail-bedrooms>{{ item['bedrooms'] }}</strong></div>{% endif %}
+      {% if item['bathrooms'] %}<div class="fact-item"><small>Bathrooms</small><strong data-detail-bathrooms>{{ item['bathrooms'] }}</strong></div>{% endif %}
+      {% if item['floor_area'] %}<div class="fact-item"><small>Floor area</small><strong data-detail-floor-area>{{ item['floor_area'] }}</strong></div>{% elif unit_options %}<div class="fact-item"><small>Floor area</small><strong data-detail-floor-area>{{ unit_options[0].get('floor_area','') }}</strong></div>{% endif %}
+      <div class="fact-item"><small>County</small><strong>{{ item['county'] }}</strong></div>
+      <div class="fact-item"><small>Location</small><strong>{{ item['local_area'] or item['location_name'] }}</strong></div>
+    </div>
+    {% if item['description'] %}<section class="detail-section"><h2>About this home</h2><p class="preserve-lines">{{ item['description'] }}</p></section>{% endif %}
+    <section class="detail-section source-more-homes"><a class="button button-outline" href="{{ url_for('homes', category='residential', location=item['local_area'] or item['county']) }}">More homes in {{ item['local_area'] or item['county'] }}</a></section>
+  </div>
+  <aside class="detail-sidebar source-detail-sidebar">
+    <div class="partner-card source-summary-card">
+      <span class="eyebrow">Property summary</span>
+      <div class="source-summary-price" data-source-summary-price>{{ money(item['price_amount']) }}</div>
+      <p>{{ item['price_period'] }}</p>
+      <div class="detail-partner-facts"><div><small>Bedrooms</small><strong data-summary-bedrooms>{{ item['bedrooms'] if item['bedrooms'] is not none else 'Studio' }}</strong></div><div><small>Bathrooms</small><strong data-summary-bathrooms>{{ item['bathrooms'] if item['bathrooms'] else '—' }}</strong></div></div>
+      
+    </div>
+  </aside>
+</section>
+{% endblock %}
