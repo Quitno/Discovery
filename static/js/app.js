@@ -589,6 +589,37 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSelection();
   });
 
+  // Apartment blocks can publish more than one floor plan or unit size.
+  document.querySelectorAll('[data-source-unit-options]').forEach((group) => {
+    const options = Array.from(group.querySelectorAll('[data-source-unit-option]'));
+    if (!options.length) return;
+    const priceNodes = document.querySelectorAll('[data-source-detail-price], [data-source-summary-price]');
+    const bedroomNodes = document.querySelectorAll('[data-detail-bedrooms], [data-summary-bedrooms]');
+    const bathroomNodes = document.querySelectorAll('[data-detail-bathrooms], [data-summary-bathrooms]');
+    const areaNode = document.querySelector('[data-detail-floor-area]');
+    const selectOption = (button) => {
+      options.forEach((option) => {
+        const active = option === button;
+        option.classList.toggle('is-selected', active);
+        option.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      const label = button.dataset.priceLabel || '';
+      priceNodes.forEach((node) => {
+        if (node.matches('[data-source-detail-price]')) {
+          const small = node.querySelector('small');
+          const amount = node.querySelector('strong');
+          if (amount) amount.textContent = label;
+          if (small) small.textContent = 'Selected layout';
+        } else node.textContent = label;
+      });
+      bedroomNodes.forEach((node) => { if (button.dataset.bedrooms) node.textContent = button.dataset.bedrooms; });
+      bathroomNodes.forEach((node) => { if (button.dataset.bathrooms) node.textContent = button.dataset.bathrooms; });
+      if (areaNode && button.dataset.floorArea) areaNode.textContent = button.dataset.floorArea;
+    };
+    options.forEach((button) => button.addEventListener('click', () => selectOption(button)));
+    selectOption(options[0]);
+  });
+
   // Property detail viewer: the first uploaded photo is the cover; the rest open in one gallery.
   document.querySelectorAll('[data-property-gallery]').forEach((gallery) => {
     const dialog = gallery.querySelector('[data-property-gallery-dialog]');
@@ -597,10 +628,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const viewerImage = dialog?.querySelector('[data-gallery-current-image]');
     const caption = dialog?.querySelector('[data-gallery-dialog-caption]');
     const thumbs = Array.from(gallery.querySelectorAll('[data-gallery-thumb]'));
-    const photos = thumbs.map((thumb) => ({
+    const dialogThumbs = Array.from(gallery.querySelectorAll('[data-gallery-dialog-thumb]'));
+    const photoButtons = thumbs.length ? thumbs : dialogThumbs;
+    const photos = photoButtons.map((thumb) => ({
       src: thumb.dataset.gallerySrc,
       alt: thumb.dataset.galleryAlt || 'Property photograph'
     })).filter((photo) => photo.src);
+    if (!photos.length && mainImage?.getAttribute('src')) {
+      photos.push({src: mainImage.getAttribute('src'), alt: mainImage.alt || 'Property photograph'});
+    }
     if (!dialog || !mainLink || !mainImage || !viewerImage || !photos.length) return;
     let activeIndex = 0;
     const selectPhoto = (index) => {
@@ -608,13 +644,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const selected = photos[activeIndex];
       mainImage.src = selected.src;
       mainImage.alt = selected.alt;
-      mainLink.href = selected.src;
       mainLink.dataset.galleryIndex = String(activeIndex);
       viewerImage.src = selected.src;
       viewerImage.alt = selected.alt;
       if (caption) caption.textContent = `Photo ${activeIndex + 1} of ${photos.length}`;
-      thumbs.forEach((thumb, thumbIndex) => {
-        const active = thumbIndex === activeIndex;
+      [...thumbs, ...dialogThumbs].forEach((thumb) => {
+        const active = Number(thumb.dataset.galleryIndex || 0) === activeIndex;
         thumb.classList.toggle('is-active', active);
         thumb.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
@@ -622,18 +657,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const openAt = (index) => {
       selectPhoto(index);
       if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
-      else if (!dialog.open) window.open(photos[activeIndex].src, '_blank', 'noopener');
+      else if (!dialog.open) dialog.setAttribute('open', '');
     };
     mainLink.addEventListener('click', (event) => { event.preventDefault(); openAt(Number(mainLink.dataset.galleryIndex || 0)); });
     thumbs.forEach((thumb, index) => thumb.addEventListener('click', () => openAt(index)));
-    dialog.querySelector('[data-gallery-close]')?.addEventListener('click', () => dialog.close());
-    dialog.querySelector('[data-gallery-prev]')?.addEventListener('click', () => selectPhoto(activeIndex - 1));
-    dialog.querySelector('[data-gallery-next]')?.addEventListener('click', () => selectPhoto(activeIndex + 1));
-    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
-    dialog.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowLeft') { event.preventDefault(); selectPhoto(activeIndex - 1); }
-      if (event.key === 'ArrowRight') { event.preventDefault(); selectPhoto(activeIndex + 1); }
+    dialog.querySelector('[data-gallery-close]')?.addEventListener('click', () => {
+      if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open');
     });
+    dialogThumbs.forEach((thumb) => thumb.addEventListener('click', () => selectPhoto(Number(thumb.dataset.galleryIndex || 0))));
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
     selectPhoto(0);
   });
 });
