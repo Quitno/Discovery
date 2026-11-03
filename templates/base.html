@@ -100,9 +100,6 @@
   </main>
   {% if request.endpoint != 'index' %}
   <footer class="site-footer">
-    {% if request.endpoint != 'index' and not (request.endpoint or '').startswith('admin_') %}
-    <div class="pm-footer-checkins"><span class="pm-checkin-dot" aria-hidden="true"></span><strong><span data-count-up="{{ public_checkins }}">{{ "{:,}".format(public_checkins) }}</span> Visitors</strong></div>
-    {% endif %}
     {% if request.endpoint != 'index' %}
     <div class="footer-inner">
       <div class="footer-brand"><strong>{{ site_settings.get('site_name','PataMahali') }}</strong></div>

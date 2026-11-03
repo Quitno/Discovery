@@ -78,8 +78,8 @@
           <div class="property-grid source-property-grid">
             {% for item in source_listings %}
             <article class="property-card source-property-card">
-              <a class="property-image" href="{{ item['source_url'] }}" target="_blank" rel="nofollow noopener noreferrer" aria-label="Open original advert for {{ item['title'] }}">
-                <img src="{{ item['image_url'] }}" alt="Photograph published with the {{ item['title'] }} advert" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none';this.parentElement.classList.add('source-photo-unavailable')">
+              <a class="property-image{% if not item['image_url'] %} source-photo-unavailable{% endif %}" href="{{ item['source_url'] }}" target="_blank" rel="nofollow noopener noreferrer" aria-label="Open original advert for {{ item['title'] }}">
+                {% if item['image_url'] %}<img src="{{ item['image_url'] }}" alt="Photograph published with the {{ item['title'] }} advert" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none';this.parentElement.classList.add('source-photo-unavailable')">{% endif %}
                 <span class="photo-chip source-photo-chip">Source checked</span>
                 <span class="source-photo-fallback">Open source advert to view photos</span>
               </a>
